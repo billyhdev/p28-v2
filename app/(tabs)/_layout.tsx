@@ -20,8 +20,8 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors.tint,
         headerShown: useClientOnlyValue(false, true),
         tabBarAllowFontScaling: true,
-        tabBarLabelStyle: { marginTop: 8, marginBottom: 4 },
-        tabBarStyle: { minHeight: 88, paddingTop: 20, paddingBottom: 32 },
+        tabBarLabelStyle: { marginTop: 6, marginBottom: 4 },
+        tabBarStyle: { minHeight: 80, paddingTop: 6 },
       }}
     >
       <Tabs.Screen

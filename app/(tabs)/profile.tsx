@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/hooks/useAuth';
 import { api, isApiError } from '@/lib/api';
@@ -42,8 +42,23 @@ export default function ProfileScreen() {
 
   const isLegacyProfile = !!profile && (!profile.firstName || !profile.lastName);
 
+  const handleSignOutPress = useCallback(() => {
+    Alert.alert(
+      'Sign out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: signOut },
+      ]
+    );
+  }, [signOut]);
+
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
       <Animated.View entering={FadeIn.duration(250)} style={styles.animatedContent}>
         <View style={styles.header}>
           <Avatar
@@ -77,29 +92,31 @@ export default function ProfileScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>About</Text>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Display name</Text>
-            <Text style={styles.rowValue}>{profile?.displayName ?? '—'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>First name</Text>
-            <Text style={styles.rowValue}>{profile?.firstName ?? '—'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Last name</Text>
-            <Text style={styles.rowValue}>{profile?.lastName ?? '—'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Birth date</Text>
-            <Text style={styles.rowValue}>{birthDateLabel ?? '—'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Country</Text>
-            <Text style={styles.rowValue}>{profile?.country ?? '—'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Preferred language</Text>
-            <Text style={styles.rowValue}>{profile?.preferredLanguage ?? '—'}</Text>
+          <View style={styles.aboutFields}>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Display name</Text>
+              <Text style={styles.rowValue}>{profile?.displayName ?? '—'}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>First name</Text>
+              <Text style={styles.rowValue}>{profile?.firstName ?? '—'}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Last name</Text>
+              <Text style={styles.rowValue}>{profile?.lastName ?? '—'}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Birth date</Text>
+              <Text style={styles.rowValue}>{birthDateLabel ?? '—'}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Country</Text>
+              <Text style={styles.rowValue}>{profile?.country ?? '—'}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Preferred language</Text>
+              <Text style={styles.rowValue}>{profile?.preferredLanguage ?? '—'}</Text>
+            </View>
           </View>
         </View>
 
@@ -115,17 +132,20 @@ export default function ProfileScreen() {
             title="Edit profile"
             onPress={() => router.push('/profile/edit')}
             variant="primary"
+            style={styles.actionButton}
             accessibilityLabel="Edit profile"
           />
           <Button
             title="Sign out"
-            onPress={signOut}
+            onPress={handleSignOutPress}
             variant="secondary"
+            style={styles.actionButton}
             accessibilityLabel="Sign out"
+            accessibilityHint="Opens a confirmation before signing out"
           />
         </View>
       </Animated.View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -144,9 +164,12 @@ const cardStyle = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
     padding: spacing.lg,
     paddingHorizontal: spacing.screenHorizontal,
-    backgroundColor: colors.background,
+    paddingBottom: spacing.xl,
   },
   animatedContent: { flex: 1 },
   header: {
@@ -160,12 +183,12 @@ const styles = StyleSheet.create({
   title: { ...typography.h2, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
   card: { ...cardStyle },
-  cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.sm },
+  cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.md },
+  aboutFields: { gap: spacing.md },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.md,
-    marginBottom: spacing.sm,
   },
   rowLabel: { ...typography.caption, color: colors.textSecondary },
   rowValue: {
@@ -175,7 +198,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   bio: { ...typography.body, color: colors.textSecondary },
-  actions: { marginTop: spacing.md, gap: spacing.sm },
+  actions: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+    alignItems: 'center',
+    width: '100%',
+  },
+  actionButton: { width: '100%', maxWidth: 400 },
   noticeCard: { ...cardStyle },
   noticeTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.xs },
   noticeText: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
