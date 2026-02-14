@@ -1,0 +1,105 @@
+# generated: 2026-02-11
+# project: p28-v2
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: "2026-02-11"
+project: p28-v2
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+# Epic names (from planning-artifacts/epics.md)
+epic_names:
+  epic-1: App foundation and user identity
+  epic-2: Organization structure and leadership
+  epic-3: Discovery and onboarding
+  epic-4: Home, events, and announcements
+  epic-5: Messaging and discussions
+  epic-6: Push notifications
+  epic-7: Leader tools
+
+development_status:
+  epic-1: in-progress
+  1-1-initialize-expo-app-with-tabs-template: done
+  1-2-design-tokens-and-core-primitives: done
+  1-3-backend-contracts-and-supabase-project: done
+  1-4-supabase-auth-adapter-and-sign-in-sign-up: done
+  1-5-profile-and-visibility: review
+  1-6-notification-preferences: backlog
+  1-7-app-language-i18n: backlog
+  1-8-in-app-conduct-guidelines: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-data-model-and-migrations-for-org-ministry-group: backlog
+  2-2-data-contract-and-adapter-for-org-structure: backlog
+  2-3-admin-set-up-and-edit-organization-structure: backlog
+  2-4-invite-and-assign-ministry-leads: backlog
+  2-5-admin-oversight-view: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-discover-and-join-organization: backlog
+  3-2-browse-and-join-ministries-and-groups: backlog
+  3-3-leave-group-or-ministry: backlog
+  3-4-guest-mode-and-exploration: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-home-feed-layout-and-event-announcement-list: backlog
+  4-2-event-detail-and-rsvp: backlog
+  4-3-leaders-create-and-publish-announcements: backlog
+  4-4-leaders-create-and-publish-events: backlog
+  4-5-message-preview-on-home: backlog
+  4-6-daily-moment-optional: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-one-to-one-messaging: backlog
+  5-2-group-and-forum-discussions: backlog
+  5-3-message-preview-list-and-home: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-push-registration-and-token-storage: backlog
+  6-2-backend-trigger-and-delivery: backlog
+  6-3-leader-targeting-by-ministry-or-group: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-create-and-manage-groups-ministry-lead: backlog
+  7-2-post-announcements-and-events-and-choose-audience: backlog
+  7-3-engagement-visibility: backlog
+  7-4-collaborate-with-other-leaders: backlog
+  epic-7-retrospective: optional
