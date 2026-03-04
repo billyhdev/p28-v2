@@ -23,7 +23,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 ### Requirements Overview
 
 **Functional Requirements:**
-Thirty-six FRs define the capability contract. Architecturally they imply: (1) a hierarchical data model (org → ministry → group) with CRUD and membership; (2) user identity, profiles, and guest/explorer mode with visibility and notification preferences; (3) discovery and onboarding (join org/ministry/group, leave); (4) push notifications with targeting by ministry/group and user preferences; (5) messaging (1:1, group/forum, small-group) with recent/relevant previews; (6) content and broadcasts (home/feed, events, announcements, RSVP) with audience targeting; (7) leader management (create/manage groups, post/target, basic engagement visibility); (8) admin (org structure, invite/assign leads, oversight); (9) trust/privacy (visibility control, conduct expectations, multi-language content). These drive backend entities, APIs, and client feature boundaries.
+Thirty-six FRs define the capability contract. Architecturally they imply: (1) a hierarchical data model (org → ministry → group) with CRUD and membership; (2) user identity, profiles, and guest/explorer mode with notification preferences; (3) discovery and onboarding (join org/ministry/group, leave); (4) push notifications with targeting by ministry/group and user preferences; (5) messaging (1:1, group/forum, small-group) with recent/relevant previews; (6) content and broadcasts (home/feed, events, announcements, RSVP) with audience targeting; (7) leader management (create/manage groups, post/target, basic engagement visibility); (8) admin (org structure, invite/assign leads, oversight); (9) trust/privacy (visibility control, conduct expectations, multi-language content). These drive backend entities, APIs, and client feature boundaries.
 
 **Non-Functional Requirements:**
 - **Performance:** Core actions < 3s (NFR-P1); push delivery < 1 min (NFR-P2); messaging real-time or near-real-time (NFR-P3).
@@ -445,7 +445,7 @@ p28-v2/
 - **Messaging (FR18–21):** `app/(tabs)/messages`, `app/message/[id].tsx`; `lib/api/contracts/realtime.ts` + adapter; pattern `MessagePreviewRow`.
 - **Content & broadcasts (FR22–26):** `app/(tabs)/index.tsx` (Home); patterns `EventCard`, `AnnouncementCard`, `DailyMomentCard`.
 - **Leader & admin (FR27–33):** Same tabs + leader-only UI; `ComposeCard`, `AudienceSelector`; `app/admin/`.
-- **Trust, privacy, i18n (FR34–36):** `theme/`, `lib/i18n.ts`; profile/visibility and notification prefs in profile/settings.
+- **Trust, privacy, i18n (FR34–36):** `theme/`, `lib/i18n.ts`; profile and notification prefs in profile/settings (FR34 profile visibility deferred).
 
 ### Rationale for revisions
 
@@ -470,7 +470,7 @@ p28-v2/
 
 ### Requirements Coverage Validation ✅
 
-**Functional requirements coverage:** All 36 FRs are mapped to the architecture. Org/hierarchy (FR1–5) → data contract + RLS + admin routes. Identity/profiles (FR6–10) → auth contract + profiles + profile/join routes. Discovery/onboarding (FR11–14) → join flow + GroupRow, MinistryNav. Notifications/push (FR15–17) → push lib + data contract for tokens/preferences + backend trigger. Messaging (FR18–21) → realtime contract + message routes + MessagePreviewRow. Content/broadcasts (FR22–26) → data contract + Home + EventCard, AnnouncementCard. Leader/admin (FR27–33) → same data contract + leader UI + admin routes. Trust/privacy/i18n (FR34–36) → theme, i18n lib, profile/visibility. No FR category is missing architectural support.
+**Functional requirements coverage:** All 36 FRs are mapped to the architecture. Org/hierarchy (FR1–5) → data contract + RLS + admin routes. Identity/profiles (FR6–10) → auth contract + profiles + profile/join routes. Discovery/onboarding (FR11–14) → join flow + GroupRow, MinistryNav. Notifications/push (FR15–17) → push lib + data contract for tokens/preferences + backend trigger. Messaging (FR18–21) → realtime contract + message routes + MessagePreviewRow. Content/broadcasts (FR22–26) → data contract + Home + EventCard, AnnouncementCard. Leader/admin (FR27–33) → same data contract + leader UI + admin routes. Trust/privacy/i18n (FR34–36) → theme, i18n lib, profile and notification prefs (FR34 deferred). No FR category is missing architectural support.
 
 **Non-functional requirements coverage:** Performance (NFR-P1–P3) → contract/facade and backend choices (Supabase, Realtime); no blocking decisions. Security (NFR-S1–S3) → auth contract, RLS, TLS/encryption at rest. Reliability (NFR-R1–R2) → backend and backup strategy. Accessibility (NFR-A1–A2) → theme and implementation patterns. Scalability (NFR-SC1–SC2) → multi-tenant design, adapter pattern for future backend scale. All NFRs are addressed at the architectural level.
 

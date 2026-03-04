@@ -55,9 +55,9 @@ development_status:
   1-2-design-tokens-and-core-primitives: done
   1-3-backend-contracts-and-supabase-project: done
   1-4-supabase-auth-adapter-and-sign-in-sign-up: done
-  1-5-profile-and-visibility: review
-  1-6-notification-preferences: backlog
-  1-7-app-language-i18n: backlog
+  1-5-profile-and-visibility: done
+  1-6-notification-preferences: done
+  1-7-app-language-i18n: done
   1-8-in-app-conduct-guidelines: backlog
   epic-1-retrospective: optional
 

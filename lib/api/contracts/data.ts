@@ -1,5 +1,11 @@
 import type { ApiError } from './errors';
-import type { OnboardingProfileData, Profile, ProfileUpdates } from './dto';
+import type {
+  NotificationPreferences,
+  NotificationPreferencesUpdates,
+  OnboardingProfileData,
+  Profile,
+  ProfileUpdates,
+} from './dto';
 
 /**
  * Data contract: domain operations. No backend-specific types.
@@ -16,4 +22,10 @@ export interface DataContract {
     imageUri: string,
     base64Data?: string | null
   ): Promise<string | ApiError>;
+
+  getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError>;
+  updateNotificationPreferences(
+    userId: string,
+    updates: NotificationPreferencesUpdates
+  ): Promise<NotificationPreferences | ApiError>;
 }

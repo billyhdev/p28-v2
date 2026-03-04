@@ -26,4 +26,7 @@ export type {
   Session,
   Profile,
   ProfileUpdates,
+  OnboardingProfileData,
+  NotificationPreferences,
+  NotificationPreferencesUpdates,
 } from './contracts';

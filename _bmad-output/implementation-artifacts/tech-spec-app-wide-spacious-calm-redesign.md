@@ -177,7 +177,7 @@ All animations use `react-native-reanimated`. Duration 200–300ms; non-blocking
 
 - [x] **Task 15: Update Profile edit screen**
   - File: `app/profile/edit.tsx`
-  - Action: Use tokens for container, readOnlyBlock (radius.card, spacing.cardPadding, colors), label, visibilityRow. Ensure background and text from tokens.
+  - Action: Use tokens for container, readOnlyBlock (radius.card, spacing.cardPadding, colors), label, form rows. Ensure background and text from tokens.
   - Notes: Input and Button inherit from primitives.
 
 - [x] **Task 16: Update modal screen**

@@ -1,4 +1,4 @@
-# Story 1.5: Profile and visibility
+# Story 1.5: Profile
 
 Status: review
 
@@ -7,50 +7,47 @@ Status: review
 ## Story
 
 As a user,
-I want to set my profile picture and personal information and control who can see them,
-so that others in my org/ministry/group context see the right information.
+I want to set my profile picture and personal information,
+so that others in my org/ministry/group context can see the right information.
 
 ## Acceptance Criteria
 
 1. **Given** Epic 1.4 is complete and profile data is available via the data contract,
-   **When** I add profile screen(s) for setting/updating profile picture and personal info and visibility (org/ministry/group),
-   **Then** profile data is stored and displayed according to visibility rules,
-   **And** FR7 and FR34 are satisfied; only permitted viewers see profile/activity per product bounds.
+   **When** I add profile screen(s) for setting/updating profile picture and personal info,
+   **Then** profile data is stored and displayed,
+   **And** FR7 is satisfied (profile picture and personal info).
 
 ## Tasks / Subtasks
 
 - [x] Add profile data contract and DTOs (AC: #1)
-  - [x] Define Profile DTO in `lib/api/contracts/dto.ts`: userId, displayName?, avatarUrl?, bio?, visibility
-  - [x] Add visibility enum/type: org | ministry | group (who can see)
+  - [x] Define Profile DTO in `lib/api/contracts/dto.ts`: userId, displayName?, avatarUrl?, bio?
   - [x] Add to DataContract: getProfile(userId), updateProfile(userId, updates), uploadProfileImage(userId, imageUri) → avatarUrl
 - [x] Create Supabase migration for profiles (AC: #1)
-  - [x] Add `profiles` table: user_id (uuid, FK auth.users), display_name, avatar_url, bio, visibility (org/ministry/group)
-  - [x] RLS policies: user can read/update own profile; read others' profiles per visibility rules (org/ministry/group scope)
+  - [x] Add `profiles` table: user_id (uuid, FK auth.users), display_name, avatar_url, bio
+  - [x] RLS policies: user can read/update own profile; read others' profiles
 - [x] Implement Supabase data adapter for profile (AC: #1)
   - [x] Implement getProfile, updateProfile, uploadProfileImage in `lib/api/adapters/supabase/data.ts`
   - [x] Use Supabase Storage for avatar uploads; store public URL in profiles.avatar_url
   - [x] Map all backend errors to ApiError
 - [x] Add profile screen UI (AC: #1)
-  - [x] Expand `app/(tabs)/profile.tsx` (or add `app/profile/edit.tsx`) for edit flow: avatar picker, display name, bio, visibility selector
+  - [x] Expand `app/(tabs)/profile.tsx` (or add `app/profile/edit.tsx`) for edit flow: avatar picker, display name, bio
   - [x] Use design tokens and primitives (Avatar, Input, Button); labels always visible; 44pt touch targets
   - [x] Loading/submit with isSubmitting convention; errors via getUserFacingError
-- [x] Wire profile to facade and ensure visibility rules (AC: #1)
+- [x] Wire profile to facade (AC: #1)
   - [x] Facade exposes api.data.getProfile, api.data.updateProfile, api.data.uploadProfileImage
   - [x] Profile screen uses only api.data (facade); no adapter or @supabase imports
-  - [x] Document visibility enforcement: store preference now; full org/ministry/group filtering when Epic 2/3 membership data exists
 
 ## Dev Notes
 
-- **Scope:** Story 1.4 delivered auth, sign-in/sign-up, AuthContext, and a basic profile tab (email + sign out). This story adds profile CRUD (picture, display name, bio, visibility) via the data contract and Supabase adapter. The existing `app/(tabs)/profile.tsx` shows session email and sign out; expand it or add an edit screen for profile editing.
-- **Profile vs User:** Auth contract's User (id, email, createdAt) comes from auth; Profile is extended user data (displayName, avatarUrl, bio, visibility) stored in `profiles` table and fetched via data contract.
-- **Visibility (FR34):** Store visibility preference (org | ministry | group). Org = visible to org members; ministry = visible to ministry members; group = visible to group members. Epic 2/3 add org/ministry/group membership; until then, visibility is stored and RLS can default to org or authenticated users in same context. Document that full scoping requires membership tables.
+- **Scope:** Story 1.4 delivered auth, sign-in/sign-up, AuthContext, and a basic profile tab (email + sign out). This story adds profile CRUD (picture, display name, bio) via the data contract and Supabase adapter. The existing `app/(tabs)/profile.tsx` shows session email and sign out; expand it or add an edit screen for profile editing.
+- **Profile vs User:** Auth contract's User (id, email, createdAt) comes from auth; Profile is extended user data (displayName, avatarUrl, bio) stored in `profiles` table and fetched via data contract.
 - **Avatar upload:** Use Expo ImagePicker to pick image; adapter's uploadProfileImage(userId, imageUri) uploads to Supabase Storage (e.g. `avatars/{userId}`), returns public URL. Storage bucket needs RLS: user can upload/update own files.
 - **Existing code:** `lib/api/contracts/data.ts` is a stub; `lib/api/adapters/supabase/data.ts` returns empty object. Add profile operations. Profile tab exists at `app/(tabs)/profile.tsx`—extend with edit form or link to edit screen.
 
 ### Project Structure Notes
 
 - **Target structure (from architecture):**
-  - `lib/api/contracts/dto.ts` — add Profile, Visibility type
+  - `lib/api/contracts/dto.ts` — add Profile type
   - `lib/api/contracts/data.ts` — add getProfile, updateProfile, uploadProfileImage to DataContract
   - `lib/api/adapters/supabase/data.ts` — implement profile ops + Storage for avatars
   - `supabase/migrations/` — new migration for profiles table + Storage bucket + RLS
@@ -59,7 +56,7 @@ so that others in my org/ministry/group context see the right information.
 
 ### References
 
-- [Source: _bmad-output/planning-artifacts/epics.md] — Epic 1, Story 1.5; FR7, FR34
+- [Source: _bmad-output/planning-artifacts/epics.md] — Epic 1, Story 1.5; FR7
 - [Source: _bmad-output/planning-artifacts/architecture.md] — Data contract, DTOs, lib/api structure, profiles in identity section
 - [Source: _bmad-output/planning-artifacts/ux-design-specification.md] — Forms, Avatar, feedback patterns, 44pt targets, labels visible
 - [Source: _bmad-output/implementation-artifacts/1-4-supabase-auth-adapter-and-sign-in-sign-up.md] — Auth patterns, facade usage, getUserFacingError, isSubmitting
@@ -69,14 +66,14 @@ so that others in my org/ministry/group context see the right information.
 - **Data adapter only in `lib/api/adapters/supabase/data.ts`:** Implement profile operations. Use Supabase client for DB (profiles table) and Storage (avatars bucket). Map all errors to ApiError.
 - **Contract first:** Add Profile DTO and operations to data contract before implementing adapter. App uses only api.data from facade.
 - **Profile screen uses facade only:** No `@supabase/*` or `lib/api/adapters/` in app or hooks. Call api.data.getProfile, api.data.updateProfile, api.data.uploadProfileImage.
-- **RLS:** Profiles table RLS: user can SELECT/UPDATE own row; SELECT others' rows only when visibility rules allow (requires org/ministry/group membership—implement per-scope when tables exist; MVP can allow authenticated users to read profiles with visibility=org as fallback).
+- **RLS:** Profiles table RLS: user can SELECT/UPDATE own row; authenticated users can read others' profiles (MVP).
 - **Storage:** Create `avatars` bucket; RLS so user can upload/update only their path (`avatars/{user_id}/*`).
 
 ## Architecture Compliance
 
 - **Backend boundary:** All profile data goes through facade; only Supabase adapter implements data contract. App must not import backend SDK or adapter.
 - **Contract implementation:** DataContract extended with getProfile, updateProfile, uploadProfileImage; return types match contract (Profile, ApiError).
-- **DTOs:** Profile and Visibility in dto.ts; camelCase in app; adapter maps snake_case from Supabase.
+- **DTOs:** Profile in dto.ts; camelCase in app; adapter maps snake_case from Supabase.
 - **Project structure:** Profile operations in lib/api; profile UI in app/(tabs)/profile or app/profile/; migrations in supabase/migrations/.
 
 ## Library / Framework Requirements
@@ -87,7 +84,7 @@ so that others in my org/ministry/group context see the right information.
 
 ## File Structure Requirements
 
-- **Modify:** `lib/api/contracts/dto.ts` — add Profile, Visibility
+- **Modify:** `lib/api/contracts/dto.ts` — add Profile
 - **Modify:** `lib/api/contracts/data.ts` — add getProfile, updateProfile, uploadProfileImage to DataContract
 - **Modify:** `lib/api/adapters/supabase/data.ts` — implement profile ops; Storage for avatars
 - **Modify:** `lib/api/index.ts` — ensure facade exposes api.data (already does; verify profile ops available)
@@ -123,7 +120,7 @@ so that others in my org/ministry/group context see the right information.
 
 ## Project Context Reference
 
-- No `project-context.md` in repo. Use planning artifacts: `_bmad-output/planning-artifacts/architecture.md`, `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/planning-artifacts/ux-design-specification.md` for design system, forms, Avatar, and feedback patterns. FR7 (profile picture and personal info), FR34 (visibility control) are covered by this story.
+- No `project-context.md` in repo. Use planning artifacts: `_bmad-output/planning-artifacts/architecture.md`, `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/planning-artifacts/ux-design-specification.md` for design system, forms, Avatar, and feedback patterns. FR7 (profile picture and personal info) is covered by this story.
 
 ## Story Completion Status
 
@@ -150,16 +147,23 @@ so that others in my org/ministry/group context see the right information.
 
 ### File List
 
-- lib/api/contracts/dto.ts (Profile, ProfileUpdates, Visibility)
+- lib/api/contracts/dto.ts (Profile, ProfileUpdates)
 - lib/api/contracts/data.ts (getProfile, updateProfile, uploadProfileImage)
-- lib/api/contracts/index.ts (Profile, ProfileUpdates, Visibility exports)
-- lib/api/index.ts (Profile, ProfileUpdates, Visibility exports)
+- lib/api/contracts/index.ts (Profile, ProfileUpdates exports)
+- lib/api/index.ts (Profile, ProfileUpdates, OnboardingProfileData exports)
 - lib/api/adapters/supabase/data.ts (full profile implementation)
 - lib/api/adapters/supabase/__tests__/data.test.ts (profile adapter tests)
 - supabase/migrations/00001_profiles.sql (profiles table, avatars bucket, RLS)
+- supabase/migrations/00002_profiles_onboarding_fields.sql (onboarding columns)
+- supabase/migrations/00003_check_email_exists.sql (check email exists)
+- supabase/migrations/00004_drop_profiles_visibility.sql (remove visibility column)
 - app/(tabs)/_layout.tsx (tab bar spacing)
-- app/(tabs)/profile.tsx (profile display, Edit button)
+- app/(tabs)/profile.tsx (profile display, Edit button, loading and error state)
 - app/profile/_layout.tsx (profile stack)
-- app/profile/edit.tsx (profile edit form: avatar, display name, bio, visibility)
+- app/profile/edit.tsx (profile edit form: avatar, display name, bio, preferred language; 44pt touch target, a11y)
 - app/_layout.tsx (profile stack screen)
+- app/auth/onboarding.tsx (onboarding flow)
+- contexts/LocaleContext.tsx (locale from profile)
+- contexts/PendingSignUpContext.tsx (pending sign-up state)
+- scripts/verify-story-1-5.cjs (profile boundary verification)
 - package.json (expo-image-picker)

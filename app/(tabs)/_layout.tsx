@@ -5,6 +5,8 @@ import { Pressable } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { useLocale } from '@/contexts/LocaleContext';
+import { t } from '@/lib/i18n';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -14,6 +16,7 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
+  useLocale(); // Re-render when locale changes so tab labels update
   return (
     <Tabs
       screenOptions={{
@@ -27,14 +30,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('tabs.home'),
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
-          tabBarAccessibilityLabel: 'Home',
+          tabBarAccessibilityLabel: t('tabs.home'),
           headerRight: () => (
             <Link href="/modal" asChild>
               <Pressable
-                accessibilityLabel="App info"
-                accessibilityHint="Opens app information modal"
+                accessibilityLabel={t('tabs.appInfo')}
+                accessibilityHint={t('tabs.appInfoHint')}
               >
                 {({ pressed }) => (
                   <FontAwesome
@@ -52,25 +55,25 @@ export default function TabLayout() {
       <Tabs.Screen
         name="groups"
         options={{
-          title: 'Groups',
+          title: t('tabs.groups'),
           tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
-          tabBarAccessibilityLabel: 'Groups',
+          tabBarAccessibilityLabel: t('tabs.groups'),
         }}
       />
       <Tabs.Screen
         name="messages"
         options={{
-          title: 'Messages',
+          title: t('tabs.messages'),
           tabBarIcon: ({ color }) => <TabBarIcon name="comments" color={color} />,
-          tabBarAccessibilityLabel: 'Messages',
+          tabBarAccessibilityLabel: t('tabs.messages'),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('tabs.profile'),
           tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
-          tabBarAccessibilityLabel: 'Profile',
+          tabBarAccessibilityLabel: t('tabs.profile'),
         }}
       />
     </Tabs>

@@ -45,12 +45,12 @@ export function AuthFormLayout({
         showsVerticalScrollIndicator={false}
       >
         <Animated.View entering={FadeIn.duration(250)} style={authScreenStyles.centeredBlock}>
-          {(title ?? subtitle) && (
+          {(title ?? subtitle) ? (
             <View style={authScreenStyles.header}>
               {title ? <Text style={authScreenStyles.title}>{title}</Text> : null}
               {subtitle ? <Text style={authScreenStyles.subtitle}>{subtitle}</Text> : null}
             </View>
-          )}
+          ) : null}
           <View style={authScreenStyles.form}>{children}</View>
           {footer ? <View style={authScreenStyles.footer}>{footer}</View> : null}
         </Animated.View>

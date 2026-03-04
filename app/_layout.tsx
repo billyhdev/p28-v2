@@ -11,6 +11,7 @@ import { LocaleProvider, useLocale } from '@/contexts/LocaleContext';
 import { PendingSignUpProvider } from '@/contexts/PendingSignUpContext';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -95,7 +96,7 @@ function RootLayoutNav() {
           name="profile"
           options={{
             headerShown: true,
-            title: 'Edit Profile',
+            title: t('profile.editProfile'),
             headerBackButtonDisplayMode: 'minimal',
           }}
         />

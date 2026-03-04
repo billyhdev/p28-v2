@@ -12,6 +12,7 @@ import { usePendingSignUp } from '@/contexts/PendingSignUpContext';
 import { api, auth } from '@/lib/api';
 import { getUserFacingError } from '@/lib/errors';
 import type { ApiError } from '@/lib/api/contracts/errors';
+import { t } from '@/lib/i18n';
 import { authScreen, colors, radius, spacing, typography } from '@/theme/tokens';
 
 type Option = { value: string; label: string };
@@ -200,24 +201,29 @@ function BirthDateField({
 
   return (
     <View style={authScreenStyles.inputSpacing}>
-      <Text style={styles.label}>Birth date</Text>
+      <Text style={styles.label}>{t('profile.birthDate')}</Text>
       <Pressable
         onPress={handlePress}
         disabled={disabled}
         style={[styles.select, disabled ? styles.selectDisabled : null]}
         accessibilityRole="button"
-        accessibilityLabel="Birth date"
+        accessibilityLabel={t('profile.birthDate')}
         accessibilityHint="Opens date picker"
       >
         <Text style={[styles.selectText, !value ? styles.placeholderText : null]}>
-          {value ? formatDateForDisplay(value) : 'Select date (optional)'}
+          {value ? formatDateForDisplay(value) : t('profile.selectDateOptional')}
         </Text>
       </Pressable>
       {showPicker && (
         <>
           {Platform.OS === 'ios' && (
             <View style={styles.datePickerRow}>
-              <Button title="Done" variant="text" onPress={() => setShowPicker(false)} />
+              <Button
+                title={t('common.done')}
+                variant="text"
+                onPress={() => setShowPicker(false)}
+                accessibilityLabel={t('common.done')}
+              />
             </View>
           )}
           <DateTimePicker
@@ -331,7 +337,7 @@ export default function OnboardingScreen() {
       return;
     }
     if (birthDate.trim() && !isIsoDate(birthDate)) {
-      setError('Birth date must be in YYYY-MM-DD format.');
+      setError(t('profile.birthDateFormatError'));
       return;
     }
 
@@ -394,12 +400,12 @@ export default function OnboardingScreen() {
       contentContainerStyle={{ paddingBottom: spacing.xl * 2 }}
       footer={
         <Button
-          title="Back to sign in"
+          title={t('auth.backToSignIn')}
           onPress={handleBackToSignIn}
           variant="text"
           disabled={isSubmitting}
           style={authScreenStyles.secondaryCtaButton}
-          accessibilityLabel="Back to sign in"
+          accessibilityLabel={t('auth.backToSignIn')}
           accessibilityHint="Returns to the sign in screen"
         />
       }
@@ -448,11 +454,11 @@ export default function OnboardingScreen() {
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
       <Button
-        title={isSubmitting ? 'Saving…' : 'Continue'}
+        title={isSubmitting ? t('profile.saving') : t('common.continue')}
         onPress={handleSubmit}
         disabled={isSubmitting || !canSubmit}
         style={authScreenStyles.ctaButton}
-        accessibilityLabel="Continue"
+        accessibilityLabel={t('common.continue')}
         accessibilityHint="Creates your profile and continues to the app"
       />
     </AuthFormLayout>

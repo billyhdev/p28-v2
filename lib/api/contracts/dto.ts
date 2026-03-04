@@ -48,3 +48,19 @@ export type OnboardingProfileData = {
   country?: string;
   preferredLanguage?: string;
 };
+
+/** Notification preference settings per user. Stored in notification_preferences table. */
+export interface NotificationPreferences {
+  userId: string;
+  eventsEnabled: boolean;
+  announcementsEnabled: boolean;
+  messagesEnabled: boolean;
+  updatedAt?: string;
+}
+
+/** Partial updates for notification preferences. */
+export interface NotificationPreferencesUpdates {
+  eventsEnabled?: boolean;
+  announcementsEnabled?: boolean;
+  messagesEnabled?: boolean;
+}

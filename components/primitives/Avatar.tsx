@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Image, Text, StyleSheet, ImageSourcePropType } from 'react-native';
+import { View, Text, StyleSheet, ImageSourcePropType } from 'react-native';
+import { Image } from 'expo-image';
 import { colors, typography, avatarSizes } from '@/theme/tokens';
 
 export interface AvatarProps {
@@ -22,17 +23,18 @@ export function Avatar({
   useEffect(() => {
     setImageError(false);
   }, [uri]);
+  const showImage = Boolean(source && !imageError);
+
   const dim = avatarSizes[size];
   const containerStyle = [styles.container, { width: dim, height: dim, borderRadius: dim / 2 }];
   const textStyle = [styles.fallbackText, { fontSize: dim * 0.4 }];
-
-  const showImage = source && !imageError;
 
   if (showImage) {
     return (
       <Image
         source={source}
         style={containerStyle}
+        contentFit="cover"
         accessibilityRole="image"
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={accessibilityHint}

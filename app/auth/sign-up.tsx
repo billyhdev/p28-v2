@@ -5,6 +5,7 @@ import { AuthFormLayout } from '@/components/auth/AuthFormLayout';
 import { authScreenStyles } from '@/components/auth/authScreenStyles';
 import { Button, Input } from '@/components/primitives';
 import { usePendingSignUp } from '@/contexts/PendingSignUpContext';
+import { t } from '@/lib/i18n';
 import { authScreen } from '@/theme/tokens';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -58,16 +59,16 @@ export default function SignUpScreen() {
 
   return (
     <AuthFormLayout
-      title="Create account"
-      subtitle="Enter your email and a password. We'll ask for a few details next."
+      title={t('auth.createAccount')}
+      subtitle={t('auth.createAccountSubtitle')}
       footer={
         <Button
-          title="Already have an account? Sign in"
+          title={t('auth.alreadyHaveAccountSignIn')}
           onPress={() => router.back()}
           variant="text"
           disabled={isSubmitting}
           style={authScreenStyles.secondaryCtaButton}
-          accessibilityLabel="Already have an account? Sign in"
+          accessibilityLabel={t('auth.alreadyHaveAccountSignIn')}
           accessibilityHint="Navigates back to the sign in screen"
         />
       }
@@ -110,11 +111,11 @@ export default function SignUpScreen() {
         inputStyle={authScreen.inputStyle}
       />
       <Button
-        title={isSubmitting ? 'Checking…' : 'Continue'}
+        title={isSubmitting ? t('auth.checking') : t('common.continue')}
         onPress={handleSubmit}
         disabled={!canSubmit || isSubmitting}
         style={authScreenStyles.ctaButton}
-        accessibilityLabel="Continue"
+        accessibilityLabel={t('common.continue')}
         accessibilityHint="Continues to the onboarding screen"
       />
     </AuthFormLayout>

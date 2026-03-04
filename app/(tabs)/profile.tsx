@@ -1,9 +1,10 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/hooks/useAuth';
-import { api, isApiError } from '@/lib/api';
+import { api, getUserFacingError, isApiError } from '@/lib/api';
+import { t } from '@/lib/i18n';
 import { Avatar, Button } from '@/components/primitives';
 import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
 import type { Profile } from '@/lib/api';
@@ -12,12 +13,23 @@ export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const userId = session?.user?.id;
   const fetchProfile = useCallback(() => {
     if (!userId) return;
+    setLoading(true);
+    setError(null);
     api.data.getProfile(userId).then((r) => {
-      if (!isApiError(r)) setProfile(r);
+      setLoading(false);
+      if (isApiError(r)) {
+        setError(getUserFacingError(r));
+        setProfile(null);
+      } else {
+        setProfile(r);
+        setError(null);
+      }
     });
   }, [userId]);
 
@@ -43,23 +55,37 @@ export default function ProfileScreen() {
   const isLegacyProfile = !!profile && (!profile.firstName || !profile.lastName);
 
   const handleSignOutPress = useCallback(() => {
-    Alert.alert(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: signOut },
-      ]
-    );
+    Alert.alert(t('auth.signOut'), t('auth.signOutConfirm'), [
+      { text: t('auth.cancel'), style: 'cancel' },
+      { text: t('auth.signOut'), style: 'destructive', onPress: signOut },
+    ]);
   }, [signOut]);
+
+  if (loading && !profile) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator
+          size="large"
+          color={colors.primary}
+          accessibilityLabel={t('common.loading')}
+        />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
+      contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
     >
       <Animated.View entering={FadeIn.duration(250)} style={styles.animatedContent}>
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
         <View style={styles.header}>
           <Avatar
             source={profile?.avatarUrl ? { uri: profile.avatarUrl } : null}
@@ -68,7 +94,7 @@ export default function ProfileScreen() {
             accessibilityLabel="Profile photo"
           />
           <View style={styles.headerText}>
-            <Text style={styles.title}>{fullName || 'Profile'}</Text>
+            <Text style={styles.title}>{fullName || t('profile.title')}</Text>
             {session?.user?.email ? (
               <Text style={styles.subtitle}>{session.user.email}</Text>
             ) : null}
@@ -77,13 +103,10 @@ export default function ProfileScreen() {
 
         {isLegacyProfile ? (
           <View style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>Complete your profile</Text>
-            <Text style={styles.noticeText}>
-              Add your name, country, and preferred language so your profile looks great across the
-              app.
-            </Text>
+            <Text style={styles.noticeTitle}>{t('profile.completeProfile')}</Text>
+            <Text style={styles.noticeText}>{t('profile.completeProfileHint')}</Text>
             <Button
-              title="Complete onboarding"
+              title={t('profile.completeOnboarding')}
               onPress={() => router.push('/auth/onboarding')}
               variant="secondary"
             />
@@ -91,56 +114,78 @@ export default function ProfileScreen() {
         ) : null}
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>About</Text>
+          <Text style={styles.cardTitle}>{t('profile.about')}</Text>
           <View style={styles.aboutFields}>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>Display name</Text>
+              <Text style={styles.rowLabel}>{t('profile.displayName')}</Text>
               <Text style={styles.rowValue}>{profile?.displayName ?? '—'}</Text>
             </View>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>First name</Text>
+              <Text style={styles.rowLabel}>{t('profile.firstName')}</Text>
               <Text style={styles.rowValue}>{profile?.firstName ?? '—'}</Text>
             </View>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>Last name</Text>
+              <Text style={styles.rowLabel}>{t('profile.lastName')}</Text>
               <Text style={styles.rowValue}>{profile?.lastName ?? '—'}</Text>
             </View>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>Birth date</Text>
+              <Text style={styles.rowLabel}>{t('profile.birthDate')}</Text>
               <Text style={styles.rowValue}>{birthDateLabel ?? '—'}</Text>
             </View>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>Country</Text>
+              <Text style={styles.rowLabel}>{t('profile.country')}</Text>
               <Text style={styles.rowValue}>{profile?.country ?? '—'}</Text>
             </View>
             <View style={styles.row}>
-              <Text style={styles.rowLabel}>Preferred language</Text>
-              <Text style={styles.rowValue}>{profile?.preferredLanguage ?? '—'}</Text>
+              <Text style={styles.rowLabel}>{t('profile.preferredLanguage')}</Text>
+              <Text style={styles.rowValue}>
+                {profile?.preferredLanguage === 'en'
+                  ? t('language.english')
+                  : profile?.preferredLanguage === 'ko'
+                    ? t('language.korean')
+                    : profile?.preferredLanguage === 'km'
+                      ? t('language.khmer')
+                      : (profile?.preferredLanguage ?? '—')}
+              </Text>
             </View>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Bio</Text>
-          <Text style={styles.bio}>
-            {profile?.bio ?? 'Add a short bio to help others get to know you.'}
-          </Text>
+          <Text style={styles.cardTitle}>{t('profile.bio')}</Text>
+          <Text style={styles.bio}>{profile?.bio ?? t('profile.bioPlaceholder')}</Text>
         </View>
 
         <View style={styles.actions}>
           <Button
-            title="Edit profile"
+            title={t('profile.editProfile')}
             onPress={() => router.push('/profile/edit')}
             variant="primary"
             style={styles.actionButton}
-            accessibilityLabel="Edit profile"
+            accessibilityLabel={t('profile.editProfile')}
           />
           <Button
-            title="Sign out"
+            title={t('profile.notificationPreferences')}
+            onPress={() => router.push('/profile/notifications')}
+            variant="secondary"
+            style={styles.actionButton}
+            accessibilityLabel={t('profile.notificationPreferences')}
+            accessibilityHint="Opens settings for events, announcements, and messages notifications"
+          />
+          <Button
+            title={t('profile.appLanguage')}
+            onPress={() => router.push('/profile/language')}
+            variant="secondary"
+            style={styles.actionButton}
+            accessibilityLabel={t('profile.appLanguage')}
+            accessibilityHint={t('profile.appLanguageHint')}
+          />
+          <Button
+            title={t('profile.signOut')}
             onPress={handleSignOutPress}
             variant="secondary"
             style={styles.actionButton}
-            accessibilityLabel="Sign out"
+            accessibilityLabel={t('profile.signOut')}
             accessibilityHint="Opens a confirmation before signing out"
           />
         </View>
@@ -208,4 +253,12 @@ const styles = StyleSheet.create({
   noticeCard: { ...cardStyle },
   noticeTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.xs },
   noticeText: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
+  centered: { justifyContent: 'center', alignItems: 'center' },
+  errorBanner: {
+    backgroundColor: colors.surfaceHighlight,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.button,
+  },
+  errorText: { ...typography.body, color: colors.error },
 });

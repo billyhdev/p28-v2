@@ -29,7 +29,7 @@ export function Button({
 }: ButtonProps) {
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ scale: scale.get() }],
   }));
 
   const variantStyle =
@@ -52,10 +52,10 @@ export function Button({
         onPress={onPress}
         disabled={disabled}
         onPressIn={() => {
-          if (!disabled) scale.value = withSpring(0.97, springConfig);
+          if (!disabled) scale.set(withSpring(0.97, springConfig));
         }}
         onPressOut={() => {
-          scale.value = withSpring(1, springConfig);
+          scale.set(withSpring(1, springConfig));
         }}
         style={styles.pressable}
         accessibilityRole="button"

@@ -1,7 +1,13 @@
 /**
  * Story 1.5: Unit tests for Supabase data adapter (profile operations).
+ * Story 1.6: Unit tests for notification preferences.
  */
+import type { ApiError } from '../../../contracts/errors';
+import type { NotificationPreferences, Profile } from '../../../contracts/dto';
+import { isApiError } from '../../../contracts/guards';
 import { createSupabaseDataAdapter } from '../data';
+
+type GetClient = Parameters<typeof createSupabaseDataAdapter>[0];
 
 describe('Supabase data adapter', () => {
   describe('getProfile', () => {
@@ -18,62 +24,66 @@ describe('Supabase data adapter', () => {
         bio: 'Hello',
         updated_at: '2024-01-01T00:00:00Z',
       };
-      const getClient = () =>
-        ({
-          from: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
-              }),
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
             }),
           }),
-        }) as any;
+        }),
+      })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.getProfile('user-1');
-      expect('userId' in result).toBe(true);
-      expect((result as any).userId).toBe('user-1');
-      expect((result as any).displayName).toBe('Test User');
-      expect((result as any).firstName).toBe('Test');
-      expect((result as any).lastName).toBe('User');
-      expect((result as any).birthDate).toBe('1990-01-01');
-      expect((result as any).country).toBe('US');
-      expect((result as any).preferredLanguage).toBe('en');
+      expect(isApiError(result)).toBe(false);
+      if (!isApiError(result)) {
+        const profile = result as Profile;
+        expect(profile.userId).toBe('user-1');
+        expect(profile.displayName).toBe('Test User');
+        expect(profile.firstName).toBe('Test');
+        expect(profile.lastName).toBe('User');
+        expect(profile.birthDate).toBe('1990-01-01');
+        expect(profile.country).toBe('US');
+        expect(profile.preferredLanguage).toBe('en');
+      }
     });
 
     it('returns ApiError when not found', async () => {
-      const getClient = () =>
-        ({
-          from: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
-              }),
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
             }),
           }),
-        }) as any;
+        }),
+      })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.getProfile('user-1');
-      expect('message' in result).toBe(true);
-      expect((result as any).code).toBe('NOT_FOUND');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect((result as ApiError).code).toBe('NOT_FOUND');
+      }
     });
 
     it('returns ApiError when Supabase errors', async () => {
-      const getClient = () =>
-        ({
-          from: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                maybeSingle: jest
-                  .fn()
-                  .mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-              }),
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest
+                .fn()
+                .mockResolvedValue({ data: null, error: { message: 'DB error' } }),
             }),
           }),
-        }) as any;
+        }),
+      })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.getProfile('user-1');
-      expect('message' in result).toBe(true);
-      expect((result as any).message).toBe('DB error');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect((result as ApiError).message).toBe('DB error');
+      }
     });
   });
 
@@ -123,14 +133,16 @@ describe('Supabase data adapter', () => {
           }),
         };
       });
-      const getClient = () => ({ from: fromMock }) as any;
+      const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.updateProfile('user-1', {
         preferredLanguage: 'es',
       });
-      expect('userId' in result).toBe(true);
-      expect((result as any).displayName).toBe('Old');
-      expect((result as any).preferredLanguage).toBe('es');
+      expect(isApiError(result)).toBe(false);
+      if (!isApiError(result)) {
+        expect((result as Profile).displayName).toBe('Old');
+        expect((result as Profile).preferredLanguage).toBe('es');
+      }
     });
   });
 
@@ -148,16 +160,15 @@ describe('Supabase data adapter', () => {
         bio: null,
         updated_at: '2024-01-03T00:00:00Z',
       };
-      const getClient = () =>
-        ({
-          from: jest.fn().mockReturnValue({
-            upsert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({ data: row, error: null }),
-              }),
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          upsert: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({ data: row, error: null }),
             }),
           }),
-        }) as any;
+        }),
+      })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.createProfile('user-1', {
         firstName: 'Jane',
@@ -166,11 +177,13 @@ describe('Supabase data adapter', () => {
         country: 'US',
         preferredLanguage: 'en',
       });
-      expect('userId' in result).toBe(true);
-      expect((result as any).displayName).toBe('Jane Doe');
-      expect((result as any).firstName).toBe('Jane');
-      expect((result as any).lastName).toBe('Doe');
-      expect((result as any).preferredLanguage).toBe('en');
+      expect(isApiError(result)).toBe(false);
+      if (!isApiError(result)) {
+        expect((result as Profile).displayName).toBe('Jane Doe');
+        expect((result as Profile).firstName).toBe('Jane');
+        expect((result as Profile).lastName).toBe('Doe');
+        expect((result as Profile).preferredLanguage).toBe('en');
+      }
     });
   });
 
@@ -179,17 +192,16 @@ describe('Supabase data adapter', () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         blob: () => Promise.resolve(new Blob(['x'], { type: 'image/jpeg' })),
-      }) as any;
+      }) as jest.Mock;
       const bucketMock = {
         upload: jest.fn().mockResolvedValue({ error: null }),
         getPublicUrl: jest.fn().mockReturnValue({
           data: { publicUrl: 'https://example.com/avatars/user-1/avatar.jpg' },
         }),
       };
-      const getClient = () =>
-        ({
-          storage: { from: jest.fn().mockReturnValue(bucketMock) },
-        }) as any;
+      const getClient = (() => ({
+        storage: { from: jest.fn().mockReturnValue(bucketMock) },
+      })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.uploadProfileImage('user-1', 'file:///tmp/photo.jpg');
       expect(typeof result).toBe('string');
@@ -198,7 +210,7 @@ describe('Supabase data adapter', () => {
 
     it('returns ApiError when fetch fails', async () => {
       global.fetch = jest.fn().mockResolvedValue({ ok: false });
-      const getClient = () => ({ storage: { from: jest.fn() } }) as any;
+      const getClient = (() => ({ storage: { from: jest.fn() } })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const result = await adapter.uploadProfileImage('user-1', 'file:///tmp/photo.jpg');
       expect(typeof result).toBe('object');
@@ -212,10 +224,9 @@ describe('Supabase data adapter', () => {
           data: { publicUrl: 'https://example.com/avatars/user-1/avatar.jpg' },
         }),
       };
-      const getClient = () =>
-        ({
-          storage: { from: jest.fn().mockReturnValue(bucketMock) },
-        }) as any;
+      const getClient = (() => ({
+        storage: { from: jest.fn().mockReturnValue(bucketMock) },
+      })) as unknown as GetClient;
       const adapter = createSupabaseDataAdapter(getClient);
       const base64 = Buffer.from('fake-image-bytes').toString('base64');
       const result = await adapter.uploadProfileImage('user-1', 'file:///ignored.jpg', base64);
@@ -228,6 +239,222 @@ describe('Supabase data adapter', () => {
       );
       const uploadedBody = (bucketMock.upload as jest.Mock).mock.calls[0][1];
       expect(uploadedBody.byteLength).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getNotificationPreferences', () => {
+    it('returns NotificationPreferences when found', async () => {
+      const row = {
+        user_id: 'user-1',
+        events_enabled: true,
+        announcements_enabled: false,
+        messages_enabled: true,
+        updated_at: '2024-01-01T00:00:00Z',
+      };
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest.fn().mockResolvedValue({ data: row, error: null }),
+            }),
+          }),
+        }),
+      })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.getNotificationPreferences('user-1');
+      expect(isApiError(result)).toBe(false);
+      if (!isApiError(result)) {
+        const prefs = result as NotificationPreferences;
+        expect(prefs.userId).toBe('user-1');
+        expect(prefs.eventsEnabled).toBe(true);
+        expect(prefs.announcementsEnabled).toBe(false);
+        expect(prefs.messagesEnabled).toBe(true);
+      }
+    });
+
+    it('creates row with defaults when not found', async () => {
+      const insertedRow = {
+        user_id: 'user-new',
+        events_enabled: true,
+        announcements_enabled: true,
+        messages_enabled: true,
+        updated_at: '2024-01-02T00:00:00Z',
+      };
+      let fromCallCount = 0;
+      const fromMock = jest.fn().mockImplementation(() => {
+        fromCallCount++;
+        if (fromCallCount === 1) {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          };
+        }
+        return {
+          upsert: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({ data: insertedRow, error: null }),
+            }),
+          }),
+        };
+      });
+      const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.getNotificationPreferences('user-new');
+      expect(isApiError(result)).toBe(false);
+      if (!isApiError(result)) {
+        const prefs = result as NotificationPreferences;
+        expect(prefs.userId).toBe('user-new');
+        expect(prefs.eventsEnabled).toBe(true);
+        expect(prefs.announcementsEnabled).toBe(true);
+        expect(prefs.messagesEnabled).toBe(true);
+      }
+    });
+
+    it('returns ApiError when Supabase errors on select', async () => {
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              maybeSingle: jest
+                .fn()
+                .mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+            }),
+          }),
+        }),
+      })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.getNotificationPreferences('user-1');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect((result as ApiError).message).toBe('DB error');
+      }
+    });
+
+    it('returns ApiError when upsert fails after row not found', async () => {
+      let fromCallCount = 0;
+      const fromMock = jest.fn().mockImplementation(() => {
+        fromCallCount++;
+        if (fromCallCount === 1) {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          };
+        }
+        return {
+          upsert: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: null,
+                error: { message: 'Insert failed' },
+              }),
+            }),
+          }),
+        };
+      });
+      const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.getNotificationPreferences('user-new');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect((result as ApiError).message).toBe('Insert failed');
+      }
+    });
+  });
+
+  describe('updateNotificationPreferences', () => {
+    it('returns NotificationPreferences on success', async () => {
+      const existingRow = {
+        user_id: 'user-1',
+        events_enabled: true,
+        announcements_enabled: true,
+        messages_enabled: true,
+        updated_at: '2024-01-01T00:00:00Z',
+      };
+      const updatedRow = {
+        user_id: 'user-1',
+        events_enabled: true,
+        announcements_enabled: false,
+        messages_enabled: true,
+        updated_at: '2024-01-02T00:00:00Z',
+      };
+      let callCount = 0;
+      const fromMock = jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: existingRow,
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          upsert: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({ data: updatedRow, error: null }),
+            }),
+          }),
+        };
+      });
+      const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.updateNotificationPreferences('user-1', {
+        announcementsEnabled: false,
+      });
+      expect(isApiError(result)).toBe(false);
+      if (!isApiError(result)) {
+        const prefs = result as NotificationPreferences;
+        expect(prefs.announcementsEnabled).toBe(false);
+        expect(prefs.eventsEnabled).toBe(true);
+        expect(prefs.messagesEnabled).toBe(true);
+      }
+    });
+
+    it('returns ApiError when update fails', async () => {
+      const existingRow = {
+        user_id: 'user-1',
+        events_enabled: true,
+        announcements_enabled: true,
+        messages_enabled: true,
+        updated_at: null,
+      };
+      const fromMock = jest.fn().mockImplementation(() => ({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            maybeSingle: jest.fn().mockResolvedValue({
+              data: existingRow,
+              error: null,
+            }),
+          }),
+        }),
+        upsert: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            single: jest.fn().mockResolvedValue({
+              data: null,
+              error: { message: 'Update failed' },
+            }),
+          }),
+        }),
+      }));
+      const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.updateNotificationPreferences('user-1', {
+        eventsEnabled: false,
+      });
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect((result as ApiError).message).toBe('Update failed');
+      }
     });
   });
 });

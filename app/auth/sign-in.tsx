@@ -4,6 +4,7 @@ import type { ApiError } from '@/lib/api/contracts/errors';
 import { AuthFormLayout } from '@/components/auth/AuthFormLayout';
 import { authScreenStyles } from '@/components/auth/authScreenStyles';
 import { Button, Input } from '@/components/primitives';
+import { t } from '@/lib/i18n';
 import { authScreen } from '@/theme/tokens';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -38,16 +39,16 @@ export default function SignInScreen() {
 
   return (
     <AuthFormLayout
-      title="Sign in"
-      subtitle="Use your email and password to sign in."
+      title={t('auth.signIn')}
+      subtitle={t('auth.signInSubtitle')}
       footer={
         <Button
-          title="Create an account"
+          title={t('auth.createAccount')}
           onPress={() => router.push('/auth/sign-up')}
           variant="text"
           disabled={isSubmitting}
           style={authScreenStyles.secondaryCtaButton}
-          accessibilityLabel="Create an account"
+          accessibilityLabel={t('auth.createAccount')}
           accessibilityHint="Navigates to the sign up screen"
         />
       }
@@ -78,11 +79,11 @@ export default function SignInScreen() {
         inputStyle={authScreen.inputStyle}
       />
       <Button
-        title={isSubmitting ? 'Signing in…' : 'Sign in'}
+        title={isSubmitting ? t('auth.signingIn') : t('auth.signIn')}
         onPress={handleSubmit}
         disabled={isSubmitting}
         style={authScreenStyles.ctaButton}
-        accessibilityLabel="Sign in"
+        accessibilityLabel={t('auth.signIn')}
         accessibilityHint="Submits the sign in form with your email and password"
       />
     </AuthFormLayout>

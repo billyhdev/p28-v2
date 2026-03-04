@@ -46,10 +46,10 @@ Add an onboarding screen after email/password sign-up that collects the five fie
 ### Codebase Patterns
 
 - **Auth flow:** `app/auth/sign-up.tsx` uses `auth.signUp` from facade; on success currently does `router.replace('/(tabs)')`. Must change to `router.replace('/auth/onboarding')`. Root `app/_layout.tsx` uses `useSegments()`; when `session && segments[0] === 'auth'` it does `router.replace('/(tabs)')` — must exclude `segments[1] === 'onboarding'` so users stay on onboarding until they submit.
-- **Profile:** `app/(tabs)/profile.tsx` uses `api.data.getProfile(userId)`, shows displayName, email, bio, avatar; design tokens from `@/theme/tokens` (colors, spacing, typography); primitives from `@/components/primitives` (Avatar, Button). Edit at `app/profile/edit.tsx` which currently has displayName, bio, visibility, avatar; uses `api.data.updateProfile`, `api.data.uploadProfileImage`, `getUserFacingError`, `isSubmitting`.
-- **Contracts:** `lib/api/contracts/dto.ts` — Profile has userId, displayName?, avatarUrl?, bio?, visibility; ProfileUpdates has displayName?, avatarUrl?, bio?, visibility. Data contract `lib/api/contracts/data.ts` has getProfile, updateProfile, uploadProfileImage only (no createProfile).
-- **Adapter:** `lib/api/adapters/supabase/data.ts` — getProfile selects display_name, avatar_url, bio, visibility, updated_at; mapRow maps snake_case to camelCase; updateProfile merges updates and upserts (onConflict: user_id). Need to add createProfile (or extend updateProfile to accept onboarding payload for upsert) and new column mappings.
-- **Schema:** `supabase/migrations/00001_profiles.sql` — profiles has user_id, display_name, avatar_url, bio, visibility, updated_at. New migration must add first_name, last_name, birth_date, country, preferred_language. display_name can remain for backward compatibility and be set from first_name || ' ' || last_name on insert/update, or derived in adapter only.
+- **Profile:** `app/(tabs)/profile.tsx` uses `api.data.getProfile(userId)`, shows displayName, email, bio, avatar; design tokens from `@/theme/tokens` (colors, spacing, typography); primitives from `@/components/primitives` (Avatar, Button). Edit at `app/profile/edit.tsx` which currently has displayName, bio, avatar; uses `api.data.updateProfile`, `api.data.uploadProfileImage`, `getUserFacingError`, `isSubmitting`.
+- **Contracts:** `lib/api/contracts/dto.ts` — Profile has userId, displayName?, avatarUrl?, bio?; ProfileUpdates has displayName?, avatarUrl?, bio?. Data contract `lib/api/contracts/data.ts` has getProfile, updateProfile, uploadProfileImage only (no createProfile).
+- **Adapter:** `lib/api/adapters/supabase/data.ts` — getProfile selects display_name, avatar_url, bio, updated_at; mapRow maps snake_case to camelCase; updateProfile merges updates and upserts (onConflict: user_id). Need to add createProfile (or extend updateProfile to accept onboarding payload for upsert) and new column mappings.
+- **Schema:** `supabase/migrations/00001_profiles.sql` — profiles has user_id, display_name, avatar_url, bio, updated_at. New migration must add first_name, last_name, birth_date, country, preferred_language. display_name can remain for backward compatibility and be set from first_name || ' ' || last_name on insert/update, or derived in adapter only.
 - **Tests:** Jest (ts-jest); tests in `lib/api/adapters/supabase/__tests__/data.test.ts`, `auth.test.ts`, `app/auth/__tests__/sign-up.test.ts`, `sign-in.test.ts`. Pattern: co-located `__tests__/*.test.ts`, mock Supabase client in adapters.
 
 ### Files to Reference
@@ -61,8 +61,8 @@ Add an onboarding screen after email/password sign-up that collects the five fie
 | `app/auth/onboarding.tsx` | **New.** Form: first name, last name, birth date, country picker, preferred language; submit → create profile, redirect to home tab |
 | `app/_layout.tsx` | Auth redirect: when session + in auth group, redirect to tabs only if not on onboarding (segments[1] !== 'onboarding') |
 | `app/(tabs)/profile.tsx` | Display all profile fields (firstName, lastName, birthDate, country, preferredLanguage, bio, avatar) in modern layout |
-| `app/profile/edit.tsx` | Remove display name input; add preferred language picker; keep bio, avatar, visibility; name read-only (do not send in updates) |
-| `lib/api/contracts/dto.ts` | Profile: add firstName, lastName, birthDate?, country?, preferredLanguage?; displayName derived. ProfileUpdates: remove displayName; add preferredLanguage?; keep bio, avatarUrl, visibility |
+| `app/profile/edit.tsx` | Remove display name input; add preferred language picker; keep bio, avatar; name read-only (do not send in updates) |
+| `lib/api/contracts/dto.ts` | Profile: add firstName, lastName, birthDate?, country?, preferredLanguage?; displayName derived. ProfileUpdates: remove displayName; add preferredLanguage?; keep bio, avatarUrl |
 | `lib/api/contracts/data.ts` | Add createProfile(userId, onboardingData) for initial profile creation |
 | `lib/api/adapters/supabase/data.ts` | mapRow/select for new columns; derive displayName; createProfile implementation; updateProfile disallow name/birthDate/country |
 | `supabase/migrations/00001_profiles.sql` | Reference; new migration adds columns |
@@ -88,7 +88,7 @@ Add an onboarding screen after email/password sign-up that collects the five fie
 
 - [ ] **Task 2: Extend Profile and ProfileUpdates in DTOs**
   - File: `lib/api/contracts/dto.ts`
-  - Action: Add to Profile: `firstName?: string`, `lastName?: string`, `birthDate?: string` (ISO date), `country?: string`, `preferredLanguage?: string`; keep `displayName?` (derived). In ProfileUpdates remove `displayName`; add `preferredLanguage?: string`; keep `avatarUrl?`, `bio?`, `visibility?`.
+  - Action: Add to Profile: `firstName?: string`, `lastName?: string`, `birthDate?: string` (ISO date), `country?: string`, `preferredLanguage?: string`; keep `displayName?` (derived). In ProfileUpdates remove `displayName`; add `preferredLanguage?: string`; keep `avatarUrl?`, `bio?`.
   - Notes: Export a type for onboarding payload if desired, e.g. `OnboardingProfileData`.
 
 - [ ] **Task 3: Add createProfile to DataContract**
@@ -98,7 +98,7 @@ Add an onboarding screen after email/password sign-up that collects the five fie
 
 - [ ] **Task 4: Implement createProfile and extend getProfile/updateProfile in Supabase adapter**
   - File: `lib/api/adapters/supabase/data.ts`
-  - Action: (1) Extend select list and mapRow to include first_name, last_name, birth_date, country, preferred_language; derive displayName as `[first_name, last_name].filter(Boolean).join(' ')`. (2) Implement createProfile: upsert into profiles with user_id and onboarding fields; set display_name from first_name + last_name if column exists. (3) In updateProfile, only allow merging bio, avatarUrl, visibility, preferredLanguage — do not accept or write firstName, lastName, birthDate, country.
+  - Action: (1) Extend select list and mapRow to include first_name, last_name, birth_date, country, preferred_language; derive displayName as `[first_name, last_name].filter(Boolean).join(' ')`. (2) Implement createProfile: upsert into profiles with user_id and onboarding fields; set display_name from first_name + last_name if column exists. (3) In updateProfile, only allow merging bio, avatarUrl, preferredLanguage — do not accept or write firstName, lastName, birthDate, country.
   - Notes: Map all errors to ApiError. Existing getProfile/updateProfile tests will need updates; add createProfile tests.
 
 - [ ] **Task 5: Add onboarding screen to auth layout**
@@ -128,7 +128,7 @@ Add an onboarding screen after email/password sign-up that collects the five fie
 
 - [ ] **Task 10: Profile edit — remove display name input, add preferred language; restrict updates**
   - File: `app/profile/edit.tsx`
-  - Action: Remove the Display name Input and its state. Add preferred language picker (fixed list); include preferredLanguage in ProfileUpdates when saving. Do not send firstName, lastName, birthDate, or country in updateProfile. Keep bio, avatar (Change photo), visibility. Show first + last name as read-only text if desired.
+  - Action: Remove the Display name Input and its state. Add preferred language picker (fixed list); include preferredLanguage in ProfileUpdates when saving. Do not send firstName, lastName, birthDate, or country in updateProfile. Keep bio, avatar (Change photo). Show first + last name as read-only text if desired.
   - Notes: ProfileUpdates type no longer has displayName; adapter ignores name fields on update.
 
 - [ ] **Task 11: Wire preferred language to app locale**

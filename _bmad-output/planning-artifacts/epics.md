@@ -50,7 +50,7 @@ FR30: A ministry lead can collaborate or coordinate with other leaders in the sa
 FR31: An admin can set up and edit the organization structure (org, ministries, groups).
 FR32: An admin can invite users and assign them as ministry leads.
 FR33: An admin can perform oversight actions (e.g. view structure, access needed for support) without necessarily managing day-to-day content.
-FR34: A user can understand or control who can see their profile or activity within the bounds of the product (e.g. org/ministry/group visibility).
+FR34: (Deferred) A user can understand or control who can see their profile or activity within the bounds of the product (e.g. org/ministry/group visibility). Profile visibility preference removed from project scope for MVP.
 FR35: The product supports clear expectations for conduct (e.g. through in-app guidelines or code of conduct where implemented).
 FR36: The system stores and displays content in the user's chosen language (English, Korean, or Khmer) where multi-language content is available.
 
@@ -136,15 +136,15 @@ FR30: Epic 7 - Ministry lead collaborates with other leaders
 FR31: Epic 2 - Admin sets up and edits org structure
 FR32: Epic 2 - Admin invites and assigns ministry leads
 FR33: Epic 2 - Admin performs oversight actions
-FR34: Epic 1 - User understands/controls profile and activity visibility
+FR34: Deferred - Profile/activity visibility (out of scope for MVP)
 FR35: Epic 1 - Product supports conduct expectations (guidelines/code of conduct)
 FR36: Epic 1 - System stores and displays content in user's chosen language
 
 ## Epic List
 
 ### Epic 1: App foundation and user identity
-Users can open the app, create an account, sign in, set their profile (picture and info), manage notification and visibility preferences, choose app language (EN/KR/KH), and see in-app conduct expectations. The app has a runnable foundation (Expo + design system + backend contracts and Supabase adapter) so all future features share one base.
-**FRs covered:** FR6, FR7, FR9, FR10, FR17, FR34, FR35, FR36.
+Users can open the app, create an account, sign in, set their profile (picture and info), manage notification preferences, choose app language (EN/KR/KH), and see in-app conduct expectations. The app has a runnable foundation (Expo + design system + backend contracts and Supabase adapter) so all future features share one base.
+**FRs covered:** FR6, FR7, FR9, FR10, FR17, FR35, FR36.
 
 ### Epic 2: Organization structure and leadership
 Admins can create and configure organizations (churches), create ministries and groups, assign ministry leads, and perform oversight. The system supports multiple organizations with clear org → ministry → group hierarchy.
@@ -174,7 +174,7 @@ Ministry leads can create and manage groups within their ministry, post announce
 
 ## Epic 1: App foundation and user identity
 
-Users can open the app, create an account, sign in, set their profile (picture and info), manage notification and visibility preferences, choose app language (EN/KR/KH), and see in-app conduct expectations. The app has a runnable foundation (Expo + design system + backend contracts and Supabase adapter) so all future features share one base.
+Users can open the app, create an account, sign in, set their profile (picture and info), manage notification preferences, choose app language (EN/KR/KH), and see in-app conduct expectations. The app has a runnable foundation (Expo + design system + backend contracts and Supabase adapter) so all future features share one base.
 
 ### Story 1.1: Initialize Expo app with tabs template
 
@@ -228,18 +228,18 @@ So that I have a persistent identity in the app.
 **Then** a user can create an account and sign in; session is persisted (e.g. AsyncStorage) and survives app restart,
 **And** all backend errors are normalized to ApiError; UI uses a single getUserFacingError helper; auth follows NFR-S3 (secure tokens, session expiry).
 
-### Story 1.5: Profile and visibility
+### Story 1.5: Profile
 
 As a user,
-I want to set my profile picture and personal information and control who can see them,
-So that others in my org/ministry/group context see the right information.
+I want to set my profile picture and personal information,
+So that others in my org/ministry/group context can see the right information.
 
 **Acceptance Criteria:**
 
 **Given** Epic 1.4 is complete and profile data is available via the data contract,
-**When** I add profile screen(s) for setting/updating profile picture and personal info and visibility (org/ministry/group),
-**Then** profile data is stored and displayed according to visibility rules,
-**And** FR7 and FR34 are satisfied; only permitted viewers see profile/activity per product bounds.
+**When** I add profile screen(s) for setting/updating profile picture and personal info,
+**Then** profile data is stored and displayed,
+**And** FR7 is satisfied (profile picture and personal info).
 
 ### Story 1.6: Notification preferences
 

@@ -6,16 +6,20 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { api, getUserFacingError, isApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocale } from '@/contexts/LocaleContext';
+import { t } from '@/lib/i18n';
 import { authScreenStyles } from '@/components/auth/authScreenStyles';
 import { Avatar, Button, Input } from '@/components/primitives';
 import { authScreen, colors, radius, spacing, typography } from '@/theme/tokens';
 import type { Profile, ProfileUpdates } from '@/lib/api';
 
-/** Same options as onboarding preferred language field. */
-const LANGUAGE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'en', label: 'English' },
-  { value: 'km', label: 'Khmer' },
-  { value: 'ko', label: 'Korean' },
+/** Same options as onboarding preferred language field. Keys match lib/i18n language.* */
+const LANGUAGE_OPTIONS: {
+  value: string;
+  labelKey: 'language.english' | 'language.korean' | 'language.khmer';
+}[] = [
+  { value: 'en', labelKey: 'language.english' },
+  { value: 'km', labelKey: 'language.khmer' },
+  { value: 'ko', labelKey: 'language.korean' },
 ];
 
 function LanguageDropdown({
@@ -28,23 +32,23 @@ function LanguageDropdown({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const selectedLabel = LANGUAGE_OPTIONS.find((o) => o.value === value)?.label;
+  const selectedLabelKey = LANGUAGE_OPTIONS.find((o) => o.value === value)?.labelKey;
   return (
     <>
-      <Text style={styles.label}>Preferred language</Text>
+      <Text style={styles.label}>{t('profile.preferredLanguage')}</Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Preferred language"
-        accessibilityHint="Opens a list of language options"
+        accessibilityLabel={t('profile.preferredLanguage')}
+        accessibilityHint={t('profile.appLanguageHint')}
         disabled={disabled}
         onPress={() => setOpen(true)}
         style={[styles.select, disabled ? styles.selectDisabled : null]}
       >
         <Text
-          style={[styles.selectText, !selectedLabel ? styles.placeholderText : null]}
+          style={[styles.selectText, !selectedLabelKey ? styles.placeholderText : null]}
           numberOfLines={1}
         >
-          {selectedLabel ?? 'Select language'}
+          {selectedLabelKey ? t(selectedLabelKey) : t('language.selectLanguage')}
         </Text>
         <FontAwesome
           name="chevron-down"
@@ -54,11 +58,21 @@ function LanguageDropdown({
         />
       </Pressable>
 
-      <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
+      <Modal
+        visible={open}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setOpen(false)}
+      >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Preferred language</Text>
-            <Button title="Done" variant="text" onPress={() => setOpen(false)} />
+            <Text style={styles.modalTitle}>{t('profile.preferredLanguage')}</Text>
+            <Button
+              title={t('common.done')}
+              variant="text"
+              onPress={() => setOpen(false)}
+              accessibilityLabel={t('common.done')}
+            />
           </View>
           <ScrollView contentContainerStyle={styles.modalList}>
             {LANGUAGE_OPTIONS.map((opt) => {
@@ -71,9 +85,12 @@ function LanguageDropdown({
                     setOpen(false);
                   }}
                   style={[styles.modalItem, active ? styles.modalItemActive : null]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(opt.labelKey)}
+                  accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.modalItemText, active ? styles.modalItemTextActive : null]}>
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -120,7 +137,7 @@ export default function ProfileEditScreen() {
     if (!userId) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      setError('Permission to access photos is required.');
+      setError(t('profile.photoPermissionRequired'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -188,7 +205,7 @@ export default function ProfileEditScreen() {
             }
             fallbackText={displayName || profile?.displayName || session?.user?.email}
             size="xl"
-            accessibilityLabel="Profile photo"
+            accessibilityLabel={t('profile.profilePhoto')}
             key={localPreviewUri ?? avatarUrl ?? 'fallback'}
           />
           <Pressable
@@ -198,31 +215,31 @@ export default function ProfileEditScreen() {
               styles.editPhotoButton,
               pressed && styles.editPhotoButtonPressed,
             ]}
-            accessibilityLabel="Change profile photo"
-            accessibilityHint="Opens photo library to choose a new profile picture"
+            accessibilityLabel={t('profile.changePhoto')}
+            accessibilityHint={t('profile.changePhotoHint')}
           >
             <FontAwesome name="pencil" size={14} color={colors.textPrimary} />
           </Pressable>
         </View>
       </View>
       <Input
-        label="Display name"
+        label={t('profile.displayName')}
         value={displayName}
         onChangeText={setDisplayName}
-        placeholder="How you'd like to be called"
+        placeholder={t('profile.displayNamePlaceholder')}
         inputStyle={styles.shortInput}
-        accessibilityLabel="Display name"
+        accessibilityLabel={t('profile.displayName')}
       />
       <Input
-        label="Bio"
+        label={t('profile.bio')}
         value={bio}
         onChangeText={setBio}
-        placeholder="Tell others about yourself (optional)"
+        placeholder={t('profile.bioPlaceholderEdit')}
         multiline
         numberOfLines={12}
         inputStyle={styles.bioInput}
         textAlignVertical="top"
-        accessibilityLabel="Bio"
+        accessibilityLabel={t('profile.bio')}
       />
 
       <View style={authScreenStyles.inputSpacing}>
@@ -234,14 +251,12 @@ export default function ProfileEditScreen() {
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <Button
-        title={isSubmitting ? 'Saving…' : 'Save'}
+        title={isSubmitting ? t('profile.saving') : t('common.save')}
         onPress={handleSave}
         disabled={isSubmitting || !hasChanges}
         style={authScreenStyles.ctaButton}
-        accessibilityLabel="Save"
-        accessibilityHint={
-          hasChanges ? 'Saves profile changes' : 'Save is disabled until you make changes'
-        }
+        accessibilityLabel={t('common.save')}
+        accessibilityHint={hasChanges ? t('profile.saveHint') : t('profile.saveHintDisabled')}
       />
     </ScrollView>
   );
@@ -256,9 +271,10 @@ const styles = StyleSheet.create({
     position: 'absolute' as const,
     top: 0,
     right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 22,
+    padding: 8,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.surfaceHighlight,

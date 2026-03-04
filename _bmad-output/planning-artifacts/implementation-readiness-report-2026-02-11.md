@@ -62,7 +62,7 @@ FR30: A ministry lead can collaborate or coordinate with other leaders in the sa
 FR31: An admin can set up and edit the organization structure (org, ministries, groups).
 FR32: An admin can invite users and assign them as ministry leads.
 FR33: An admin can perform oversight actions (e.g. view structure, access needed for support) without necessarily managing day-to-day content.
-FR34: A user can understand or control who can see their profile or activity within the bounds of the product (e.g. org/ministry/group visibility).
+FR34: (Deferred) A user can understand or control who can see their profile or activity within the bounds of the product (e.g. org/ministry/group visibility). Profile visibility preference removed from project scope for MVP.
 FR35: The product supports clear expectations for conduct (e.g. through in-app guidelines or code of conduct where implemented).
 FR36: The system stores and displays content in the user's chosen language (English, Korean, or Khmer) where multi-language content is available.
 
@@ -150,19 +150,20 @@ From epics.md FR Coverage Map: FR1–FR36 are each mapped to an epic (Epic 1–7
 | FR31 | Admin set up/edit org structure | Epic 2 | ✓ Covered |
 | FR32 | Admin invite and assign ministry leads | Epic 2 | ✓ Covered |
 | FR33 | Admin oversight actions | Epic 2 | ✓ Covered |
-| FR34 | User understand/control profile and activity visibility | Epic 1 | ✓ Covered |
+| FR34 | User understand/control profile and activity visibility | Deferred (out of scope for MVP) | — |
 | FR35 | Product conduct expectations (guidelines/CoC) | Epic 1 | ✓ Covered |
 | FR36 | Content in user's chosen language | Epic 1 | ✓ Covered |
 
 ### Missing Requirements
 
-None. All 36 PRD FRs are covered in the epics document with explicit FR Coverage Map and epic-level FR lists.
+None. All 36 PRD FRs are addressed in the epics document. FR34 (profile/activity visibility) is deferred and out of scope for MVP; profile visibility preference has been removed from the project.
 
 ### Coverage Statistics
 
 - **Total PRD FRs:** 36  
-- **FRs covered in epics:** 36  
-- **Coverage percentage:** 100%
+- **FRs covered in epics:** 35  
+- **FRs deferred (out of scope for MVP):** 1 (FR34)  
+- **Coverage percentage:** 100% (all FRs either covered or explicitly deferred)
 
 ---
 

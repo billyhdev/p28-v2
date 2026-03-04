@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DataContract } from '../../contracts';
 import type { ApiError } from '../../contracts/errors';
-import type { OnboardingProfileData, Profile, ProfileUpdates } from '../../contracts/dto';
+import { isApiError } from '../../contracts/guards';
+import type {
+  NotificationPreferences,
+  NotificationPreferencesUpdates,
+  OnboardingProfileData,
+  Profile,
+  ProfileUpdates,
+} from '../../contracts/dto';
 
 function toApiError(err: unknown): ApiError {
   if (
@@ -104,6 +111,22 @@ async function resolveAvatarDisplayUrl(
   } catch {
     return avatarUrl;
   }
+}
+
+function mapNotificationPrefsRow(row: {
+  user_id: string;
+  events_enabled: boolean;
+  announcements_enabled: boolean;
+  messages_enabled: boolean;
+  updated_at?: string | null;
+}): NotificationPreferences {
+  return {
+    userId: row.user_id,
+    eventsEnabled: row.events_enabled ?? true,
+    announcementsEnabled: row.announcements_enabled ?? true,
+    messagesEnabled: row.messages_enabled ?? true,
+    updatedAt: row.updated_at ?? undefined,
+  };
 }
 
 function mapRow(row: {
@@ -226,6 +249,71 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           profile.avatarUrl = await resolveAvatarDisplayUrl(getClient, profile.avatarUrl);
         }
         return profile;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('notification_preferences')
+          .select('user_id, events_enabled, announcements_enabled, messages_enabled, updated_at')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (data) return mapNotificationPrefsRow(data);
+        // Create row with defaults on first access
+        const defaults = {
+          user_id: userId,
+          events_enabled: true,
+          announcements_enabled: true,
+          messages_enabled: true,
+          updated_at: new Date().toISOString(),
+        };
+        const { data: inserted, error: insertError } = await getClient()
+          .from('notification_preferences')
+          .upsert(defaults, { onConflict: 'user_id' })
+          .select('user_id, events_enabled, announcements_enabled, messages_enabled, updated_at')
+          .single();
+        if (insertError) return toApiError(insertError);
+        if (!inserted) return { message: 'Failed to create preferences', code: 'NOT_FOUND' };
+        return mapNotificationPrefsRow(inserted);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateNotificationPreferences(
+      userId: string,
+      updates: NotificationPreferencesUpdates
+    ): Promise<NotificationPreferences | ApiError> {
+      try {
+        const existing = await this.getNotificationPreferences(userId);
+        const current = !isApiError(existing) ? existing : null;
+        const merged: NotificationPreferences = {
+          userId,
+          eventsEnabled: updates.eventsEnabled ?? current?.eventsEnabled ?? true,
+          announcementsEnabled:
+            updates.announcementsEnabled ?? current?.announcementsEnabled ?? true,
+          messagesEnabled: updates.messagesEnabled ?? current?.messagesEnabled ?? true,
+          updatedAt: new Date().toISOString(),
+        };
+        const payload = {
+          user_id: userId,
+          events_enabled: merged.eventsEnabled,
+          announcements_enabled: merged.announcementsEnabled,
+          messages_enabled: merged.messagesEnabled,
+          updated_at: merged.updatedAt,
+        };
+        const { data, error } = await getClient()
+          .from('notification_preferences')
+          .upsert(payload, { onConflict: 'user_id' })
+          .select('user_id, events_enabled, announcements_enabled, messages_enabled, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Failed to update preferences', code: 'NOT_FOUND' };
+        return mapNotificationPrefsRow(data);
       } catch (e) {
         return toApiError(e);
       }

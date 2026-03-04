@@ -1,12 +1,11 @@
--- Profiles table: extended user data (display name, avatar, bio, visibility)
--- Story 1.5: Profile and visibility
+-- Profiles table: extended user data (display name, avatar, bio)
+-- Story 1.5: Profile
 
 CREATE TABLE IF NOT EXISTS public.profiles (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT,
   avatar_url TEXT,
   bio TEXT,
-  visibility TEXT NOT NULL DEFAULT 'org' CHECK (visibility IN ('org', 'ministry', 'group')),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -17,11 +16,9 @@ CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view others' profiles (visibility enforcement deferred to Epic 2/3)"
+CREATE POLICY "Users can view others' profiles"
   ON public.profiles FOR SELECT
   USING (true);
--- Note: Full org/ministry/group visibility scoping will be enforced when membership tables exist.
--- For MVP, authenticated users can read profiles. Future: restrict by visibility + membership.
 
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
