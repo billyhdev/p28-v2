@@ -64,3 +64,59 @@ export interface NotificationPreferencesUpdates {
   announcementsEnabled?: boolean;
   messagesEnabled?: boolean;
 }
+
+/** Organization (church). From organizations table. */
+export interface Organization {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Input for creating an organization. */
+export interface CreateOrganizationInput {
+  name: string;
+}
+
+/** Input for updating an organization (partial). */
+export interface UpdateOrganizationInput {
+  name?: string;
+}
+
+/** Ministry within an organization. From ministries table. */
+export interface Ministry {
+  id: string;
+  organizationId: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Input for creating a ministry. */
+export interface CreateMinistryInput {
+  name: string;
+}
+
+/** Input for updating a ministry (partial). */
+export interface UpdateMinistryInput {
+  name?: string;
+}
+
+/** Group within a ministry. From groups table. */
+export interface Group {
+  id: string;
+  ministryId: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Input for creating a group. */
+export interface CreateGroupInput {
+  name: string;
+}
+
+/** Input for updating a group (partial). */
+export interface UpdateGroupInput {
+  name?: string;
+}

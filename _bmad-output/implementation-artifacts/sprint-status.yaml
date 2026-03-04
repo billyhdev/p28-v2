@@ -59,11 +59,11 @@ development_status:
   1-6-notification-preferences: done
   1-7-app-language-i18n: done
   1-8-in-app-conduct-guidelines: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: in-progress
   2-1-data-model-and-migrations-for-org-ministry-group: done
-  2-2-data-contract-and-adapter-for-org-structure: backlog
+  2-2-data-contract-and-adapter-for-org-structure: done
   2-3-admin-set-up-and-edit-organization-structure: backlog
   2-4-invite-and-assign-ministry-leads: backlog
   2-5-admin-oversight-view: backlog

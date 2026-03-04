@@ -29,4 +29,13 @@ export type {
   OnboardingProfileData,
   NotificationPreferences,
   NotificationPreferencesUpdates,
+  Organization,
+  CreateOrganizationInput,
+  UpdateOrganizationInput,
+  Ministry,
+  CreateMinistryInput,
+  UpdateMinistryInput,
+  Group,
+  CreateGroupInput,
+  UpdateGroupInput,
 } from './contracts';

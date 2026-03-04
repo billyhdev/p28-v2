@@ -1,9 +1,15 @@
 import type { ApiError } from './errors';
-import type { Profile } from './dto';
 
 /**
- * Type guard: data API results (Profile | ApiError). Use for getProfile, updateProfile, createProfile.
+ * Type guard: true when value is ApiError (has message and it's a string).
+ * Use for any data API result (Profile | ApiError, Organization[] | ApiError, etc.).
+ * Note: Success DTOs must not have a `message` property, or this guard may false-positive.
  */
-export function isApiError(r: Profile | ApiError): r is ApiError {
-  return 'message' in r && !('userId' in r);
+export function isApiError(r: unknown): r is ApiError {
+  return (
+    typeof r === 'object' &&
+    r !== null &&
+    'message' in r &&
+    typeof (r as ApiError).message === 'string'
+  );
 }

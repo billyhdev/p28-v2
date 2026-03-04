@@ -3,11 +3,20 @@ import type { DataContract } from '../../contracts';
 import type { ApiError } from '../../contracts/errors';
 import { isApiError } from '../../contracts/guards';
 import type {
+  CreateGroupInput,
+  CreateMinistryInput,
+  CreateOrganizationInput,
+  Group,
+  Ministry,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
+  Organization,
   Profile,
   ProfileUpdates,
+  UpdateGroupInput,
+  UpdateMinistryInput,
+  UpdateOrganizationInput,
 } from '../../contracts/dto';
 
 function toApiError(err: unknown): ApiError {
@@ -18,7 +27,16 @@ function toApiError(err: unknown): ApiError {
     typeof (err as Error).message === 'string'
   ) {
     const e = err as Error & { code?: string };
-    return { message: e.message, code: e.code };
+    const code = e.code;
+    let message = e.message;
+    if (code === '23505') {
+      if (message.includes('ministries_organization_id_name_key')) {
+        message = 'Ministry name already exists in this organization';
+      } else if (message.includes('groups_ministry_id_name_key')) {
+        message = 'Group name already exists in this ministry';
+      }
+    }
+    return { message, code };
   }
   return { message: String(err ?? 'An error occurred') };
 }
@@ -129,6 +147,52 @@ function mapNotificationPrefsRow(row: {
   };
 }
 
+function mapOrganizationRow(row: {
+  id: string;
+  name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): Organization {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+  };
+}
+
+function mapMinistryRow(row: {
+  id: string;
+  organization_id: string;
+  name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): Ministry {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    name: row.name,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+  };
+}
+
+function mapGroupRow(row: {
+  id: string;
+  ministry_id: string;
+  name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): Group {
+  return {
+    id: row.id,
+    ministryId: row.ministry_id,
+    name: row.name,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+  };
+}
+
 function mapRow(row: {
   user_id: string;
   display_name?: string | null;
@@ -158,8 +222,8 @@ function mapRow(row: {
 }
 
 /**
- * Supabase data adapter. Implements profile operations (Story 1.5).
- * Domain operations for org/ministry/group in later stories.
+ * Supabase data adapter. Implements profile operations (Story 1.5),
+ * notification preferences (Story 1.6), and org/ministry/group operations (Story 2.2).
  */
 export function createSupabaseDataAdapter(getClient: () => SupabaseClient): DataContract {
   return {
@@ -347,6 +411,171 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
         const { data } = getClient().storage.from('avatars').getPublicUrl(path);
         return data.publicUrl;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    // Organization structure (Story 2.2)
+    async getOrganizations(): Promise<Organization[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('organizations')
+          .select('id, name, created_at, updated_at')
+          .order('name');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapOrganizationRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createOrganization(params: CreateOrganizationInput): Promise<Organization | ApiError> {
+      try {
+        const name = params.name?.trim();
+        if (!name) {
+          return { message: 'Organization name is required', code: 'VALIDATION_ERROR' };
+        }
+        const { data, error } = await getClient()
+          .from('organizations')
+          .insert({ name })
+          .select('id, name, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Failed to create organization', code: 'NOT_FOUND' };
+        return mapOrganizationRow(data);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateOrganization(
+      id: string,
+      params: UpdateOrganizationInput
+    ): Promise<Organization | ApiError> {
+      try {
+        const payload: { name?: string; updated_at: string } = {
+          updated_at: new Date().toISOString(),
+        };
+        if (params.name !== undefined) payload.name = params.name;
+        const { data, error } = await getClient()
+          .from('organizations')
+          .update(payload)
+          .eq('id', id)
+          .select('id, name, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Organization not found', code: 'NOT_FOUND' };
+        return mapOrganizationRow(data);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getMinistriesForOrg(organizationId: string): Promise<Ministry[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('ministries')
+          .select('id, organization_id, name, created_at, updated_at')
+          .eq('organization_id', organizationId)
+          .order('name');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapMinistryRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createMinistry(
+      organizationId: string,
+      params: CreateMinistryInput
+    ): Promise<Ministry | ApiError> {
+      try {
+        const name = params.name?.trim();
+        if (!name) {
+          return { message: 'Ministry name is required', code: 'VALIDATION_ERROR' };
+        }
+        const { data, error } = await getClient()
+          .from('ministries')
+          .insert({ organization_id: organizationId, name })
+          .select('id, organization_id, name, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Failed to create ministry', code: 'NOT_FOUND' };
+        return mapMinistryRow(data);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateMinistry(id: string, params: UpdateMinistryInput): Promise<Ministry | ApiError> {
+      try {
+        const payload: { name?: string; updated_at: string } = {
+          updated_at: new Date().toISOString(),
+        };
+        if (params.name !== undefined) payload.name = params.name;
+        const { data, error } = await getClient()
+          .from('ministries')
+          .update(payload)
+          .eq('id', id)
+          .select('id, organization_id, name, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Ministry not found', code: 'NOT_FOUND' };
+        return mapMinistryRow(data);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupsForMinistry(ministryId: string): Promise<Group[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('groups')
+          .select('id, ministry_id, name, created_at, updated_at')
+          .eq('ministry_id', ministryId)
+          .order('name');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapGroupRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createGroup(ministryId: string, params: CreateGroupInput): Promise<Group | ApiError> {
+      try {
+        const name = params.name?.trim();
+        if (!name) {
+          return { message: 'Group name is required', code: 'VALIDATION_ERROR' };
+        }
+        const { data, error } = await getClient()
+          .from('groups')
+          .insert({ ministry_id: ministryId, name })
+          .select('id, ministry_id, name, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Failed to create group', code: 'NOT_FOUND' };
+        return mapGroupRow(data);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError> {
+      try {
+        const payload: { name?: string; updated_at: string } = {
+          updated_at: new Date().toISOString(),
+        };
+        if (params.name !== undefined) payload.name = params.name;
+        const { data, error } = await getClient()
+          .from('groups')
+          .update(payload)
+          .eq('id', id)
+          .select('id, ministry_id, name, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Group not found', code: 'NOT_FOUND' };
+        return mapGroupRow(data);
       } catch (e) {
         return toApiError(e);
       }

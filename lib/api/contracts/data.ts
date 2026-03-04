@@ -1,15 +1,23 @@
 import type { ApiError } from './errors';
 import type {
+  CreateGroupInput,
+  CreateMinistryInput,
+  CreateOrganizationInput,
+  Group,
+  Ministry,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
+  Organization,
   Profile,
   ProfileUpdates,
+  UpdateGroupInput,
+  UpdateMinistryInput,
+  UpdateOrganizationInput,
 } from './dto';
 
 /**
  * Data contract: domain operations. No backend-specific types.
- * Expand with getOrganizations, getGroupsForMinistry, getMessagesForChannel, etc. in later stories.
  * Adapters implement these; app code uses only the facade.
  */
 export interface DataContract {
@@ -28,4 +36,17 @@ export interface DataContract {
     userId: string,
     updates: NotificationPreferencesUpdates
   ): Promise<NotificationPreferences | ApiError>;
+
+  // Organization structure (Story 2.2)
+  getOrganizations(): Promise<Organization[] | ApiError>;
+  createOrganization(params: CreateOrganizationInput): Promise<Organization | ApiError>;
+  updateOrganization(id: string, params: UpdateOrganizationInput): Promise<Organization | ApiError>;
+
+  getMinistriesForOrg(organizationId: string): Promise<Ministry[] | ApiError>;
+  createMinistry(organizationId: string, params: CreateMinistryInput): Promise<Ministry | ApiError>;
+  updateMinistry(id: string, params: UpdateMinistryInput): Promise<Ministry | ApiError>;
+
+  getGroupsForMinistry(ministryId: string): Promise<Group[] | ApiError>;
+  createGroup(ministryId: string, params: CreateGroupInput): Promise<Group | ApiError>;
+  updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError>;
 }

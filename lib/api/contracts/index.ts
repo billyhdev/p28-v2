@@ -4,11 +4,20 @@ export type { RealtimeContract, RealtimeChannelId, RealtimeHandlers } from './re
 export type { ApiError } from './errors';
 export { isApiError } from './guards';
 export type {
+  CreateGroupInput,
+  CreateMinistryInput,
+  CreateOrganizationInput,
+  Group,
+  Ministry,
   NotificationPreferences,
   NotificationPreferencesUpdates,
-  User,
-  Session,
+  OnboardingProfileData,
+  Organization,
   Profile,
   ProfileUpdates,
-  OnboardingProfileData,
+  UpdateGroupInput,
+  UpdateMinistryInput,
+  UpdateOrganizationInput,
+  User,
+  Session,
 } from './dto';
