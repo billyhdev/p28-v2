@@ -16,6 +16,7 @@ export const ko: TranslationShape = {
     title: '프로필',
     editProfile: '프로필 수정',
     notificationPreferences: '알림 설정',
+    notificationPreferencesHint: '이벤트, 공지사항, 메시지 알림 설정을 엽니다',
     signOut: '로그아웃',
     about: '정보',
     displayName: '표시 이름',
@@ -84,5 +85,24 @@ export const ko: TranslationShape = {
     retry: '다시 시도',
     retryHint: '알림 설정을 다시 불러옵니다',
     loadingLabel: '알림 설정 로딩 중',
+  },
+  conduct: {
+    title: '행동 지침',
+    intro: '이 앱을 사용할 때 다른 사람을 존중하고 안전을 지키는 방식으로 참여해 주세요.',
+    respectTitle: '서로를 존중하기',
+    respectBody:
+      '친절하게 말하고, 괴롭힘이나 혐오 표현을 피하며, 사람을 공격하지 않고 의견을 나눕니다.',
+    safetyTitle: '안전 지키기',
+    safetyBody:
+      '위협적이거나 해로운 내용, 노골적인 콘텐츠를 공유하지 마세요. 안전 문제가 보이면 신뢰할 수 있는 리더에게 알려주세요.',
+    privacyTitle: '개인정보와 비밀 지키기',
+    privacyBody:
+      '내가 공유할 수 있는 이야기와 정보를 구분하고, 다른 사람의 민감한 정보를 함부로 퍼뜨리지 않습니다.',
+    boundariesTitle: '알맞은 채널 사용하기',
+    boundariesBody:
+      '그룹과 개인 메시지는 원래 목적에 맞게 사용하고, 긴급하거나 위기 상황은 오프라인이나 공식 채널로 옮깁니다.',
+    openHint: '공동체 행동 지침을 열어 기대되는 기준을 확인합니다.',
+    onboardingHint:
+      '시작하는 과정에서, 나중에 프로필에서 행동 지침을 읽어 안전하고 건강한 공동체를 함께 만들어 주세요.',
   },
 };

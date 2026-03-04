@@ -451,6 +451,8 @@ export default function OnboardingScreen() {
         />
       </View>
 
+      <Text style={styles.conductHint}>{t('conduct.onboardingHint')}</Text>
+
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
       <Button
@@ -512,4 +514,9 @@ const styles = StyleSheet.create({
   },
   modalItemText: { ...typography.body, color: colors.textPrimary },
   modalItemTextActive: { color: colors.primary, fontWeight: '600' },
+  conductHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.lg,
+  },
 });

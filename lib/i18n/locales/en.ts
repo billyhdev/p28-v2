@@ -1,6 +1,6 @@
 /**
  * English (en) translation strings.
- * Keys are namespaced: tabs.*, profile.*, auth.*, common.*, language.*
+ * Keys are namespaced: tabs.*, profile.*, auth.*, common.*, language.*, notifications.*, conduct.*.
  */
 export const en = {
   tabs: {
@@ -15,6 +15,8 @@ export const en = {
     title: 'Profile',
     editProfile: 'Edit profile',
     notificationPreferences: 'Notification preferences',
+    notificationPreferencesHint:
+      'Opens settings for events, announcements, and messages notifications',
     signOut: 'Sign out',
     about: 'About',
     displayName: 'Display name',
@@ -84,6 +86,25 @@ export const en = {
     retry: 'Try again',
     retryHint: 'Retries loading notification preferences',
     loadingLabel: 'Loading notification preferences',
+  },
+  conduct: {
+    title: 'Conduct guidelines',
+    intro: 'Please use this app in ways that are respectful, safe, and honoring to others.',
+    respectTitle: 'Be respectful',
+    respectBody:
+      'Speak with kindness, avoid harassment or hate, and assume good intent. Disagree without attacking people.',
+    safetyTitle: 'Keep people safe',
+    safetyBody:
+      'Do not share harmful, explicit, or threatening content. Reach out to trusted leaders if you see safety concerns.',
+    privacyTitle: 'Honor privacy and confidentiality',
+    privacyBody:
+      'Only share stories or details that are yours to share. Be careful with sensitive information and do not forward private messages.',
+    boundariesTitle: 'Use appropriate channels',
+    boundariesBody:
+      'Use groups and direct messages for their intended purpose. Move urgent or crisis situations to appropriate offline or official channels.',
+    openHint: 'Opens community conduct guidelines so you can review expectations.',
+    onboardingHint:
+      'As you get started, please take a moment later to read the conduct guidelines in your Profile so everyone can participate safely.',
   },
 } as const;
 

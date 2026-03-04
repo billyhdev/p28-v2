@@ -12,6 +12,7 @@ export default function ProfileLayout() {
         options={{ title: t('profile.notificationPreferences'), headerShown: true }}
       />
       <Stack.Screen name="language" options={{ title: t('language.title'), headerShown: true }} />
+      <Stack.Screen name="conduct" options={{ title: t('conduct.title'), headerShown: true }} />
     </Stack>
   );
 }

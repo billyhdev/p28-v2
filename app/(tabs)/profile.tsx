@@ -91,7 +91,7 @@ export default function ProfileScreen() {
             source={profile?.avatarUrl ? { uri: profile.avatarUrl } : null}
             fallbackText={displayName}
             size="lg"
-            accessibilityLabel="Profile photo"
+            accessibilityLabel={t('profile.profilePhoto')}
           />
           <View style={styles.headerText}>
             <Text style={styles.title}>{fullName || t('profile.title')}</Text>
@@ -170,7 +170,7 @@ export default function ProfileScreen() {
             variant="secondary"
             style={styles.actionButton}
             accessibilityLabel={t('profile.notificationPreferences')}
-            accessibilityHint="Opens settings for events, announcements, and messages notifications"
+            accessibilityHint={t('profile.notificationPreferencesHint')}
           />
           <Button
             title={t('profile.appLanguage')}
@@ -179,6 +179,14 @@ export default function ProfileScreen() {
             style={styles.actionButton}
             accessibilityLabel={t('profile.appLanguage')}
             accessibilityHint={t('profile.appLanguageHint')}
+          />
+          <Button
+            title={t('conduct.title')}
+            onPress={() => router.push('/profile/conduct')}
+            variant="secondary"
+            style={styles.actionButton}
+            accessibilityLabel={t('conduct.title')}
+            accessibilityHint={t('conduct.openHint')}
           />
           <Button
             title={t('profile.signOut')}

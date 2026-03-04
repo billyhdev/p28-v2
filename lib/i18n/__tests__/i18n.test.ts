@@ -30,6 +30,20 @@ describe('i18n', () => {
       expect(t('profile.editProfile')).toBe('កែសម្រួលប្រវត្តិរូប');
     });
 
+    it('returns conduct keys for en, ko, km', () => {
+      changeLanguage('en');
+      expect(t('conduct.title')).toBe('Conduct guidelines');
+      expect(t('conduct.intro').length).toBeGreaterThan(10);
+
+      changeLanguage('ko');
+      expect(t('conduct.title')).toBe('행동 지침');
+      expect(t('conduct.intro').length).toBeGreaterThan(10);
+
+      changeLanguage('km');
+      expect(t('conduct.title')).toBe('វិធានសីលធម៌ក្នុងការប្រើប្រាស់');
+      expect(t('conduct.intro').length).toBeGreaterThan(10);
+    });
+
     it('falls back to en for unknown key', () => {
       changeLanguage('ko');
       expect(t('tabs.nonexistent')).toBe('tabs.nonexistent');
