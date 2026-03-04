@@ -61,8 +61,8 @@ development_status:
   1-8-in-app-conduct-guidelines: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
-  2-1-data-model-and-migrations-for-org-ministry-group: backlog
+  epic-2: in-progress
+  2-1-data-model-and-migrations-for-org-ministry-group: done
   2-2-data-contract-and-adapter-for-org-structure: backlog
   2-3-admin-set-up-and-edit-organization-structure: backlog
   2-4-invite-and-assign-ministry-leads: backlog
