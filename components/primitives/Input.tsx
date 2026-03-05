@@ -24,7 +24,7 @@ export function Input({
       <Text style={styles.label}>{label}</Text>
       <TextInput
         style={[styles.input, error ? styles.inputError : null, inputStyle]}
-        placeholderTextColor={colors.textSecondary}
+        placeholderTextColor="#9DA3B3"
         accessibilityLabel={accessibilityLabel ?? label}
         accessibilityHint={accessibilityHint}
         minHeight={minTouchTarget}
@@ -49,10 +49,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.surfaceHighlight,
+    borderColor: colors.borderSubtle,
     borderRadius: radius.button,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 48,
   },
   inputError: {
     borderColor: colors.error,

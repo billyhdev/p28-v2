@@ -39,7 +39,11 @@ export interface DataContract {
 
   // Organization structure (Story 2.2)
   getOrganizations(): Promise<Organization[] | ApiError>;
-  createOrganization(params: CreateOrganizationInput): Promise<Organization | ApiError>;
+  /** When createdByUserId is provided, adds that user as admin in org_members. (Story 2.3) */
+  createOrganization(
+    params: CreateOrganizationInput,
+    createdByUserId?: string
+  ): Promise<Organization | ApiError>;
   updateOrganization(id: string, params: UpdateOrganizationInput): Promise<Organization | ApiError>;
 
   getMinistriesForOrg(organizationId: string): Promise<Ministry[] | ApiError>;
@@ -47,6 +51,11 @@ export interface DataContract {
   updateMinistry(id: string, params: UpdateMinistryInput): Promise<Ministry | ApiError>;
 
   getGroupsForMinistry(ministryId: string): Promise<Group[] | ApiError>;
+  /** Fetches a single group by id (for edit screen). Returns NOT_FOUND if missing. */
+  getGroup(id: string): Promise<Group | ApiError>;
   createGroup(ministryId: string, params: CreateGroupInput): Promise<Group | ApiError>;
   updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError>;
+
+  /** Returns orgs where the user has role='admin' in org_members. Used to gate admin UI. (Story 2.3) */
+  getOrganizationsWhereUserIsAdmin(userId: string): Promise<Organization[] | ApiError>;
 }

@@ -48,7 +48,6 @@ export default function ProfileScreen() {
   const birthDateLabel = useMemo(() => {
     const d = profile?.birthDate;
     if (!d) return null;
-    // Stored as YYYY-MM-DD; keep formatting predictable without extra deps.
     return d;
   }, [profile?.birthDate]);
 
@@ -86,6 +85,7 @@ export default function ProfileScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
+
         <View style={styles.header}>
           <Avatar
             source={profile?.avatarUrl ? { uri: profile.avatarUrl } : null}
@@ -208,9 +208,9 @@ const cardStyle = {
   padding: spacing.cardPadding,
   marginBottom: spacing.cardGap,
   shadowColor: colors.shadow,
-  shadowOffset: shadow.card.shadowOffset,
-  shadowOpacity: shadow.card.shadowOpacity,
-  shadowRadius: shadow.card.shadowRadius,
+  shadowOffset: shadow.cardSoft.shadowOffset,
+  shadowOpacity: shadow.cardSoft.shadowOpacity,
+  shadowRadius: shadow.cardSoft.shadowRadius,
   elevation: 2,
 };
 
@@ -220,8 +220,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
     paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
   animatedContent: { flex: 1 },
@@ -229,19 +229,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    marginTop: spacing.xl,
+    marginTop: spacing.md,
     marginBottom: spacing.lg,
   },
   headerText: { flex: 1 },
-  title: { ...typography.h2, color: colors.textPrimary },
+  title: { ...typography.h3, color: colors.textPrimary },
   subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
   card: { ...cardStyle },
-  cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.md },
-  aboutFields: { gap: spacing.md },
+  cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.sm },
+  aboutFields: { gap: spacing.sm },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   rowLabel: { ...typography.caption, color: colors.textSecondary },
   rowValue: {
@@ -252,20 +252,20 @@ const styles = StyleSheet.create({
   },
   bio: { ...typography.body, color: colors.textSecondary },
   actions: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     gap: spacing.sm,
     alignItems: 'center',
     width: '100%',
   },
   actionButton: { width: '100%', maxWidth: 400 },
-  noticeCard: { ...cardStyle },
-  noticeTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.xs },
-  noticeText: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
+  noticeCard: { ...cardStyle, backgroundColor: colors.brandSoft },
+  noticeTitle: { ...typography.cardTitle, color: colors.primary, marginBottom: spacing.xs },
+  noticeText: { ...typography.body, color: colors.ink700, marginBottom: spacing.sm },
   centered: { justifyContent: 'center', alignItems: 'center' },
   errorBanner: {
-    backgroundColor: colors.surfaceHighlight,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.accentSoft,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
     borderRadius: radius.button,
   },
   errorText: { ...typography.body, color: colors.error },

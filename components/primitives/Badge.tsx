@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, radius, typography } from '@/theme/tokens';
+import { colors, radius, typography } from '@/theme/tokens';
 
 export interface BadgeProps {
   label: string;
@@ -8,29 +8,43 @@ export interface BadgeProps {
 }
 
 export function Badge({ label, variant = 'primary' }: BadgeProps) {
-  const bg =
+  const containerStyle =
     variant === 'primary'
-      ? colors.primary
+      ? styles.primaryBg
       : variant === 'accent'
-        ? colors.accent
-        : colors.surfaceHighlight;
-  const textColor = variant === 'neutral' ? colors.textPrimary : colors.surface;
+        ? styles.accentBg
+        : styles.neutralBg;
+
+  const textStyle =
+    variant === 'primary'
+      ? styles.primaryText
+      : variant === 'accent'
+        ? styles.accentText
+        : styles.neutralText;
+
   return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Text style={[styles.label, { color: textColor }]}>{label}</Text>
+    <View style={[styles.badge, containerStyle]}>
+      <Text style={[styles.label, textStyle]}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    height: 26,
+    paddingHorizontal: 10,
     borderRadius: radius.chip,
     alignSelf: 'flex-start',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   label: {
     ...typography.caption,
-    fontWeight: '600',
   },
+  primaryBg: { backgroundColor: colors.brandSoft },
+  primaryText: { color: colors.primary },
+  accentBg: { backgroundColor: colors.accentSoft },
+  accentText: { color: colors.accent },
+  neutralBg: { backgroundColor: colors.surface100 },
+  neutralText: { color: colors.ink700 },
 });

@@ -321,9 +321,9 @@ So that my church has a clear hierarchy for ministries and groups.
 **Acceptance Criteria:**
 
 **Given** Stories 2.2 and Epic 1 (auth) are complete and the user has admin role,
-**When** I add admin screens to create/edit organizations (name, basic settings), add ministries to an org, and add groups to a ministry,
+**When** I add admin screens to create/edit organizations (name, basic settings), add ministries to an org, and add groups to a ministry, with entry from the Groups tab (when user is admin),
 **Then** an admin can set up and edit the full org → ministry → group structure; changes are persisted via the data contract,
-**And** FR31 is satisfied; UX follows architecture (e.g. OrgStructureRow pattern where specified).
+**And** FR31 is satisfied; UX follows architecture (e.g. OrgStructureRow pattern where specified); admin reaches these screens from the Groups tab, not Profile.
 
 ### Story 2.4: Invite and assign ministry leads
 

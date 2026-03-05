@@ -64,7 +64,7 @@ development_status:
   epic-2: in-progress
   2-1-data-model-and-migrations-for-org-ministry-group: done
   2-2-data-contract-and-adapter-for-org-structure: done
-  2-3-admin-set-up-and-edit-organization-structure: backlog
+  2-3-admin-set-up-and-edit-organization-structure: done
   2-4-invite-and-assign-ministry-leads: backlog
   2-5-admin-oversight-view: backlog
   epic-2-retrospective: optional

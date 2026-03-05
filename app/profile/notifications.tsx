@@ -144,7 +144,7 @@ export default function NotificationPreferencesScreen() {
                 value={prefs?.eventsEnabled ?? true}
                 onValueChange={(v) => handleToggle('eventsEnabled', v)}
                 disabled={isSubmitting}
-                trackColor={{ false: colors.surfaceHighlight, true: colors.primary }}
+                trackColor={{ false: colors.surface100, true: colors.primary }}
                 thumbColor={colors.surface}
               />
             </Pressable>
@@ -169,7 +169,7 @@ export default function NotificationPreferencesScreen() {
                 value={prefs?.announcementsEnabled ?? true}
                 onValueChange={(v) => handleToggle('announcementsEnabled', v)}
                 disabled={isSubmitting}
-                trackColor={{ false: colors.surfaceHighlight, true: colors.primary }}
+                trackColor={{ false: colors.surface100, true: colors.primary }}
                 thumbColor={colors.surface}
               />
             </Pressable>
@@ -192,7 +192,7 @@ export default function NotificationPreferencesScreen() {
                 value={prefs?.messagesEnabled ?? true}
                 onValueChange={(v) => handleToggle('messagesEnabled', v)}
                 disabled={isSubmitting}
-                trackColor={{ false: colors.surfaceHighlight, true: colors.primary }}
+                trackColor={{ false: colors.surface100, true: colors.primary }}
                 thumbColor={colors.surface}
               />
             </Pressable>
@@ -208,13 +208,18 @@ const cardStyle = {
   borderRadius: radius.card,
   padding: spacing.cardPadding,
   marginBottom: spacing.cardGap,
+  shadowColor: colors.shadow,
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.06,
+  shadowRadius: 18,
+  elevation: 2,
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: {
-    padding: spacing.lg,
     paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
   centered: { justifyContent: 'center', alignItems: 'center' },
@@ -224,12 +229,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   errorBanner: {
-    backgroundColor: colors.surfaceHighlight,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.accentSoft,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
     borderRadius: radius.button,
   },
-  errorText: { ...typography.body, color: colors.error, marginBottom: spacing.sm },
+  errorText: { ...typography.body, color: colors.error, marginBottom: spacing.xs },
   retryButton: {
     alignSelf: 'flex-start',
     paddingVertical: spacing.sm,
@@ -238,9 +243,9 @@ const styles = StyleSheet.create({
   retryButtonPressed: { opacity: 0.8 },
   retryButtonText: { ...typography.body, color: colors.primary, fontWeight: '600' },
   successBanner: {
-    backgroundColor: colors.surfaceHighlight,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.greenSoft,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
     borderRadius: radius.button,
   },
   successText: { ...typography.body, color: colors.success },
@@ -248,7 +253,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     ...typography.cardTitle,
     color: colors.textPrimary,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   toggleRow: {
     flexDirection: 'row',

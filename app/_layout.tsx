@@ -87,8 +87,19 @@ function RootLayoutNav() {
     });
   }, [session?.user?.id, isLoading, setLocale]);
 
+  const navTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: '#F8F9FC',
+      card: '#FFFFFF',
+      primary: '#4B3A8A',
+      border: 'rgba(30, 27, 45, 0.08)',
+    },
+  };
+
   return (
-    <ThemeProvider value={DefaultTheme}>
+    <ThemeProvider value={navTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
@@ -98,6 +109,16 @@ function RootLayoutNav() {
             headerShown: true,
             title: t('profile.editProfile'),
             headerBackButtonDisplayMode: 'minimal',
+            headerTitleStyle: { fontWeight: '600', color: '#1F2130' },
+          }}
+        />
+        <Stack.Screen
+          name="admin"
+          options={{
+            headerShown: true,
+            title: t('admin.title'),
+            headerBackButtonDisplayMode: 'minimal',
+            headerTitleStyle: { fontWeight: '600', color: '#1F2130' },
           }}
         />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

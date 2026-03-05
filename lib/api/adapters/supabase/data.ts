@@ -20,15 +20,14 @@ import type {
 } from '../../contracts/dto';
 
 function toApiError(err: unknown): ApiError {
-  if (
-    err &&
-    typeof err === 'object' &&
-    'message' in err &&
-    typeof (err as Error).message === 'string'
-  ) {
-    const e = err as Error & { code?: string };
+  if (err && typeof err === 'object') {
+    const e = err as Error & { code?: string; message?: string };
     const code = e.code;
-    let message = e.message;
+    if (code === 'PGRST116') {
+      return { message: 'Resource not found', code: 'NOT_FOUND' };
+    }
+    let message =
+      typeof e.message === 'string' ? e.message : code ? String(code) : 'An error occurred';
     if (code === '23505') {
       if (message.includes('ministries_organization_id_name_key')) {
         message = 'Ministry name already exists in this organization';
@@ -430,7 +429,10 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
-    async createOrganization(params: CreateOrganizationInput): Promise<Organization | ApiError> {
+    async createOrganization(
+      params: CreateOrganizationInput,
+      createdByUserId?: string
+    ): Promise<Organization | ApiError> {
       try {
         const name = params.name?.trim();
         if (!name) {
@@ -443,6 +445,14 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .single();
         if (error) return toApiError(error);
         if (!data) return { message: 'Failed to create organization', code: 'NOT_FOUND' };
+        if (createdByUserId) {
+          const { error: memberError } = await getClient().from('org_members').insert({
+            user_id: createdByUserId,
+            organization_id: data.id,
+            role: 'admin',
+          });
+          if (memberError) return toApiError(memberError);
+        }
         return mapOrganizationRow(data);
       } catch (e) {
         return toApiError(e);
@@ -542,6 +552,21 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
+    async getGroup(id: string): Promise<Group | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('groups')
+          .select('id, ministry_id, name, created_at, updated_at')
+          .eq('id', id)
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Group not found', code: 'NOT_FOUND' };
+        return mapGroupRow(data);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
     async createGroup(ministryId: string, params: CreateGroupInput): Promise<Group | ApiError> {
       try {
         const name = params.name?.trim();
@@ -579,6 +604,39 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       } catch (e) {
         return toApiError(e);
       }
+    },
+
+    getOrganizationsWhereUserIsAdmin(userId: string): Promise<Organization[] | ApiError> {
+      return (async () => {
+        try {
+          const { data, error } = await getClient()
+            .from('org_members')
+            .select('organizations(id, name, created_at, updated_at)')
+            .eq('user_id', userId)
+            .eq('role', 'admin');
+          if (error) return toApiError(error);
+          const rows = (data ?? []) as unknown as {
+            organizations: Record<string, unknown> | null;
+          }[];
+          const orgs: Organization[] = [];
+          for (const row of rows) {
+            const o = row.organizations;
+            if (o && typeof o === 'object' && o.id && o.name) {
+              orgs.push(
+                mapOrganizationRow({
+                  id: String(o.id),
+                  name: String(o.name),
+                  created_at: (o.created_at as string) ?? null,
+                  updated_at: (o.updated_at as string) ?? null,
+                })
+              );
+            }
+          }
+          return orgs.sort((a, b) => a.name.localeCompare(b.name));
+        } catch (e) {
+          return toApiError(e);
+        }
+      })();
     },
   };
 }

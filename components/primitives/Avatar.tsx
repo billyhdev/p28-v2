@@ -7,6 +7,8 @@ export interface AvatarProps {
   source?: ImageSourcePropType | null;
   fallbackText?: string;
   size?: keyof typeof avatarSizes;
+  /** When true, renders a 1.5pt white ring for stacked/grouped avatar contexts. */
+  ringed?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }
@@ -15,6 +17,7 @@ export function Avatar({
   source,
   fallbackText,
   size = 'md',
+  ringed = false,
   accessibilityLabel,
   accessibilityHint,
 }: AvatarProps) {
@@ -26,8 +29,12 @@ export function Avatar({
   const showImage = Boolean(source && !imageError);
 
   const dim = avatarSizes[size];
-  const containerStyle = [styles.container, { width: dim, height: dim, borderRadius: dim / 2 }];
-  const textStyle = [styles.fallbackText, { fontSize: dim * 0.4 }];
+  const containerStyle = [
+    styles.container,
+    { width: dim, height: dim, borderRadius: dim / 2 },
+    ringed && styles.ring,
+  ];
+  const textStyle = [styles.fallbackText, { fontSize: dim * 0.38 }];
 
   if (showImage) {
     return (
@@ -59,14 +66,17 @@ export function Avatar({
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
-    backgroundColor: colors.surfaceHighlight,
+    backgroundColor: colors.lavenderSoft,
     justifyContent: 'center',
     alignItems: 'center',
   },
   fallback: {},
+  ring: {
+    borderWidth: 1.5,
+    borderColor: colors.surface,
+  },
   fallbackText: {
-    ...typography.body,
-    fontWeight: '600',
+    ...typography.bodyStrong,
     color: colors.primary,
   },
 });

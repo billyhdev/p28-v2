@@ -732,6 +732,51 @@ describe('Supabase data adapter', () => {
       });
     });
 
+    describe('getGroup', () => {
+      it('returns Group on success', async () => {
+        const row = {
+          id: 'grp-1',
+          ministry_id: 'min-1',
+          name: 'Small Group A',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        };
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                single: jest.fn().mockResolvedValue({ data: row, error: null }),
+              }),
+            }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getGroup('grp-1');
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect((result as Group).id).toBe('grp-1');
+          expect((result as Group).ministryId).toBe('min-1');
+          expect((result as Group).name).toBe('Small Group A');
+        }
+      });
+
+      it('returns NOT_FOUND when group missing', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                single: jest.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116' } }),
+              }),
+            }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getGroup('missing');
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) expect((result as ApiError).code).toBe('NOT_FOUND');
+      });
+    });
+
     describe('createGroup', () => {
       it('returns Group on success', async () => {
         const row = {

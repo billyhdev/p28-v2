@@ -106,8 +106,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
     paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
   subtitle: {
@@ -119,34 +119,38 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     overflow: 'hidden',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 2,
   },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.cardPadding,
     minHeight: minTouchTarget,
   },
   optionRowPressed: {
-    backgroundColor: colors.surfaceHighlight,
+    backgroundColor: colors.surface100,
   },
   optionRowSelected: {
-    backgroundColor: colors.surfaceHighlight,
+    backgroundColor: colors.brandSoft,
   },
   optionLabel: {
     ...typography.body,
     color: colors.textPrimary,
   },
   optionCheck: {
-    ...typography.body,
+    ...typography.bodyStrong,
     color: colors.primary,
-    fontWeight: '600',
   },
   errorBanner: {
-    backgroundColor: colors.surfaceHighlight,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.accentSoft,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
     borderRadius: radius.button,
   },
   errorText: {
@@ -154,9 +158,9 @@ const styles = StyleSheet.create({
     color: colors.error,
   },
   successBanner: {
-    backgroundColor: colors.surfaceHighlight,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.greenSoft,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
     borderRadius: radius.button,
   },
   successText: {

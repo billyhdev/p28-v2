@@ -1,18 +1,18 @@
 import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Pressable, Platform } from 'react-native';
 
-import Colors from '@/constants/Colors';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
+import { colors, shadow } from '@/theme/tokens';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
   color: string;
 }) {
-  return <FontAwesome size={24} {...props} />;
+  return <FontAwesome size={22} {...props} />;
 }
 
 export default function TabLayout() {
@@ -20,11 +20,41 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.tint,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: '#A2A7B8',
         headerShown: useClientOnlyValue(false, true),
+        headerStyle: {
+          backgroundColor: '#F8F9FC',
+        },
+        headerTitleStyle: {
+          fontWeight: '600',
+          color: colors.textPrimary,
+          fontSize: 17,
+        },
+        headerShadowVisible: false,
         tabBarAllowFontScaling: true,
-        tabBarLabelStyle: { marginTop: 6, marginBottom: 4 },
-        tabBarStyle: { minHeight: 80, paddingTop: 6 },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '500',
+          marginBottom: Platform.OS === 'ios' ? 0 : 4,
+        },
+        tabBarStyle: {
+          height: Platform.OS === 'ios' ? 80 : 68,
+          paddingTop: 8,
+          paddingHorizontal: 8,
+          backgroundColor: colors.surface,
+          borderTopWidth: 0,
+          // Floating card shadow
+          shadowColor: colors.shadow,
+          shadowOffset: shadow.floating.shadowOffset,
+          shadowOpacity: shadow.floating.shadowOpacity,
+          shadowRadius: shadow.floating.shadowRadius,
+          elevation: 8,
+        },
+        tabBarItemStyle: {
+          borderRadius: 12,
+          marginHorizontal: 2,
+        },
       }}
     >
       <Tabs.Screen
@@ -42,9 +72,9 @@ export default function TabLayout() {
                 {({ pressed }) => (
                   <FontAwesome
                     name="info-circle"
-                    size={25}
-                    color={Colors.text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
+                    size={22}
+                    color={colors.ink700}
+                    style={{ marginRight: 16, opacity: pressed ? 0.5 : 1 }}
                   />
                 )}
               </Pressable>

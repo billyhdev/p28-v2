@@ -60,11 +60,11 @@ const styles = StyleSheet.create({
   tappable: {
     minHeight: minTouchTarget,
   },
-  pressed: { backgroundColor: colors.surfaceHighlight, opacity: 0.9 },
+  pressed: { backgroundColor: colors.surface100, opacity: 0.95 },
   left: { marginRight: spacing.sm },
   textWrap: { flex: 1 },
   title: {
-    ...typography.body,
+    ...typography.bodyStrong,
     color: colors.textPrimary,
   },
   subtitle: {

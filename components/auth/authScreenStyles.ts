@@ -21,33 +21,31 @@ export const authScreenStyles = StyleSheet.create({
     alignSelf: 'center',
   },
   header: {
-    marginBottom: spacing.xl * 1.5,
+    marginBottom: spacing.lg,
     alignItems: 'center',
   },
   title: {
     ...typography.h1,
-    fontSize: 32,
     color: colors.textPrimary,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 17,
-    lineHeight: 26,
-    color: colors.textPrimary,
-    opacity: 0.85,
+    ...typography.body,
+    color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: 22,
   },
   form: {
-    marginBottom: spacing.xl * 1.5,
+    marginBottom: spacing.lg,
   },
   inputSpacing: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   ctaButton: {
     alignSelf: 'stretch',
     minHeight: authScreen.ctaMinHeight,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   footer: {
     alignItems: 'center',

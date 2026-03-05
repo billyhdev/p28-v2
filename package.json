@@ -60,7 +60,8 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/lib/**/__tests__/**/*.test.ts",
-      "**/app/**/__tests__/**/*.test.{ts,tsx}"
+      "**/app/**/__tests__/**/*.test.{ts,tsx}",
+      "**/components/**/__tests__/**/*.test.{ts,tsx}"
     ],
     "modulePathIgnorePatterns": [
       "<rootDir>/node_modules/"

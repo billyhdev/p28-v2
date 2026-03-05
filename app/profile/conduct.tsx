@@ -62,14 +62,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
     paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.cardPadding,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 2,
   },
   title: {
     ...typography.h2,

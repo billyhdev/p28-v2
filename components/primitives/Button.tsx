@@ -16,7 +16,7 @@ export interface ButtonProps {
   style?: ViewStyle;
 }
 
-const springConfig = { damping: 15, stiffness: 300 };
+const springConfig = { damping: 18, stiffness: 320 };
 
 export function Button({
   title,
@@ -37,7 +37,8 @@ export function Button({
       ? styles.primary
       : variant === 'secondary'
         ? styles.secondary
-        : styles.text;
+        : styles.textVariant;
+
   return (
     <Animated.View
       style={[
@@ -52,7 +53,7 @@ export function Button({
         onPress={onPress}
         disabled={disabled}
         onPressIn={() => {
-          if (!disabled) scale.set(withSpring(0.97, springConfig));
+          if (!disabled) scale.set(withSpring(0.98, springConfig));
         }}
         onPressOut={() => {
           scale.set(withSpring(1, springConfig));
@@ -85,7 +86,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  disabled: { opacity: 0.5 },
+  disabled: { opacity: 0.45 },
   label: {
     ...typography.buttonLabel,
   },
@@ -94,10 +95,10 @@ const styles = StyleSheet.create({
     label: { color: colors.surface } as TextStyle,
   },
   secondary: {
-    container: { backgroundColor: colors.surfaceHighlight } as ViewStyle,
+    container: { backgroundColor: colors.brandSoft } as ViewStyle,
     label: { color: colors.primary } as TextStyle,
   },
-  text: {
+  textVariant: {
     container: { backgroundColor: 'transparent' } as ViewStyle,
     label: { color: colors.primary } as TextStyle,
   },

@@ -502,7 +502,7 @@ Custom design system primitives (from Design System Foundation):
 
 - **Bottom nav (member/guest):** Home, Groups, Messages, Profile; active state = primary color; labels always visible.
 - **Leader:** Same bottom nav plus clear entry to "Post" or "Create event" (FAB or nav item) opening compose flow.
-- **Admin:** Entry to "Org" or "Settings" from Profile or dedicated admin entry; then hierarchy (Org → Ministry → Group) as list or stepper.
+- **Admin:** Entry to org structure from Groups tab (when user is admin); then hierarchy (Org → Ministry → Group) as list or stepper.
 - **Back:** System back or explicit "Back" for flows (compose, event detail, thread); preserve scroll/state where possible.
 
 ### Additional Patterns
