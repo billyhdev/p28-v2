@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api, getUserFacingError, isApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
-import { authScreenStyles } from '@/components/auth/authScreenStyles';
-import { Avatar, Button, Input } from '@/components/primitives';
-import { authScreen, colors, radius, spacing, typography } from '@/theme/tokens';
+import { Avatar, Button, Input, ListItem } from '@/components/primitives';
+import { colors, radius, spacing, typography, shadow } from '@/theme/tokens';
 import type { Profile, ProfileUpdates } from '@/lib/api';
 
-/** Same options as onboarding preferred language field. Keys match lib/i18n language.* */
 const LANGUAGE_OPTIONS: {
   value: string;
   labelKey: 'language.english' | 'language.korean' | 'language.khmer';
@@ -22,7 +20,7 @@ const LANGUAGE_OPTIONS: {
   { value: 'ko', labelKey: 'language.korean' },
 ];
 
-function LanguageDropdown({
+function LanguageSelector({
   value,
   onChange,
   disabled,
@@ -33,29 +31,30 @@ function LanguageDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const selectedLabelKey = LANGUAGE_OPTIONS.find((o) => o.value === value)?.labelKey;
+  const selectedLabel = selectedLabelKey ? t(selectedLabelKey) : t('language.selectLanguage');
+
   return (
     <>
-      <Text style={styles.label}>{t('profile.preferredLanguage')}</Text>
+      <Text style={styles.fieldLabel}>{t('profile.preferredLanguage')}</Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t('profile.preferredLanguage')}
         accessibilityHint={t('profile.appLanguageHint')}
         disabled={disabled}
         onPress={() => setOpen(true)}
-        style={[styles.select, disabled ? styles.selectDisabled : null]}
+        style={({ pressed }) => [
+          styles.languageRow,
+          pressed && styles.pressed,
+          disabled && styles.disabled,
+        ]}
       >
-        <Text
-          style={[styles.selectText, !selectedLabelKey ? styles.placeholderText : null]}
-          numberOfLines={1}
-        >
-          {selectedLabelKey ? t(selectedLabelKey) : t('language.selectLanguage')}
+        <View style={styles.languageIconWrap}>
+          <Ionicons name="language-outline" size={20} color={colors.primary} />
+        </View>
+        <Text style={styles.languageLabel} numberOfLines={1}>
+          {selectedLabel}
         </Text>
-        <FontAwesome
-          name="chevron-down"
-          size={14}
-          color={colors.textSecondary}
-          style={styles.selectIcon}
-        />
+        <Ionicons name="chevron-forward" size={16} color={colors.ink300} />
       </Pressable>
 
       <Modal
@@ -78,21 +77,18 @@ function LanguageDropdown({
             {LANGUAGE_OPTIONS.map((opt) => {
               const active = opt.value === value;
               return (
-                <Pressable
+                <ListItem
                   key={opt.value}
+                  title={t(opt.labelKey)}
                   onPress={() => {
                     onChange(opt.value);
                     setOpen(false);
                   }}
-                  style={[styles.modalItem, active ? styles.modalItemActive : null]}
-                  accessibilityRole="button"
+                  iconName={active ? 'checkmark-circle' : 'ellipse-outline'}
+                  iconColor={active ? colors.primary : colors.ink300}
                   accessibilityLabel={t(opt.labelKey)}
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.modalItemText, active ? styles.modalItemTextActive : null]}>
-                    {t(opt.labelKey)}
-                  </Text>
-                </Pressable>
+                  accessibilityHint={`Select ${t(opt.labelKey)}`}
+                />
               );
             })}
           </ScrollView>
@@ -111,12 +107,12 @@ export default function ProfileEditScreen() {
   const [bio, setBio] = useState('');
   const [preferredLanguage, setPreferredLanguage] = useState<string | undefined>(undefined);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
-  /** Local file URI shown immediately after pick until upload completes. */
   const [localPreviewUri, setLocalPreviewUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const userId = session?.user?.id;
+
   useEffect(() => {
     if (!userId) return;
     api.data.getProfile(userId).then((r) => {
@@ -160,10 +156,8 @@ export default function ProfileEditScreen() {
     setIsSubmitting(false);
     if (typeof uploadResult === 'string') {
       setAvatarUrl(uploadResult);
-      // Keep local preview visible; remote URL may not render yet (e.g. cache/RLS). Cleared on next load.
     } else {
       setError(getUserFacingError(uploadResult));
-      // Keep localPreviewUri so the selected image stays visible despite upload failure
     }
   };
 
@@ -196,9 +190,15 @@ export default function ProfileEditScreen() {
   if (!userId) return null;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.avatarSection}>
-        <View style={styles.avatarWrapper}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Avatar card */}
+      <View style={styles.avatarCard}>
+        <View style={styles.avatarInner}>
           <Avatar
             source={
               localPreviewUri ? { uri: localPreviewUri } : avatarUrl ? { uri: avatarUrl } : null
@@ -211,50 +211,61 @@ export default function ProfileEditScreen() {
           <Pressable
             onPress={pickImage}
             disabled={isSubmitting}
-            style={({ pressed }) => [
-              styles.editPhotoButton,
-              pressed && styles.editPhotoButtonPressed,
-            ]}
+            style={({ pressed }) => [styles.editPhotoBtn, pressed && styles.editPhotoBtnPressed]}
             accessibilityLabel={t('profile.changePhoto')}
             accessibilityHint={t('profile.changePhotoHint')}
           >
-            <FontAwesome name="pencil" size={14} color={colors.textPrimary} />
+            <Ionicons name="pencil" size={14} color={colors.textPrimary} />
           </Pressable>
         </View>
+        <Text style={styles.changePhotoText}>{t('profile.changePhoto')}</Text>
       </View>
-      <Input
-        label={t('profile.displayName')}
-        value={displayName}
-        onChangeText={setDisplayName}
-        placeholder={t('profile.displayNamePlaceholder')}
-        inputStyle={styles.shortInput}
-        accessibilityLabel={t('profile.displayName')}
-      />
-      <Input
-        label={t('profile.bio')}
-        value={bio}
-        onChangeText={setBio}
-        placeholder={t('profile.bioPlaceholderEdit')}
-        multiline
-        numberOfLines={12}
-        inputStyle={styles.bioInput}
-        textAlignVertical="top"
-        accessibilityLabel={t('profile.bio')}
-      />
 
-      <View style={authScreenStyles.inputSpacing}>
-        <LanguageDropdown
+      {/* Form fields */}
+      <View style={styles.section}>
+        <Input
+          label={t('profile.displayName')}
+          value={displayName}
+          onChangeText={setDisplayName}
+          placeholder={t('profile.displayNamePlaceholder')}
+          accessibilityLabel={t('profile.displayName')}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <Input
+          label={t('profile.bio')}
+          value={bio}
+          onChangeText={setBio}
+          placeholder={t('profile.bioPlaceholderEdit')}
+          multiline
+          numberOfLines={5}
+          inputStyle={styles.bioInput}
+          textAlignVertical="top"
+          accessibilityLabel={t('profile.bio')}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <LanguageSelector
           value={preferredLanguage ?? null}
           onChange={setPreferredLanguage}
           disabled={isSubmitting}
         />
       </View>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+
       <Button
         title={isSubmitting ? t('profile.saving') : t('common.save')}
         onPress={handleSave}
         disabled={isSubmitting || !hasChanges}
-        style={authScreenStyles.ctaButton}
+        fullWidth
+        style={styles.saveBtn}
         accessibilityLabel={t('common.save')}
         accessibilityHint={hasChanges ? t('profile.saveHint') : t('profile.saveHintDisabled')}
       />
@@ -264,48 +275,114 @@ export default function ProfileEditScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl },
-  avatarSection: { alignItems: 'center', marginBottom: spacing.lg },
-  avatarWrapper: { position: 'relative' as const },
-  editPhotoButton: {
-    position: 'absolute' as const,
-    top: 0,
-    right: 0,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: 22,
-    padding: 8,
+  content: {
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.lg,
+    paddingBottom: 40,
+  },
+
+  // Avatar card
+  avatarCard: {
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    shadowColor: colors.shadow,
+    shadowOffset: shadow.cardSoft.shadowOffset,
+    shadowOpacity: shadow.cardSoft.shadowOpacity,
+    shadowRadius: shadow.cardSoft.shadowRadius,
+    elevation: 2,
+  },
+  avatarInner: {
+    position: 'relative' as const,
+    marginBottom: spacing.sm,
+  },
+  editPhotoBtn: {
+    position: 'absolute' as const,
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.brandSoft,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 2,
   },
-  editPhotoButtonPressed: { opacity: 0.8 },
-  label: { ...typography.label, color: colors.textPrimary, marginBottom: spacing.xs },
-  select: {
+  editPhotoBtnPressed: { opacity: 0.75 },
+  changePhotoText: {
+    ...typography.caption,
+    color: colors.primary,
+  },
+
+  // Form sections
+  section: {
+    marginBottom: spacing.md,
+  },
+  fieldLabel: {
+    ...typography.label,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+
+  // Language selector row
+  languageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
     backgroundColor: colors.surface,
     borderRadius: radius.button,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     minHeight: 48,
   },
-  selectDisabled: { opacity: 0.7 },
-  selectText: { ...typography.body, color: colors.textPrimary, flex: 1 },
-  selectIcon: { marginLeft: spacing.sm },
-  placeholderText: { color: '#9DA3B3' },
-  shortInput: { minHeight: authScreen.ctaMinHeight },
-  bioInput: { minHeight: 300, paddingTop: spacing.sm },
+  pressed: { opacity: 0.85 },
+  disabled: { opacity: 0.6 },
+  languageIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.brandSoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
+  },
+  languageLabel: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+
+  // Bio
+  bioInput: {
+    minHeight: 120,
+    paddingTop: 12,
+  },
+
+  // Error
+  errorBanner: {
+    backgroundColor: colors.accentSoft,
+    padding: spacing.sm,
+    borderRadius: 10,
+    marginBottom: spacing.md,
+  },
+  errorText: { ...typography.caption, color: colors.error },
+
+  // Save button
+  saveBtn: {
+    marginTop: spacing.sm,
+    minHeight: 48,
+  },
+
+  // Modal
   modalContainer: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     padding: spacing.lg,
@@ -317,20 +394,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalTitle: { ...typography.h2, color: colors.textPrimary },
-  modalList: { padding: spacing.lg, gap: spacing.sm },
-  modalItem: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.button,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  modalItemActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.brandSoft,
-  },
-  modalItemText: { ...typography.body, color: colors.textPrimary },
-  modalItemTextActive: { color: colors.primary, fontWeight: '600' as const },
-  errorText: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
+  modalList: { padding: spacing.lg },
 });

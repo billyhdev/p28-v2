@@ -1,48 +1,90 @@
 import React from 'react';
 import { Pressable, View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, typography, minTouchTarget } from '@/theme/tokens';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { colors, spacing, typography } from '@/theme/tokens';
 
 export interface ListItemProps {
   title: string;
   subtitle?: string;
   onPress?: () => void;
   left?: React.ReactNode;
+  /** Ionicons icon name rendered on the left (overridden by `left` if both provided) */
+  iconName?: React.ComponentProps<typeof Ionicons>['name'];
+  iconColor?: string;
   right?: React.ReactNode;
+  /** Show a chevron-right indicator on the far right */
+  showChevron?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }
+
+const springConfig = { damping: 20, stiffness: 300 };
 
 export function ListItem({
   title,
   subtitle,
   onPress,
   left,
+  iconName,
+  iconColor,
   right,
+  showChevron,
   accessibilityLabel,
   accessibilityHint,
 }: ListItemProps) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+
+  const leftSlot =
+    left ??
+    (iconName ? (
+      <View style={styles.iconWrap}>
+        <Ionicons name={iconName} size={20} color={iconColor ?? colors.primary} />
+      </View>
+    ) : null);
+
+  const rightSlot = (
+    <View style={styles.rightGroup}>
+      {right ?? null}
+      {showChevron ? (
+        <Ionicons name="chevron-forward" size={16} color={colors.ink300} style={styles.chevron} />
+      ) : null}
+    </View>
+  );
+
   const content = (
     <>
-      {left ? <View style={styles.left}>{left}</View> : null}
+      {leftSlot ? <View style={styles.left}>{leftSlot}</View> : null}
       <View style={styles.textWrap}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        <Text style={styles.title} numberOfLines={2}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
-      {right ? <View style={styles.right}>{right}</View> : null}
+      {right || showChevron ? rightSlot : null}
     </>
   );
 
   if (onPress) {
     return (
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.row, styles.tappable, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? title}
-        accessibilityHint={accessibilityHint}
-      >
-        {content}
-      </Pressable>
+      <Animated.View style={animStyle}>
+        <Pressable
+          onPress={onPress}
+          onPressIn={() => scale.set(withSpring(0.98, springConfig))}
+          onPressOut={() => scale.set(withSpring(1, springConfig))}
+          style={styles.row}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel ?? title}
+          accessibilityHint={accessibilityHint}
+        >
+          {content}
+        </Pressable>
+      </Animated.View>
     );
   }
 
@@ -53,15 +95,18 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: minTouchTarget,
+    minHeight: 56,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  tappable: {
-    minHeight: minTouchTarget,
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  pressed: { backgroundColor: colors.surface100, opacity: 0.95 },
-  left: { marginRight: spacing.sm },
+  left: { marginRight: spacing.md },
   textWrap: { flex: 1 },
   title: {
     ...typography.bodyStrong,
@@ -70,7 +115,14 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.caption,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
+    marginTop: 2,
   },
-  right: { marginLeft: spacing.sm },
+  rightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.sm,
+  },
+  chevron: {
+    marginLeft: 4,
+  },
 });

@@ -1,13 +1,13 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Input } from '@/components/primitives';
-import { OrgStructureRow } from '@/components/patterns/OrgStructureRow';
+import { IconButton } from '@/components/primitives';
+import { AddSheet, EmptyState, OrgStructureRow, SectionHeader } from '@/components/patterns';
 import { useAuth } from '@/hooks/useAuth';
 import { api, getUserFacingError, isApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
+import { colors, spacing, typography } from '@/theme/tokens';
 import type { Ministry, Organization } from '@/lib/api';
 
 export default function AdminOrgDetailScreen() {
@@ -15,14 +15,19 @@ export default function AdminOrgDetailScreen() {
   const { orgId } = useLocalSearchParams<{ orgId: string }>();
   const router = useRouter();
   const userId = session?.user?.id;
+
   const [org, setOrg] = useState<Organization | null>(null);
   const [ministries, setMinistries] = useState<Ministry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [addMinistryName, setAddMinistryName] = useState('');
+
+  // Add ministry sheet
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
   const [addingMinistry, setAddingMinistry] = useState(false);
+
+  // Rename org sheet
+  const [renameSheetVisible, setRenameSheetVisible] = useState(false);
+  const [renamingSaving, setRenamingSaving] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -40,7 +45,6 @@ export default function AdminOrgDetailScreen() {
           return;
         }
         setOrg(o);
-        setEditName(o.name);
         setError(null);
       });
       api.data.getMinistriesForOrg(orgId).then((r) => {
@@ -55,32 +59,39 @@ export default function AdminOrgDetailScreen() {
     }, [orgId, userId])
   );
 
-  const handleSaveOrg = useCallback(async () => {
-    if (!orgId || !editName.trim()) return;
-    setSaving(true);
-    setError(null);
-    const result = await api.data.updateOrganization(orgId, { name: editName.trim() });
-    setSaving(false);
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      setOrg(result);
-    }
-  }, [orgId, editName]);
+  const handleRenameOrg = useCallback(
+    async (name: string) => {
+      if (!orgId) return;
+      setRenamingSaving(true);
+      setError(null);
+      const result = await api.data.updateOrganization(orgId, { name });
+      setRenamingSaving(false);
+      if (isApiError(result)) {
+        setError(getUserFacingError(result));
+      } else {
+        setOrg(result);
+        setRenameSheetVisible(false);
+      }
+    },
+    [orgId]
+  );
 
-  const handleAddMinistry = useCallback(async () => {
-    if (!orgId || !addMinistryName.trim()) return;
-    setAddingMinistry(true);
-    setError(null);
-    const result = await api.data.createMinistry(orgId, { name: addMinistryName.trim() });
-    setAddingMinistry(false);
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      setAddMinistryName('');
-      setMinistries((prev) => [...prev, result].sort((a, b) => a.name.localeCompare(b.name)));
-    }
-  }, [orgId, addMinistryName]);
+  const handleAddMinistry = useCallback(
+    async (name: string) => {
+      if (!orgId) return;
+      setAddingMinistry(true);
+      setError(null);
+      const result = await api.data.createMinistry(orgId, { name });
+      setAddingMinistry(false);
+      if (isApiError(result)) {
+        setError(getUserFacingError(result));
+      } else {
+        setAddSheetVisible(false);
+        setMinistries((prev) => [...prev, result].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+    },
+    [orgId]
+  );
 
   if (loading && !org) {
     return (
@@ -103,106 +114,114 @@ export default function AdminOrgDetailScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      contentInsetAdjustmentBehavior="automatic"
-      showsVerticalScrollIndicator={false}
-    >
-      {error ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
+    <>
+      {/* Dynamic header: org name as title + edit icon */}
+      <Stack.Screen
+        options={{
+          title: '',
+          headerRight: () => (
+            <IconButton
+              name="pencil-outline"
+              onPress={() => setRenameSheetVisible(true)}
+              accessibilityLabel={t('admin.renameOrg')}
+              accessibilityHint="Rename this organization"
+              style={styles.headerBtn}
+            />
+          ),
+        }}
+      />
 
-      <View style={styles.card}>
-        <Input
-          label={t('admin.orgName')}
-          placeholder={t('admin.orgNamePlaceholder')}
-          value={editName}
-          onChangeText={setEditName}
-          editable={!saving}
-          accessibilityLabel={t('admin.orgName')}
-        />
-        <Button
-          title={t('common.save')}
-          onPress={handleSaveOrg}
-          disabled={!editName.trim() || saving || editName.trim() === org?.name}
-          style={styles.saveButton}
-        />
-      </View>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Page title */}
+        <Text style={styles.pageTitle} numberOfLines={2}>
+          {org?.name ?? ''}
+        </Text>
 
-      <Text style={styles.sectionTitle}>{t('admin.ministries')}</Text>
-      <View style={styles.addMinistryRow}>
-        <Input
-          label={t('admin.addMinistry')}
-          placeholder={t('admin.ministryNamePlaceholder')}
-          value={addMinistryName}
-          onChangeText={setAddMinistryName}
-          editable={!addingMinistry}
-          containerStyle={styles.addMinistryInput}
-        />
-        <Button
-          title={t('common.save')}
-          onPress={handleAddMinistry}
-          disabled={!addMinistryName.trim() || addingMinistry}
-          style={styles.addMinistryButton}
-        />
-      </View>
+        {/* Error banner */}
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
-      {ministries.length === 0 ? (
-        <Text style={styles.emptyText}>{t('admin.noMinistriesSubtitle')}</Text>
-      ) : (
-        ministries.map((m) => (
-          <OrgStructureRow
-            key={m.id}
-            name={m.name}
-            type="ministry"
-            onPress={() => router.push(`/admin/${orgId}/ministry/${m.id}`)}
+        {/* Ministries section */}
+        <SectionHeader
+          title={t('admin.ministries')}
+          actionLabel={`+ ${t('admin.addMinistry')}`}
+          onAction={() => setAddSheetVisible(true)}
+        />
+
+        {ministries.length === 0 ? (
+          <EmptyState
+            iconName="compass-outline"
+            title={t('admin.noMinistries')}
+            subtitle={t('admin.noMinistriesSubtitle')}
+            actionLabel={t('admin.addMinistry')}
+            onAction={() => setAddSheetVisible(true)}
           />
-        ))
-      )}
-    </ScrollView>
+        ) : (
+          ministries.map((m) => (
+            <OrgStructureRow
+              key={m.id}
+              name={m.name}
+              type="ministry"
+              onPress={() => router.push(`/admin/${orgId}/ministry/${m.id}`)}
+            />
+          ))
+        )}
+      </ScrollView>
+
+      {/* Add Ministry Sheet */}
+      <AddSheet
+        visible={addSheetVisible}
+        title={t('admin.addNewMinistry')}
+        inputLabel={t('admin.ministryName')}
+        placeholder={t('admin.ministryNamePlaceholder')}
+        saving={addingMinistry}
+        onSave={handleAddMinistry}
+        onDismiss={() => setAddSheetVisible(false)}
+      />
+
+      {/* Rename Org Sheet */}
+      <AddSheet
+        visible={renameSheetVisible}
+        title={t('admin.renameOrg')}
+        inputLabel={t('admin.orgName')}
+        placeholder={org?.name ?? t('admin.orgNamePlaceholder')}
+        saving={renamingSaving}
+        onSave={handleRenameOrg}
+        onDismiss={() => setRenameSheetVisible(false)}
+      />
+    </>
   );
 }
-
-const cardStyle = {
-  backgroundColor: colors.surface,
-  borderRadius: radius.card,
-  padding: spacing.cardPadding,
-  marginBottom: spacing.cardGap,
-  shadowColor: colors.shadow,
-  shadowOffset: shadow.cardSoft.shadowOffset,
-  shadowOpacity: shadow.cardSoft.shadowOpacity,
-  shadowRadius: shadow.cardSoft.shadowRadius,
-  elevation: 2,
-};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollContent: {
     paddingHorizontal: spacing.screenHorizontal,
-    paddingTop: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
   },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  card: { ...cardStyle },
-  saveButton: { marginTop: spacing.sm },
-  sectionTitle: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.sm },
-  addMinistryRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+  pageTitle: {
+    ...typography.h2,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
   },
-  addMinistryInput: { flex: 1 },
-  addMinistryButton: { marginBottom: spacing.sm },
-  emptyText: { ...typography.body, color: colors.textSecondary },
+  headerBtn: {
+    marginRight: spacing.xs,
+  },
   errorBanner: {
     backgroundColor: colors.accentSoft,
     padding: spacing.sm,
     marginBottom: spacing.sm,
-    borderRadius: radius.button,
+    borderRadius: 10,
   },
-  errorText: { ...typography.body, color: colors.error },
+  errorText: { ...typography.caption, color: colors.error },
 });

@@ -10,6 +10,8 @@ export interface ButtonProps {
   onPress: () => void;
   variant?: ButtonVariant;
   disabled?: boolean;
+  /** Stretches the button to fill its container width */
+  fullWidth?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
   /** Optional style for the button container (e.g. alignSelf: 'stretch', minHeight for larger CTAs). */
@@ -23,6 +25,7 @@ export function Button({
   onPress,
   variant = 'primary',
   disabled = false,
+  fullWidth = false,
   accessibilityLabel,
   accessibilityHint,
   style: styleProp,
@@ -44,6 +47,7 @@ export function Button({
       style={[
         styles.base,
         variantStyle.container,
+        fullWidth && styles.fullWidth,
         disabled && styles.disabled,
         animatedStyle,
         styleProp,
@@ -87,6 +91,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   disabled: { opacity: 0.45 },
+  fullWidth: { alignSelf: 'stretch' as const },
   label: {
     ...typography.buttonLabel,
   },

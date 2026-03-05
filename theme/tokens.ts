@@ -12,7 +12,9 @@
 
 export const colors = {
   // Neutrals
-  background: '#F8F9FC',       // surface50 — screen background
+  background: '#F4F1FC',       // slightly lavender-tinted screen background (toward gradient start)
+  gradientStart: '#F1ECFF',    // screen gradient start (lavender)
+  gradientEnd: '#EFF3FA',      // screen gradient end (cool gray)
   surface: '#FFFFFF',           // surface0 — card / panel surface
   surfaceHighlight: '#EEF1F8', // surfaceTint — pressed state, input border
   surface100: '#F1F3F8',       // slightly darker tint

@@ -1,23 +1,30 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Input } from '@/components/primitives';
-import { OrgStructureRow } from '@/components/patterns/OrgStructureRow';
+import { IconButton } from '@/components/primitives';
+import { AddSheet, EmptyState, OrgStructureRow, SectionHeader } from '@/components/patterns';
 import { api, getUserFacingError, isApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
+import { colors, spacing, typography } from '@/theme/tokens';
 import type { Group, Ministry } from '@/lib/api';
 
 export default function AdminMinistryDetailScreen() {
   const { orgId, ministryId } = useLocalSearchParams<{ orgId: string; ministryId: string }>();
   const router = useRouter();
+
   const [ministry, setMinistry] = useState<Ministry | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [saving, setSaving] = useState(false);
+
+  // Add group sheet
+  const [addSheetVisible, setAddSheetVisible] = useState(false);
+  const [addingGroup, setAddingGroup] = useState(false);
+
+  // Rename ministry sheet
+  const [renameSheetVisible, setRenameSheetVisible] = useState(false);
+  const [renamingSaving, setRenamingSaving] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -32,7 +39,6 @@ export default function AdminMinistryDetailScreen() {
         const m = (r ?? []).find((x) => x.id === ministryId);
         if (m) {
           setMinistry(m);
-          setEditName(m.name);
         } else {
           setMinistry(null);
           setError('Ministry not found');
@@ -50,18 +56,39 @@ export default function AdminMinistryDetailScreen() {
     }, [orgId, ministryId])
   );
 
-  const handleSaveMinistry = useCallback(async () => {
-    if (!ministryId || !editName.trim()) return;
-    setSaving(true);
-    setError(null);
-    const result = await api.data.updateMinistry(ministryId, { name: editName.trim() });
-    setSaving(false);
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      setMinistry(result);
-    }
-  }, [ministryId, editName]);
+  const handleRenameMinistry = useCallback(
+    async (name: string) => {
+      if (!ministryId) return;
+      setRenamingSaving(true);
+      setError(null);
+      const result = await api.data.updateMinistry(ministryId, { name });
+      setRenamingSaving(false);
+      if (isApiError(result)) {
+        setError(getUserFacingError(result));
+      } else {
+        setMinistry(result);
+        setRenameSheetVisible(false);
+      }
+    },
+    [ministryId]
+  );
+
+  const handleAddGroup = useCallback(
+    async (name: string) => {
+      if (!ministryId) return;
+      setAddingGroup(true);
+      setError(null);
+      const result = await api.data.createGroup(ministryId, { name });
+      setAddingGroup(false);
+      if (isApiError(result)) {
+        setError(getUserFacingError(result));
+      } else {
+        setAddSheetVisible(false);
+        setGroups((prev) => [...prev, result].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+    },
+    [ministryId]
+  );
 
   if (loading && !ministry) {
     return (
@@ -84,90 +111,114 @@ export default function AdminMinistryDetailScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      contentInsetAdjustmentBehavior="automatic"
-      showsVerticalScrollIndicator={false}
-    >
-      {error ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.card}>
-        <Input
-          label={t('admin.ministryName')}
-          placeholder={t('admin.ministryNamePlaceholder')}
-          value={editName}
-          onChangeText={setEditName}
-          editable={!saving}
-          accessibilityLabel={t('admin.ministryName')}
-        />
-        <Button
-          title={t('common.save')}
-          onPress={handleSaveMinistry}
-          disabled={!editName.trim() || saving || editName.trim() === ministry?.name}
-          style={styles.saveButton}
-        />
-      </View>
-
-      <Text style={styles.sectionTitle}>{t('admin.groups')}</Text>
-      <Button
-        title={t('admin.addGroup')}
-        onPress={() => router.push(`/admin/${orgId}/ministry/${ministryId}/group/new`)}
-        variant="secondary"
-        style={styles.addGroupButton}
-        accessibilityLabel={t('admin.addGroup')}
-        accessibilityHint={t('admin.groupNamePlaceholder')}
+    <>
+      {/* Dynamic header: ministry name as title + edit icon */}
+      <Stack.Screen
+        options={{
+          title: '',
+          headerRight: () => (
+            <IconButton
+              name="pencil-outline"
+              onPress={() => setRenameSheetVisible(true)}
+              accessibilityLabel={t('admin.renameMinistry')}
+              accessibilityHint="Rename this ministry"
+              style={styles.headerBtn}
+            />
+          ),
+        }}
       />
-      {groups.length === 0 ? (
-        <Text style={styles.emptyText}>{t('admin.noGroupsSubtitle')}</Text>
-      ) : (
-        groups.map((g) => (
-          <OrgStructureRow
-            key={g.id}
-            name={g.name}
-            type="group"
-            onPress={() => router.push(`/admin/${orgId}/ministry/${ministryId}/group/${g.id}`)}
+
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Page title */}
+        <Text style={styles.pageTitle} numberOfLines={2}>
+          {ministry?.name ?? ''}
+        </Text>
+
+        {/* Error banner */}
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        {/* Groups section */}
+        <SectionHeader
+          title={t('admin.smallGroups')}
+          actionLabel={`+ ${t('admin.addGroup')}`}
+          onAction={() => setAddSheetVisible(true)}
+        />
+
+        {groups.length === 0 ? (
+          <EmptyState
+            iconName="people-outline"
+            title={t('admin.noGroupsSubtitle')}
+            subtitle="Create a small group to connect people within this ministry."
+            actionLabel={t('admin.addGroup')}
+            onAction={() => setAddSheetVisible(true)}
           />
-        ))
-      )}
-    </ScrollView>
+        ) : (
+          groups.map((g) => (
+            <OrgStructureRow
+              key={g.id}
+              name={g.name}
+              type="group"
+              onPress={() => router.push(`/admin/${orgId}/ministry/${ministryId}/group/${g.id}`)}
+            />
+          ))
+        )}
+      </ScrollView>
+
+      {/* Add Group Sheet */}
+      <AddSheet
+        visible={addSheetVisible}
+        title={t('admin.addNewGroup')}
+        inputLabel={t('admin.groupName')}
+        placeholder={t('admin.groupNamePlaceholder')}
+        saving={addingGroup}
+        onSave={handleAddGroup}
+        onDismiss={() => setAddSheetVisible(false)}
+      />
+
+      {/* Rename Ministry Sheet */}
+      <AddSheet
+        visible={renameSheetVisible}
+        title={t('admin.renameMinistry')}
+        inputLabel={t('admin.ministryName')}
+        placeholder={ministry?.name ?? t('admin.ministryNamePlaceholder')}
+        saving={renamingSaving}
+        onSave={handleRenameMinistry}
+        onDismiss={() => setRenameSheetVisible(false)}
+      />
+    </>
   );
 }
-
-const cardStyle = {
-  backgroundColor: colors.surface,
-  borderRadius: radius.card,
-  padding: spacing.cardPadding,
-  marginBottom: spacing.cardGap,
-  shadowColor: colors.shadow,
-  shadowOffset: shadow.cardSoft.shadowOffset,
-  shadowOpacity: shadow.cardSoft.shadowOpacity,
-  shadowRadius: shadow.cardSoft.shadowRadius,
-  elevation: 2,
-};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollContent: {
     paddingHorizontal: spacing.screenHorizontal,
-    paddingTop: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
   },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  card: { ...cardStyle },
-  saveButton: { marginTop: spacing.sm },
-  sectionTitle: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.sm },
-  addGroupButton: { marginBottom: spacing.sm },
-  emptyText: { ...typography.body, color: colors.textSecondary },
+  pageTitle: {
+    ...typography.h2,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  headerBtn: {
+    marginRight: spacing.xs,
+  },
   errorBanner: {
     backgroundColor: colors.accentSoft,
     padding: spacing.sm,
     marginBottom: spacing.sm,
-    borderRadius: radius.button,
+    borderRadius: 10,
   },
-  errorText: { ...typography.body, color: colors.error },
+  errorText: { ...typography.caption, color: colors.error },
 });

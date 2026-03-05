@@ -22,14 +22,17 @@ describe('OrgStructureRow contract', () => {
     expect(source).toMatch(/accessibilityHint\?/);
   });
 
-  it('has type labels for org, ministry, group', () => {
-    expect(source).toMatch(/org.*Org/);
-    expect(source).toMatch(/ministry.*Ministry/);
-    expect(source).toMatch(/group.*Group/);
+  it('has type config for org, ministry, group types', () => {
+    expect(source).toContain("'org'");
+    expect(source).toContain("'ministry'");
+    expect(source).toContain("'group'");
+    expect(source).toContain('Organization');
+    expect(source).toContain('Ministry');
+    expect(source).toContain('Group');
   });
 
-  it('uses ListItem and Badge from primitives', () => {
-    expect(source).toContain('ListItem');
-    expect(source).toContain('Badge');
+  it('uses Ionicons for icons and shows a chevron', () => {
+    expect(source).toContain('Ionicons');
+    expect(source).toContain('chevron-forward');
   });
 });

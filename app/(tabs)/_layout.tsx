@@ -1,22 +1,21 @@
 import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Link, Tabs } from 'expo-router';
 import { Pressable, Platform } from 'react-native';
 
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
-import { colors, shadow } from '@/theme/tokens';
+import { colors, shadow, typography } from '@/theme/tokens';
 
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={22} {...props} />;
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+function TabBarIcon({ name, color }: { name: IoniconsName; color: string }) {
+  return <Ionicons size={22} name={name} color={color} />;
 }
 
 export default function TabLayout() {
-  useLocale(); // Re-render when locale changes so tab labels update
+  useLocale();
   return (
     <Tabs
       screenOptions={{
@@ -24,12 +23,11 @@ export default function TabLayout() {
         tabBarInactiveTintColor: '#A2A7B8',
         headerShown: useClientOnlyValue(false, true),
         headerStyle: {
-          backgroundColor: '#F8F9FC',
+          backgroundColor: colors.background,
         },
         headerTitleStyle: {
-          fontWeight: '600',
+          ...typography.title,
           color: colors.textPrimary,
-          fontSize: 17,
         },
         headerShadowVisible: false,
         tabBarAllowFontScaling: true,
@@ -44,7 +42,6 @@ export default function TabLayout() {
           paddingHorizontal: 8,
           backgroundColor: colors.surface,
           borderTopWidth: 0,
-          // Floating card shadow
           shadowColor: colors.shadow,
           shadowOffset: shadow.floating.shadowOffset,
           shadowOpacity: shadow.floating.shadowOpacity,
@@ -61,7 +58,9 @@ export default function TabLayout() {
         name="index"
         options={{
           title: t('tabs.home'),
-          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? 'home' : 'home-outline'} color={color} />
+          ),
           tabBarAccessibilityLabel: t('tabs.home'),
           headerRight: () => (
             <Link href="/modal" asChild>
@@ -70,9 +69,9 @@ export default function TabLayout() {
                 accessibilityHint={t('tabs.appInfoHint')}
               >
                 {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={22}
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={24}
                     color={colors.ink700}
                     style={{ marginRight: 16, opacity: pressed ? 0.5 : 1 }}
                   />
@@ -86,7 +85,9 @@ export default function TabLayout() {
         name="groups"
         options={{
           title: t('tabs.groups'),
-          tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? 'people' : 'people-outline'} color={color} />
+          ),
           tabBarAccessibilityLabel: t('tabs.groups'),
         }}
       />
@@ -94,7 +95,9 @@ export default function TabLayout() {
         name="messages"
         options={{
           title: t('tabs.messages'),
-          tabBarIcon: ({ color }) => <TabBarIcon name="comments" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? 'chatbubbles' : 'chatbubbles-outline'} color={color} />
+          ),
           tabBarAccessibilityLabel: t('tabs.messages'),
         }}
       />
@@ -102,7 +105,9 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: t('tabs.profile'),
-          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name={focused ? 'person' : 'person-outline'} color={color} />
+          ),
           tabBarAccessibilityLabel: t('tabs.profile'),
         }}
       />
