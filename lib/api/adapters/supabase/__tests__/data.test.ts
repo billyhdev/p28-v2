@@ -4,13 +4,7 @@
  * Story 2.2: Unit tests for org/ministry/group operations.
  */
 import type { ApiError } from '../../../contracts/errors';
-import type {
-  Group,
-  Ministry,
-  NotificationPreferences,
-  Organization,
-  Profile,
-} from '../../../contracts/dto';
+import type { Group, NotificationPreferences, Profile } from '../../../contracts/dto';
 import { isApiError } from '../../../contracts/guards';
 import { createSupabaseDataAdapter } from '../data';
 
@@ -465,13 +459,19 @@ describe('Supabase data adapter', () => {
     });
   });
 
-  describe('Organization structure (Story 2.2)', () => {
-    describe('getOrganizations', () => {
-      it('returns Organization[] on success', async () => {
+  describe('Groups (simplified MVP)', () => {
+    describe('getGroups', () => {
+      it('returns Group[] on success', async () => {
         const rows = [
           {
-            id: 'org-1',
-            name: 'Church A',
+            id: 'grp-1',
+            type: 'forum',
+            name: 'Discussion Forum',
+            description: null,
+            banner_image_url: null,
+            preferred_language: 'en',
+            country: 'Online',
+            created_by_user_id: 'user-1',
             created_at: '2024-01-01T00:00:00Z',
             updated_at: '2024-01-01T00:00:00Z',
           },
@@ -484,250 +484,14 @@ describe('Supabase data adapter', () => {
           }),
         })) as unknown as GetClient;
         const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.getOrganizations();
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) {
-          const list = result as Organization[];
-          expect(list).toHaveLength(1);
-          expect(list[0].id).toBe('org-1');
-          expect(list[0].name).toBe('Church A');
-          expect(list[0].createdAt).toBe('2024-01-01T00:00:00Z');
-        }
-      });
-
-      it('returns ApiError when Supabase errors', async () => {
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              order: jest.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.getOrganizations();
-        expect(isApiError(result)).toBe(true);
-        if (isApiError(result)) expect((result as ApiError).message).toBe('DB error');
-      });
-    });
-
-    describe('createOrganization', () => {
-      it('returns Organization on success', async () => {
-        const row = {
-          id: 'org-new',
-          name: 'New Org',
-          created_at: '2024-01-02T00:00:00Z',
-          updated_at: '2024-01-02T00:00:00Z',
-        };
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({ data: row, error: null }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createOrganization({ name: 'New Org' });
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) {
-          expect((result as Organization).id).toBe('org-new');
-          expect((result as Organization).name).toBe('New Org');
-        }
-      });
-
-      it('returns ApiError when name is empty', async () => {
-        const getClient = (() => ({ from: jest.fn() })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createOrganization({ name: '' });
-        expect(isApiError(result)).toBe(true);
-        if (isApiError(result)) {
-          expect((result as ApiError).message).toBe('Organization name is required');
-          expect((result as ApiError).code).toBe('VALIDATION_ERROR');
-        }
-      });
-
-      it('returns ApiError when name is whitespace only', async () => {
-        const getClient = (() => ({ from: jest.fn() })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createOrganization({ name: '   ' });
-        expect(isApiError(result)).toBe(true);
-      });
-
-      it('returns ApiError when insert fails', async () => {
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({
-                  data: null,
-                  error: { message: 'Insert failed' },
-                }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createOrganization({ name: 'X' });
-        expect(isApiError(result)).toBe(true);
-        if (isApiError(result)) expect((result as ApiError).message).toBe('Insert failed');
-      });
-    });
-
-    describe('updateOrganization', () => {
-      it('returns Organization on success', async () => {
-        const row = {
-          id: 'org-1',
-          name: 'Updated Name',
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-02T00:00:00Z',
-        };
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            update: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                select: jest.fn().mockReturnValue({
-                  single: jest.fn().mockResolvedValue({ data: row, error: null }),
-                }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.updateOrganization('org-1', { name: 'Updated Name' });
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) {
-          expect((result as Organization).name).toBe('Updated Name');
-        }
-      });
-    });
-
-    describe('getMinistriesForOrg', () => {
-      it('returns Ministry[] on success', async () => {
-        const rows = [
-          {
-            id: 'min-1',
-            organization_id: 'org-1',
-            name: 'Youth',
-            created_at: '2024-01-01T00:00:00Z',
-            updated_at: '2024-01-01T00:00:00Z',
-          },
-        ];
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                order: jest.fn().mockResolvedValue({ data: rows, error: null }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.getMinistriesForOrg('org-1');
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) {
-          const list = result as Ministry[];
-          expect(list).toHaveLength(1);
-          expect(list[0].organizationId).toBe('org-1');
-          expect(list[0].name).toBe('Youth');
-        }
-      });
-    });
-
-    describe('createMinistry', () => {
-      it('returns Ministry on success', async () => {
-        const row = {
-          id: 'min-new',
-          organization_id: 'org-1',
-          name: 'New Ministry',
-          created_at: '2024-01-02T00:00:00Z',
-          updated_at: '2024-01-02T00:00:00Z',
-        };
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({ data: row, error: null }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createMinistry('org-1', { name: 'New Ministry' });
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) {
-          expect((result as Ministry).organizationId).toBe('org-1');
-          expect((result as Ministry).name).toBe('New Ministry');
-        }
-      });
-
-      it('returns ApiError when name is empty', async () => {
-        const getClient = (() => ({ from: jest.fn() })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createMinistry('org-1', { name: '' });
-        expect(isApiError(result)).toBe(true);
-        if (isApiError(result)) {
-          expect((result as ApiError).message).toBe('Ministry name is required');
-          expect((result as ApiError).code).toBe('VALIDATION_ERROR');
-        }
-      });
-
-      it('returns friendly message for duplicate ministry name', async () => {
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({
-                  data: null,
-                  error: {
-                    message:
-                      'duplicate key value violates unique constraint "ministries_organization_id_name_key"',
-                    code: '23505',
-                  },
-                }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createMinistry('org-1', { name: 'Duplicate' });
-        expect(isApiError(result)).toBe(true);
-        if (isApiError(result)) {
-          expect((result as ApiError).message).toBe(
-            'Ministry name already exists in this organization'
-          );
-        }
-      });
-    });
-
-    describe('getGroupsForMinistry', () => {
-      it('returns Group[] on success', async () => {
-        const rows = [
-          {
-            id: 'grp-1',
-            ministry_id: 'min-1',
-            name: 'Small Group A',
-            created_at: '2024-01-01T00:00:00Z',
-            updated_at: '2024-01-01T00:00:00Z',
-          },
-        ];
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                order: jest.fn().mockResolvedValue({ data: rows, error: null }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.getGroupsForMinistry('min-1');
+        const result = await adapter.getGroups();
         expect(isApiError(result)).toBe(false);
         if (!isApiError(result)) {
           const list = result as Group[];
           expect(list).toHaveLength(1);
-          expect(list[0].ministryId).toBe('min-1');
-          expect(list[0].name).toBe('Small Group A');
+          expect(list[0].id).toBe('grp-1');
+          expect(list[0].type).toBe('forum');
+          expect(list[0].name).toBe('Discussion Forum');
         }
       });
     });
@@ -736,8 +500,13 @@ describe('Supabase data adapter', () => {
       it('returns Group on success', async () => {
         const row = {
           id: 'grp-1',
-          ministry_id: 'min-1',
-          name: 'Small Group A',
+          type: 'ministry',
+          name: 'Youth Ministry',
+          description: 'A ministry for youth',
+          banner_image_url: null,
+          preferred_language: 'en',
+          country: 'US',
+          created_by_user_id: 'user-1',
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         };
@@ -755,8 +524,9 @@ describe('Supabase data adapter', () => {
         expect(isApiError(result)).toBe(false);
         if (!isApiError(result)) {
           expect((result as Group).id).toBe('grp-1');
-          expect((result as Group).ministryId).toBe('min-1');
-          expect((result as Group).name).toBe('Small Group A');
+          expect((result as Group).type).toBe('ministry');
+          expect((result as Group).name).toBe('Youth Ministry');
+          expect((result as Group).description).toBe('A ministry for youth');
         }
       });
 
@@ -781,8 +551,13 @@ describe('Supabase data adapter', () => {
       it('returns Group on success', async () => {
         const row = {
           id: 'grp-new',
-          ministry_id: 'min-1',
-          name: 'New Group',
+          type: 'forum',
+          name: 'New Forum',
+          description: null,
+          banner_image_url: null,
+          preferred_language: 'en',
+          country: 'Online',
+          created_by_user_id: 'user-1',
           created_at: '2024-01-02T00:00:00Z',
           updated_at: '2024-01-02T00:00:00Z',
         };
@@ -796,102 +571,87 @@ describe('Supabase data adapter', () => {
           }),
         })) as unknown as GetClient;
         const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createGroup('min-1', { name: 'New Group' });
+        const result = await adapter.createGroup({ type: 'forum', name: 'New Forum' }, 'user-1');
         expect(isApiError(result)).toBe(false);
         if (!isApiError(result)) {
-          expect((result as Group).ministryId).toBe('min-1');
-          expect((result as Group).name).toBe('New Group');
+          expect((result as Group).id).toBe('grp-new');
+          expect((result as Group).name).toBe('New Forum');
         }
       });
 
       it('returns ApiError when name is empty', async () => {
         const getClient = (() => ({ from: jest.fn() })) as unknown as GetClient;
         const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createGroup('min-1', { name: '' });
+        const result = await adapter.createGroup({ type: 'forum', name: '' }, 'user-1');
         expect(isApiError(result)).toBe(true);
         if (isApiError(result)) {
           expect((result as ApiError).message).toBe('Group name is required');
           expect((result as ApiError).code).toBe('VALIDATION_ERROR');
         }
       });
+    });
 
-      it('returns friendly message for duplicate group name', async () => {
+    describe('joinGroup', () => {
+      it('returns undefined on success', async () => {
         const getClient = (() => ({
           from: jest.fn().mockReturnValue({
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({
-                  data: null,
-                  error: {
-                    message:
-                      'duplicate key value violates unique constraint "groups_ministry_id_name_key"',
-                    code: '23505',
-                  },
-                }),
+            insert: jest.fn().mockResolvedValue({ error: null }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.joinGroup('grp-1', 'user-1');
+        expect(result).toBeUndefined();
+      });
+    });
+
+    describe('leaveGroup', () => {
+      it('returns undefined on success', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            delete: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockResolvedValue({ error: null }),
               }),
             }),
           }),
         })) as unknown as GetClient;
         const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.createGroup('min-1', { name: 'Duplicate' });
+        const result = await adapter.leaveGroup('grp-1', 'user-1');
+        expect(result).toBeUndefined();
+      });
+    });
+
+    describe('getUserIdByEmail', () => {
+      it('returns userId string on success', async () => {
+        const getClient = (() => ({
+          rpc: jest.fn().mockResolvedValue({ data: 'uuid-123', error: null }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getUserIdByEmail('alice@example.com');
+        expect(isApiError(result)).toBe(false);
+        expect(result).toBe('uuid-123');
+      });
+
+      it('returns null when user not found', async () => {
+        const getClient = (() => ({
+          rpc: jest.fn().mockResolvedValue({ data: null, error: null }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getUserIdByEmail('nobody@example.com');
+        expect(isApiError(result)).toBe(false);
+        expect(result).toBeNull();
+      });
+
+      it('returns ApiError on RPC error', async () => {
+        const getClient = (() => ({
+          rpc: jest.fn().mockResolvedValue({ data: null, error: { message: 'RPC failed' } }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getUserIdByEmail('bad@example.com');
         expect(isApiError(result)).toBe(true);
         if (isApiError(result)) {
-          expect((result as ApiError).message).toBe('Group name already exists in this ministry');
+          expect((result as ApiError).message).toBe('RPC failed');
         }
-      });
-    });
-
-    describe('updateMinistry', () => {
-      it('returns Ministry on success', async () => {
-        const row = {
-          id: 'min-1',
-          organization_id: 'org-1',
-          name: 'Updated Ministry',
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-02T00:00:00Z',
-        };
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            update: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                select: jest.fn().mockReturnValue({
-                  single: jest.fn().mockResolvedValue({ data: row, error: null }),
-                }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.updateMinistry('min-1', { name: 'Updated Ministry' });
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) expect((result as Ministry).name).toBe('Updated Ministry');
-      });
-    });
-
-    describe('updateGroup', () => {
-      it('returns Group on success', async () => {
-        const row = {
-          id: 'grp-1',
-          ministry_id: 'min-1',
-          name: 'Updated Group',
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-02T00:00:00Z',
-        };
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            update: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                select: jest.fn().mockReturnValue({
-                  single: jest.fn().mockResolvedValue({ data: row, error: null }),
-                }),
-              }),
-            }),
-          }),
-        })) as unknown as GetClient;
-        const adapter = createSupabaseDataAdapter(getClient);
-        const result = await adapter.updateGroup('grp-1', { name: 'Updated Group' });
-        expect(isApiError(result)).toBe(false);
-        if (!isApiError(result)) expect((result as Group).name).toBe('Updated Group');
       });
     });
   });

@@ -80,7 +80,6 @@ export function AddSheet({
         </Animated.View>
 
         <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
-          {/* Handle */}
           <View style={styles.handle} />
 
           <Text style={styles.sheetTitle}>{title}</Text>
@@ -89,7 +88,7 @@ export function AddSheet({
           <TextInput
             style={styles.input}
             placeholder={placeholder}
-            placeholderTextColor="#9DA3B3"
+            placeholderTextColor={colors.ink300}
             value={value}
             onChangeText={setValue}
             editable={!saving}
@@ -109,7 +108,7 @@ export function AddSheet({
               accessibilityLabel="Cancel"
             />
             <Button
-              title={saving ? 'Saving…' : 'Save'}
+              title={saving ? 'Saving\u2026' : 'Save'}
               onPress={handleSave}
               variant="primary"
               disabled={!value.trim() || saving}
@@ -130,7 +129,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20, 16, 40, 0.45)',
+    backgroundColor: 'rgba(28, 28, 28, 0.3)',
   },
   sheet: {
     backgroundColor: colors.surface,
@@ -149,7 +148,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.ink300,
+    backgroundColor: colors.surfaceHighlight,
     alignSelf: 'center',
     marginBottom: spacing.md,
   },
@@ -160,15 +159,16 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     ...typography.label,
-    color: colors.ink700,
+    color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
   input: {
     height: 48,
     borderRadius: radius.button,
-    backgroundColor: colors.surface100,
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
-    ...typography.body,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
     color: colors.textPrimary,
     borderWidth: 1,
     borderColor: colors.borderSubtle,

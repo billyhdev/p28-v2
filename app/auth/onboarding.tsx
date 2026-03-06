@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
   },
   selectDisabled: { opacity: 0.7 },
   selectText: { ...typography.body, color: colors.textPrimary },
-  placeholderText: { color: '#9DA3B3' },
+  placeholderText: { color: colors.ink300 },
   modalContainer: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     padding: spacing.lg,

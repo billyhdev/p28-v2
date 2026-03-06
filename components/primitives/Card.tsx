@@ -21,6 +21,8 @@ const styles = StyleSheet.create({
     shadowOffset: shadow.cardSoft.shadowOffset,
     shadowOpacity: shadow.cardSoft.shadowOpacity,
     shadowRadius: shadow.cardSoft.shadowRadius,
-    elevation: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
 });

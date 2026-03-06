@@ -4,19 +4,15 @@ import type { ApiError } from '../../contracts/errors';
 import { isApiError } from '../../contracts/guards';
 import type {
   CreateGroupInput,
-  CreateMinistryInput,
-  CreateOrganizationInput,
   Group,
-  Ministry,
+  GroupAdmin,
+  GroupMember,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
-  Organization,
   Profile,
   ProfileUpdates,
   UpdateGroupInput,
-  UpdateMinistryInput,
-  UpdateOrganizationInput,
 } from '../../contracts/dto';
 
 function toApiError(err: unknown): ApiError {
@@ -29,10 +25,21 @@ function toApiError(err: unknown): ApiError {
     let message =
       typeof e.message === 'string' ? e.message : code ? String(code) : 'An error occurred';
     if (code === '23505') {
-      if (message.includes('ministries_organization_id_name_key')) {
-        message = 'Ministry name already exists in this organization';
-      } else if (message.includes('groups_ministry_id_name_key')) {
-        message = 'Group name already exists in this ministry';
+      if (message.includes('group_members_pkey')) {
+        return {
+          message: 'You have already joined this group',
+          code: 'ALREADY_EXISTS',
+        };
+      } else if (message.includes('group_admins_pkey')) {
+        return {
+          message: 'User is already an admin for this group',
+          code: 'ALREADY_EXISTS',
+        };
+      } else if (message.includes('app_roles_pkey')) {
+        return {
+          message: 'User already has an app role',
+          code: 'ALREADY_EXISTS',
+        };
       }
     }
     return { message, code };
@@ -146,49 +153,61 @@ function mapNotificationPrefsRow(row: {
   };
 }
 
-function mapOrganizationRow(row: {
+type GroupRow = {
   id: string;
+  type: string;
   name: string;
+  description?: string | null;
+  banner_image_url?: string | null;
+  preferred_language?: string | null;
+  country?: string | null;
+  created_by_user_id: string;
   created_at?: string | null;
   updated_at?: string | null;
-}): Organization {
+  group_members?: Array<{ count: number }>;
+};
+
+function mapGroupRow(row: GroupRow): Group {
+  const memberCount =
+    Array.isArray(row.group_members) && row.group_members[0]?.count != null
+      ? row.group_members[0].count
+      : undefined;
   return {
     id: row.id,
+    type: row.type as 'forum' | 'ministry',
     name: row.name,
+    description: row.description ?? undefined,
+    bannerImageUrl: row.banner_image_url ?? undefined,
+    preferredLanguage: row.preferred_language ?? 'en',
+    country: row.country ?? 'Online',
+    createdByUserId: row.created_by_user_id,
     createdAt: row.created_at ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+    memberCount,
   };
 }
 
-function mapMinistryRow(row: {
-  id: string;
-  organization_id: string;
-  name: string;
-  created_at?: string | null;
-  updated_at?: string | null;
-}): Ministry {
+function mapGroupMemberRow(row: {
+  user_id: string;
+  group_id: string;
+  joined_at?: string | null;
+}): GroupMember {
   return {
-    id: row.id,
-    organizationId: row.organization_id,
-    name: row.name,
-    createdAt: row.created_at ?? undefined,
-    updatedAt: row.updated_at ?? undefined,
+    userId: row.user_id,
+    groupId: row.group_id,
+    joinedAt: row.joined_at ?? undefined,
   };
 }
 
-function mapGroupRow(row: {
-  id: string;
-  ministry_id: string;
-  name: string;
-  created_at?: string | null;
-  updated_at?: string | null;
-}): Group {
+function mapGroupAdminRow(row: {
+  user_id: string;
+  group_id: string;
+  assigned_at?: string | null;
+}): GroupAdmin {
   return {
-    id: row.id,
-    ministryId: row.ministry_id,
-    name: row.name,
-    createdAt: row.created_at ?? undefined,
-    updatedAt: row.updated_at ?? undefined,
+    userId: row.user_id,
+    groupId: row.group_id,
+    assignedAt: row.assigned_at ?? undefined,
   };
 }
 
@@ -222,7 +241,7 @@ function mapRow(row: {
 
 /**
  * Supabase data adapter. Implements profile operations (Story 1.5),
- * notification preferences (Story 1.6), and org/ministry/group operations (Story 2.2).
+ * notification preferences (Story 1.6), and group operations (simplified MVP).
  */
 export function createSupabaseDataAdapter(getClient: () => SupabaseClient): DataContract {
   return {
@@ -257,7 +276,6 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           birth_date: data.birthDate ?? null,
           country: data.country ?? null,
           preferred_language: data.preferredLanguage ?? null,
-          // Keep legacy column populated for compatibility.
           display_name: derivedDisplayName || null,
           updated_at: new Date().toISOString(),
         };
@@ -326,7 +344,6 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .maybeSingle();
         if (error) return toApiError(error);
         if (data) return mapNotificationPrefsRow(data);
-        // Create row with defaults on first access
         const defaults = {
           user_id: userId,
           events_enabled: true,
@@ -415,136 +432,27 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
-    // Organization structure (Story 2.2)
-    async getOrganizations(): Promise<Organization[] | ApiError> {
+    // Groups
+    async getGroups(params?: {
+      type?: 'forum' | 'ministry';
+      search?: string;
+    }): Promise<Group[] | ApiError> {
       try {
-        const { data, error } = await getClient()
-          .from('organizations')
-          .select('id, name, created_at, updated_at')
-          .order('name');
-        if (error) return toApiError(error);
-        return (data ?? []).map(mapOrganizationRow);
-      } catch (e) {
-        return toApiError(e);
-      }
-    },
-
-    async createOrganization(
-      params: CreateOrganizationInput,
-      createdByUserId?: string
-    ): Promise<Organization | ApiError> {
-      try {
-        const name = params.name?.trim();
-        if (!name) {
-          return { message: 'Organization name is required', code: 'VALIDATION_ERROR' };
-        }
-        const { data, error } = await getClient()
-          .from('organizations')
-          .insert({ name })
-          .select('id, name, created_at, updated_at')
-          .single();
-        if (error) return toApiError(error);
-        if (!data) return { message: 'Failed to create organization', code: 'NOT_FOUND' };
-        if (createdByUserId) {
-          const { error: memberError } = await getClient().from('org_members').insert({
-            user_id: createdByUserId,
-            organization_id: data.id,
-            role: 'admin',
-          });
-          if (memberError) return toApiError(memberError);
-        }
-        return mapOrganizationRow(data);
-      } catch (e) {
-        return toApiError(e);
-      }
-    },
-
-    async updateOrganization(
-      id: string,
-      params: UpdateOrganizationInput
-    ): Promise<Organization | ApiError> {
-      try {
-        const payload: { name?: string; updated_at: string } = {
-          updated_at: new Date().toISOString(),
-        };
-        if (params.name !== undefined) payload.name = params.name;
-        const { data, error } = await getClient()
-          .from('organizations')
-          .update(payload)
-          .eq('id', id)
-          .select('id, name, created_at, updated_at')
-          .single();
-        if (error) return toApiError(error);
-        if (!data) return { message: 'Organization not found', code: 'NOT_FOUND' };
-        return mapOrganizationRow(data);
-      } catch (e) {
-        return toApiError(e);
-      }
-    },
-
-    async getMinistriesForOrg(organizationId: string): Promise<Ministry[] | ApiError> {
-      try {
-        const { data, error } = await getClient()
-          .from('ministries')
-          .select('id, organization_id, name, created_at, updated_at')
-          .eq('organization_id', organizationId)
-          .order('name');
-        if (error) return toApiError(error);
-        return (data ?? []).map(mapMinistryRow);
-      } catch (e) {
-        return toApiError(e);
-      }
-    },
-
-    async createMinistry(
-      organizationId: string,
-      params: CreateMinistryInput
-    ): Promise<Ministry | ApiError> {
-      try {
-        const name = params.name?.trim();
-        if (!name) {
-          return { message: 'Ministry name is required', code: 'VALIDATION_ERROR' };
-        }
-        const { data, error } = await getClient()
-          .from('ministries')
-          .insert({ organization_id: organizationId, name })
-          .select('id, organization_id, name, created_at, updated_at')
-          .single();
-        if (error) return toApiError(error);
-        if (!data) return { message: 'Failed to create ministry', code: 'NOT_FOUND' };
-        return mapMinistryRow(data);
-      } catch (e) {
-        return toApiError(e);
-      }
-    },
-
-    async updateMinistry(id: string, params: UpdateMinistryInput): Promise<Ministry | ApiError> {
-      try {
-        const payload: { name?: string; updated_at: string } = {
-          updated_at: new Date().toISOString(),
-        };
-        if (params.name !== undefined) payload.name = params.name;
-        const { data, error } = await getClient()
-          .from('ministries')
-          .update(payload)
-          .eq('id', id)
-          .select('id, organization_id, name, created_at, updated_at')
-          .single();
-        if (error) return toApiError(error);
-        if (!data) return { message: 'Ministry not found', code: 'NOT_FOUND' };
-        return mapMinistryRow(data);
-      } catch (e) {
-        return toApiError(e);
-      }
-    },
-
-    async getGroupsForMinistry(ministryId: string): Promise<Group[] | ApiError> {
-      try {
-        const { data, error } = await getClient()
+        let query = getClient()
           .from('groups')
-          .select('id, ministry_id, name, created_at, updated_at')
-          .eq('ministry_id', ministryId)
+          .select(
+            'id, type, name, description, banner_image_url, preferred_language, country, created_by_user_id, created_at, updated_at, group_members(count)'
+          )
           .order('name');
+        if (params?.type) {
+          query = query.eq('type', params.type);
+        }
+        if (params?.search?.trim()) {
+          const term = params.search.trim();
+          const pattern = `%${term}%`;
+          query = query.or(`name.ilike.${pattern},description.ilike.${pattern}`);
+        }
+        const { data, error } = await query;
         if (error) return toApiError(error);
         return (data ?? []).map(mapGroupRow);
       } catch (e) {
@@ -556,7 +464,9 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       try {
         const { data, error } = await getClient()
           .from('groups')
-          .select('id, ministry_id, name, created_at, updated_at')
+          .select(
+            'id, type, name, description, banner_image_url, preferred_language, country, created_by_user_id, created_at, updated_at, group_members(count)'
+          )
           .eq('id', id)
           .single();
         if (error) return toApiError(error);
@@ -567,16 +477,31 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
-    async createGroup(ministryId: string, params: CreateGroupInput): Promise<Group | ApiError> {
+    async createGroup(
+      params: CreateGroupInput,
+      createdByUserId: string
+    ): Promise<Group | ApiError> {
       try {
         const name = params.name?.trim();
         if (!name) {
           return { message: 'Group name is required', code: 'VALIDATION_ERROR' };
         }
+        const payload = {
+          type: params.type,
+          name,
+          description: params.description?.trim() || null,
+          banner_image_url: params.bannerImageUrl || null,
+          preferred_language: params.preferredLanguage ?? 'en',
+          country: params.country ?? 'Online',
+          created_by_user_id: createdByUserId,
+          updated_at: new Date().toISOString(),
+        };
         const { data, error } = await getClient()
           .from('groups')
-          .insert({ ministry_id: ministryId, name })
-          .select('id, ministry_id, name, created_at, updated_at')
+          .insert(payload)
+          .select(
+            'id, type, name, description, banner_image_url, preferred_language, country, created_by_user_id, created_at, updated_at'
+          )
           .single();
         if (error) return toApiError(error);
         if (!data) return { message: 'Failed to create group', code: 'NOT_FOUND' };
@@ -588,15 +513,23 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
     async updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError> {
       try {
-        const payload: { name?: string; updated_at: string } = {
+        const payload: Record<string, unknown> = {
           updated_at: new Date().toISOString(),
         };
         if (params.name !== undefined) payload.name = params.name;
+        if (params.description !== undefined) payload.description = params.description;
+        if (params.bannerImageUrl !== undefined) payload.banner_image_url = params.bannerImageUrl;
+        if (params.preferredLanguage !== undefined)
+          payload.preferred_language = params.preferredLanguage;
+        if (params.country !== undefined) payload.country = params.country;
+
         const { data, error } = await getClient()
           .from('groups')
           .update(payload)
           .eq('id', id)
-          .select('id, ministry_id, name, created_at, updated_at')
+          .select(
+            'id, type, name, description, banner_image_url, preferred_language, country, created_by_user_id, created_at, updated_at'
+          )
           .single();
         if (error) return toApiError(error);
         if (!data) return { message: 'Group not found', code: 'NOT_FOUND' };
@@ -606,37 +539,168 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
-    getOrganizationsWhereUserIsAdmin(userId: string): Promise<Organization[] | ApiError> {
-      return (async () => {
-        try {
-          const { data, error } = await getClient()
-            .from('org_members')
-            .select('organizations(id, name, created_at, updated_at)')
-            .eq('user_id', userId)
-            .eq('role', 'admin');
-          if (error) return toApiError(error);
-          const rows = (data ?? []) as unknown as {
-            organizations: Record<string, unknown> | null;
-          }[];
-          const orgs: Organization[] = [];
-          for (const row of rows) {
-            const o = row.organizations;
-            if (o && typeof o === 'object' && o.id && o.name) {
-              orgs.push(
-                mapOrganizationRow({
-                  id: String(o.id),
-                  name: String(o.name),
-                  created_at: (o.created_at as string) ?? null,
-                  updated_at: (o.updated_at as string) ?? null,
-                })
-              );
-            }
-          }
-          return orgs.sort((a, b) => a.name.localeCompare(b.name));
-        } catch (e) {
-          return toApiError(e);
-        }
-      })();
+    async getGroupMembers(groupId: string): Promise<GroupMember[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('group_members')
+          .select('user_id, group_id, joined_at')
+          .eq('group_id', groupId)
+          .order('joined_at');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapGroupMemberRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async joinGroup(groupId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('group_members')
+          .insert({ group_id: groupId, user_id: userId });
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async leaveGroup(groupId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('group_members')
+          .delete()
+          .eq('group_id', groupId)
+          .eq('user_id', userId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupsForUser(userId: string): Promise<Group[] | ApiError> {
+      try {
+        const { data: memberships, error: memError } = await getClient()
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', userId);
+        if (memError) return toApiError(memError);
+        const groupIds = (memberships ?? []).map((m) => m.group_id);
+        if (groupIds.length === 0) return [];
+        const { data, error } = await getClient()
+          .from('groups')
+          .select(
+            'id, type, name, description, banner_image_url, preferred_language, country, created_by_user_id, created_at, updated_at, group_members(count)'
+          )
+          .in('id', groupIds)
+          .order('name');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapGroupRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('group_admins')
+          .select('user_id, group_id, assigned_at')
+          .eq('group_id', groupId)
+          .order('assigned_at');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapGroupAdminRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async isSuperAdmin(userId: string): Promise<boolean | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('app_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        return data?.role === 'super_admin';
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async isAdmin(userId: string): Promise<boolean | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('app_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        return data?.role === 'super_admin' || data?.role === 'admin';
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupsWhereUserIsAdmin(userId: string): Promise<Group[] | ApiError> {
+      try {
+        const { data: adminRows, error: adminError } = await getClient()
+          .from('group_admins')
+          .select('group_id')
+          .eq('user_id', userId);
+        if (adminError) return toApiError(adminError);
+        const groupIds = (adminRows ?? []).map((r) => r.group_id);
+        if (groupIds.length === 0) return [];
+        const { data, error } = await getClient()
+          .from('groups')
+          .select(
+            'id, type, name, description, banner_image_url, preferred_language, country, created_by_user_id, created_at, updated_at, group_members(count)'
+          )
+          .in('id', groupIds)
+          .order('name');
+        if (error) return toApiError(error);
+        return (data ?? []).map(mapGroupRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async assignAdmin(userId: string, assignedByUserId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient().from('app_roles').insert({
+          user_id: userId,
+          role: 'admin',
+          assigned_by_user_id: assignedByUserId,
+        });
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async revokeAdmin(userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('app_roles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('role', 'admin');
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getUserIdByEmail(email: string): Promise<string | null | ApiError> {
+      try {
+        const { data, error } = await getClient().rpc('get_user_id_by_email', {
+          lookup_email: email,
+        });
+        if (error) return toApiError(error);
+        return (data as string | null) ?? null;
+      } catch (e) {
+        return toApiError(e);
+      }
     },
   };
 }

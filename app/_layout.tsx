@@ -13,17 +13,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -32,7 +27,6 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
@@ -71,7 +65,6 @@ function RootLayoutNav() {
     if (!session && !inAuthGroup) {
       router.replace('/auth/sign-in');
     } else if (session && authScreen === 'sign-in') {
-      // Session exists but user is on sign-in (e.g. back button); send to app. Do not redirect when on sign-up or onboarding so step 2 stays connected.
       router.replace('/(tabs)');
     }
   }, [session, isLoading, segments]);
@@ -91,10 +84,11 @@ function RootLayoutNav() {
     ...DefaultTheme,
     colors: {
       ...DefaultTheme.colors,
-      background: '#F8F9FC',
+      background: '#F7F6F3',
       card: '#FFFFFF',
-      primary: '#4B3A8A',
-      border: 'rgba(30, 27, 45, 0.08)',
+      primary: '#8B9BB8',
+      border: 'rgba(28, 28, 28, 0.06)',
+      text: '#1C1C1C',
     },
   };
 
@@ -109,16 +103,7 @@ function RootLayoutNav() {
             headerShown: true,
             title: t('profile.editProfile'),
             headerBackButtonDisplayMode: 'minimal',
-            headerTitleStyle: { fontWeight: '600', color: '#1F2130' },
-          }}
-        />
-        <Stack.Screen
-          name="admin"
-          options={{
-            headerShown: true,
-            title: t('admin.title'),
-            headerBackButtonDisplayMode: 'minimal',
-            headerTitleStyle: { fontWeight: '600', color: '#1F2130' },
+            headerTitleStyle: { fontWeight: '500', color: '#1C1C1C' },
           }}
         />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

@@ -23,11 +23,15 @@ export function Input({
     <View style={[styles.container, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        style={[styles.input, error ? styles.inputError : null, inputStyle]}
-        placeholderTextColor="#9DA3B3"
+        style={[
+          styles.input,
+          { minHeight: minTouchTarget },
+          error ? styles.inputError : null,
+          inputStyle,
+        ]}
+        placeholderTextColor={colors.ink300}
         accessibilityLabel={accessibilityLabel ?? label}
         accessibilityHint={accessibilityHint}
-        minHeight={minTouchTarget}
         {...rest}
       />
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -35,17 +39,19 @@ export function Input({
   );
 }
 
+const { lineHeight: _bodyLineHeight, ...bodyText } = typography.body;
+
 const styles = StyleSheet.create({
   container: {
     marginBottom: spacing.sm,
   },
   label: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
   input: {
-    ...typography.body,
+    ...bodyText,
     color: colors.textPrimary,
     backgroundColor: colors.surface,
     borderWidth: 1,

@@ -8,19 +8,9 @@ export interface BadgeProps {
 }
 
 export function Badge({ label, variant = 'primary' }: BadgeProps) {
-  const containerStyle =
-    variant === 'primary'
-      ? styles.primaryBg
-      : variant === 'accent'
-        ? styles.accentBg
-        : styles.neutralBg;
+  const containerStyle = variant === 'neutral' ? styles.neutralBg : styles.primaryBg;
 
-  const textStyle =
-    variant === 'primary'
-      ? styles.primaryText
-      : variant === 'accent'
-        ? styles.accentText
-        : styles.neutralText;
+  const textStyle = variant === 'neutral' ? styles.neutralText : styles.primaryText;
 
   return (
     <View style={[styles.badge, containerStyle]}>
@@ -31,7 +21,7 @@ export function Badge({ label, variant = 'primary' }: BadgeProps) {
 
 const styles = StyleSheet.create({
   badge: {
-    height: 26,
+    height: 24,
     paddingHorizontal: 10,
     borderRadius: radius.chip,
     alignSelf: 'flex-start',
@@ -43,8 +33,6 @@ const styles = StyleSheet.create({
   },
   primaryBg: { backgroundColor: colors.brandSoft },
   primaryText: { color: colors.primary },
-  accentBg: { backgroundColor: colors.accentSoft },
-  accentText: { color: colors.accent },
-  neutralBg: { backgroundColor: colors.surface100 },
+  neutralBg: { backgroundColor: colors.surfaceHighlight },
   neutralText: { color: colors.ink700 },
 });

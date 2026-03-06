@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, shadow } from '@/theme/tokens';
+import { colors } from '@/theme/tokens';
 
 export interface IconButtonProps {
   name: React.ComponentProps<typeof Ionicons>['name'];
@@ -15,7 +15,7 @@ export interface IconButtonProps {
   accessibilityHint?: string;
 }
 
-const springConfig = { damping: 20, stiffness: 300 };
+const springConfig = { damping: 22, stiffness: 340 };
 
 export function IconButton({
   name,
@@ -33,7 +33,7 @@ export function IconButton({
     <Animated.View style={[styles.container, styleProp, animStyle]}>
       <Pressable
         onPress={onPress}
-        onPressIn={() => scale.set(withSpring(0.94, springConfig))}
+        onPressIn={() => scale.set(withSpring(0.92, springConfig))}
         onPressOut={() => scale.set(withSpring(1, springConfig))}
         style={styles.pressable}
         accessibilityRole="button"
@@ -51,12 +51,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.surface,
-    shadowColor: colors.shadow,
-    shadowOffset: shadow.cardSoft.shadowOffset,
-    shadowOpacity: shadow.cardSoft.shadowOpacity,
-    shadowRadius: shadow.cardSoft.shadowRadius,
-    elevation: 2,
+    backgroundColor: 'transparent',
     overflow: 'hidden',
   },
   pressable: {

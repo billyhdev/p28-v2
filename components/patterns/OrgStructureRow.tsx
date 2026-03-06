@@ -19,36 +19,15 @@ const TYPE_CONFIG: Record<
   OrgStructureType,
   {
     icon: React.ComponentProps<typeof Ionicons>['name'];
-    iconColor: string;
-    iconBg: string;
-    rowBg: string;
     label: string;
   }
 > = {
-  org: {
-    icon: 'business-outline',
-    iconColor: colors.primary,
-    iconBg: colors.brandSoft,
-    rowBg: colors.cardHighlight,
-    label: 'Organization',
-  },
-  ministry: {
-    icon: 'compass-outline',
-    iconColor: '#7B5FD4',
-    iconBg: colors.lavenderSoft,
-    rowBg: colors.lavenderSoft,
-    label: 'Ministry',
-  },
-  group: {
-    icon: 'people-outline',
-    iconColor: '#2E8B5A',
-    iconBg: colors.greenSoft,
-    rowBg: colors.greenSoft,
-    label: 'Group',
-  },
+  org: { icon: 'business-outline', label: 'Organization' },
+  ministry: { icon: 'compass-outline', label: 'Ministry' },
+  group: { icon: 'people-outline', label: 'Group' },
 };
 
-const springConfig = { damping: 20, stiffness: 300 };
+const springConfig = { damping: 22, stiffness: 340 };
 
 export function OrgStructureRow({
   name,
@@ -63,22 +42,20 @@ export function OrgStructureRow({
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
   return (
-    <Animated.View style={[styles.wrapper, { backgroundColor: config.rowBg }, animStyle]}>
+    <Animated.View style={[styles.wrapper, animStyle]}>
       <Pressable
         onPress={onPress}
-        onPressIn={() => scale.set(withSpring(0.98, springConfig))}
+        onPressIn={() => scale.set(withSpring(0.99, springConfig))}
         onPressOut={() => scale.set(withSpring(1, springConfig))}
         style={styles.row}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? name}
         accessibilityHint={accessibilityHint ?? `Opens ${config.label.toLowerCase()} details`}
       >
-        {/* Icon */}
-        <View style={[styles.iconWrap, { backgroundColor: config.iconBg }]}>
-          <Ionicons name={config.icon} size={20} color={config.iconColor} />
+        <View style={styles.iconWrap}>
+          <Ionicons name={config.icon} size={20} color={colors.textSecondary} />
         </View>
 
-        {/* Text */}
         <View style={styles.textWrap}>
           <Text style={styles.name} numberOfLines={1}>
             {name}
@@ -92,7 +69,6 @@ export function OrgStructureRow({
           )}
         </View>
 
-        {/* Chevron */}
         <Ionicons name="chevron-forward" size={16} color={colors.ink300} />
       </Pressable>
     </Animated.View>
@@ -101,13 +77,16 @@ export function OrgStructureRow({
 
 const styles = StyleSheet.create({
   wrapper: {
-    borderRadius: radius.lg,
+    borderRadius: radius.card,
     marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
     shadowColor: colors.shadow,
     shadowOffset: shadow.cardSoft.shadowOffset,
     shadowOpacity: shadow.cardSoft.shadowOpacity,
     shadowRadius: shadow.cardSoft.shadowRadius,
-    elevation: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
     overflow: 'hidden',
   },
   row: {
@@ -120,10 +99,11 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
+    backgroundColor: colors.surfaceHighlight,
   },
   textWrap: {
     flex: 1,

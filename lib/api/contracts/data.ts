@@ -1,19 +1,15 @@
 import type { ApiError } from './errors';
 import type {
   CreateGroupInput,
-  CreateMinistryInput,
-  CreateOrganizationInput,
   Group,
-  Ministry,
+  GroupAdmin,
+  GroupMember,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
-  Organization,
   Profile,
   ProfileUpdates,
   UpdateGroupInput,
-  UpdateMinistryInput,
-  UpdateOrganizationInput,
 } from './dto';
 
 /**
@@ -37,25 +33,27 @@ export interface DataContract {
     updates: NotificationPreferencesUpdates
   ): Promise<NotificationPreferences | ApiError>;
 
-  // Organization structure (Story 2.2)
-  getOrganizations(): Promise<Organization[] | ApiError>;
-  /** When createdByUserId is provided, adds that user as admin in org_members. (Story 2.3) */
-  createOrganization(
-    params: CreateOrganizationInput,
-    createdByUserId?: string
-  ): Promise<Organization | ApiError>;
-  updateOrganization(id: string, params: UpdateOrganizationInput): Promise<Organization | ApiError>;
-
-  getMinistriesForOrg(organizationId: string): Promise<Ministry[] | ApiError>;
-  createMinistry(organizationId: string, params: CreateMinistryInput): Promise<Ministry | ApiError>;
-  updateMinistry(id: string, params: UpdateMinistryInput): Promise<Ministry | ApiError>;
-
-  getGroupsForMinistry(ministryId: string): Promise<Group[] | ApiError>;
-  /** Fetches a single group by id (for edit screen). Returns NOT_FOUND if missing. */
+  // Groups (Forums and Ministries - top level)
+  getGroups(params?: { type?: 'forum' | 'ministry'; search?: string }): Promise<Group[] | ApiError>;
   getGroup(id: string): Promise<Group | ApiError>;
-  createGroup(ministryId: string, params: CreateGroupInput): Promise<Group | ApiError>;
+  createGroup(params: CreateGroupInput, createdByUserId: string): Promise<Group | ApiError>;
   updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError>;
 
-  /** Returns orgs where the user has role='admin' in org_members. Used to gate admin UI. (Story 2.3) */
-  getOrganizationsWhereUserIsAdmin(userId: string): Promise<Organization[] | ApiError>;
+  // Group membership
+  getGroupMembers(groupId: string): Promise<GroupMember[] | ApiError>;
+  joinGroup(groupId: string, userId: string): Promise<void | ApiError>;
+  leaveGroup(groupId: string, userId: string): Promise<void | ApiError>;
+  getGroupsForUser(userId: string): Promise<Group[] | ApiError>;
+
+  // Group admins
+  getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError>;
+
+  // App roles (Super Admin, Admin)
+  isSuperAdmin(userId: string): Promise<boolean | ApiError>;
+  isAdmin(userId: string): Promise<boolean | ApiError>;
+  getGroupsWhereUserIsAdmin(userId: string): Promise<Group[] | ApiError>;
+  assignAdmin(userId: string, assignedByUserId: string): Promise<void | ApiError>;
+  revokeAdmin(userId: string): Promise<void | ApiError>;
+  /** Look up user's UUID by email via RPC. Returns null if no user found. */
+  getUserIdByEmail(email: string): Promise<string | null | ApiError>;
 }

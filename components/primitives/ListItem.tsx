@@ -19,7 +19,7 @@ export interface ListItemProps {
   accessibilityHint?: string;
 }
 
-const springConfig = { damping: 20, stiffness: 300 };
+const springConfig = { damping: 22, stiffness: 340 };
 
 export function ListItem({
   title,
@@ -40,7 +40,7 @@ export function ListItem({
     left ??
     (iconName ? (
       <View style={styles.iconWrap}>
-        <Ionicons name={iconName} size={20} color={iconColor ?? colors.primary} />
+        <Ionicons name={iconName} size={20} color={iconColor ?? colors.textSecondary} />
       </View>
     ) : null);
 
@@ -75,7 +75,7 @@ export function ListItem({
       <Animated.View style={animStyle}>
         <Pressable
           onPress={onPress}
-          onPressIn={() => scale.set(withSpring(0.98, springConfig))}
+          onPressIn={() => scale.set(withSpring(0.99, springConfig))}
           onPressOut={() => scale.set(withSpring(1, springConfig))}
           style={styles.row}
           accessibilityRole="button"
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },

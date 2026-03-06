@@ -1,37 +1,26 @@
 {
   "meta": {
-    "name": "Pastel Productivity Mobile Design System",
-    "version": "1.0.0",
-    "source": "Screenshot-based reverse design analysis",
-    "platformTarget": [
-      "iOS",
-      "Android"
-    ],
-    "styleArchetype": [
-      "soft minimalism",
-      "pastel neumorphism-lite",
-      "editorial productivity UI"
-    ],
-    "intent": "Enable AI and developers to recreate the same visual language consistently across screens and features."
+    "name": "Minimal Monochrome Mobile Design System",
+    "version": "2.0.0",
+    "source": "Redesign — Aesop / Kinfolk aesthetic",
+    "platformTarget": ["iOS", "Android"],
+    "styleArchetype": ["minimal monochrome", "refined editorial", "warm neutrals"],
+    "intent": "A calm, intentional interface. Almost monochromatic — warm off-whites, soft blacks, one accent: muted lavender-blue. Every element feels deliberate and quiet."
   },
   "creativeDirection": {
-    "brandPersonality": [
-      "calm",
-      "friendly",
-      "focused",
-      "modern"
-    ],
+    "brandPersonality": ["calm", "refined", "intentional", "timeless"],
     "experienceGoals": [
-      "Make task management feel lightweight rather than stressful.",
-      "Use soft contrast and rounded geometry to create approachability.",
-      "Preserve clarity in hierarchy with typography and spacing instead of heavy borders."
+      "Make the interface feel like a premium, thoughtfully designed product.",
+      "Use restraint — every element must earn its place on screen.",
+      "Convey hierarchy through typography weight, spacing, and subtle contrast — not color."
     ],
     "corePrinciples": [
-      "Whitespace is a primary design tool; do not overfill screens.",
-      "Cards are the main organizational primitive.",
-      "Color should indicate category, state, or priority; never decorate without meaning.",
-      "Rounded corners and gentle shadows should unify the entire interface.",
-      "Keep interactions visually soft and non-disruptive."
+      "Whitespace is the primary design tool; generous negative space creates calm.",
+      "Almost monochromatic — warm off-whites and soft blacks with a single muted lavender-blue accent.",
+      "Typography carries the hierarchy; font weight and spacing replace color for emphasis.",
+      "Shadows are barely perceptible — depth should be felt, not seen.",
+      "Motion should be subtle and intentional — felt, not noticed.",
+      "Flat, architectural radius values — no bubbly or playful shapes."
     ]
   },
   "foundations": {
@@ -222,10 +211,7 @@
         "screenGradient": {
           "type": "linear",
           "angle": 145,
-          "stops": [
-            "#F1ECFF",
-            "#EFF3FA"
-          ]
+          "stops": ["#F1ECFF", "#EFF3FA"]
         },
         "cardDefault": "#F4F7FD",
         "cardAlt": "#FCE9E6",
@@ -335,10 +321,7 @@
       },
       "scheduleRowCard": {
         "layout": "time column + title + right avatar group",
-        "variants": [
-          "blueSoft",
-          "coralSoft"
-        ],
+        "variants": ["blueSoft", "coralSoft"],
         "radius": 14
       }
     },
@@ -346,11 +329,7 @@
       "donutProgress": {
         "type": "multi-segment circular ring",
         "trackColor": "#E9ECF4",
-        "segmentPalette": [
-          "#A286F3",
-          "#EA8E78",
-          "#6AAEE6"
-        ],
+        "segmentPalette": ["#A286F3", "#EA8E78", "#6AAEE6"],
         "strokeCap": "round",
         "holeRatio": 0.58
       },

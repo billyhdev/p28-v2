@@ -5,19 +5,16 @@ export type { ApiError } from './errors';
 export { isApiError } from './guards';
 export type {
   CreateGroupInput,
-  CreateMinistryInput,
-  CreateOrganizationInput,
   Group,
-  Ministry,
+  GroupAdmin,
+  GroupMember,
+  GroupType,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
-  Organization,
   Profile,
   ProfileUpdates,
   UpdateGroupInput,
-  UpdateMinistryInput,
-  UpdateOrganizationInput,
   User,
   Session,
 } from './dto';

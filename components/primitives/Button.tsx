@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { Pressable, Text, StyleSheet, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { colors, spacing, radius, typography, minTouchTarget } from '@/theme/tokens';
 
@@ -18,7 +18,7 @@ export interface ButtonProps {
   style?: ViewStyle;
 }
 
-const springConfig = { damping: 18, stiffness: 320 };
+const springConfig = { damping: 22, stiffness: 340 };
 
 export function Button({
   title,
@@ -35,18 +35,25 @@ export function Button({
     transform: [{ scale: scale.get() }],
   }));
 
-  const variantStyle =
+  const containerVariant =
     variant === 'primary'
-      ? styles.primary
+      ? variantStyles.primaryContainer
       : variant === 'secondary'
-        ? styles.secondary
-        : styles.textVariant;
+        ? variantStyles.secondaryContainer
+        : variantStyles.textContainer;
+
+  const labelVariant =
+    variant === 'primary'
+      ? variantStyles.primaryLabel
+      : variant === 'secondary'
+        ? variantStyles.secondaryLabel
+        : variantStyles.textLabel;
 
   return (
     <Animated.View
       style={[
         styles.base,
-        variantStyle.container,
+        containerVariant,
         fullWidth && styles.fullWidth,
         disabled && styles.disabled,
         animatedStyle,
@@ -57,7 +64,7 @@ export function Button({
         onPress={onPress}
         disabled={disabled}
         onPressIn={() => {
-          if (!disabled) scale.set(withSpring(0.98, springConfig));
+          if (!disabled) scale.set(withSpring(0.97, springConfig));
         }}
         onPressOut={() => {
           scale.set(withSpring(1, springConfig));
@@ -68,7 +75,7 @@ export function Button({
         accessibilityHint={accessibilityHint}
         accessibilityState={{ disabled }}
       >
-        <Text style={[styles.label, variantStyle.label]}>{title}</Text>
+        <Text style={[styles.label, labelVariant]}>{title}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -90,21 +97,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  disabled: { opacity: 0.45 },
+  disabled: { opacity: 0.4 },
   fullWidth: { alignSelf: 'stretch' as const },
   label: {
     ...typography.buttonLabel,
   },
-  primary: {
-    container: { backgroundColor: colors.primary } as ViewStyle,
-    label: { color: colors.surface } as TextStyle,
+});
+
+const variantStyles = StyleSheet.create({
+  primaryContainer: { backgroundColor: colors.textPrimary },
+  primaryLabel: { color: colors.surface },
+  secondaryContainer: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  secondary: {
-    container: { backgroundColor: colors.brandSoft } as ViewStyle,
-    label: { color: colors.primary } as TextStyle,
-  },
-  textVariant: {
-    container: { backgroundColor: 'transparent' } as ViewStyle,
-    label: { color: colors.primary } as TextStyle,
-  },
+  secondaryLabel: { color: colors.textPrimary },
+  textContainer: { backgroundColor: 'transparent' },
+  textLabel: { color: colors.primary },
 });

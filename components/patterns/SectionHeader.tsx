@@ -43,9 +43,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: spacing.xs,
   },
-  actionPressed: { opacity: 0.6 },
+  actionPressed: { opacity: 0.5 },
   actionText: {
-    ...typography.bodyStrong,
+    ...typography.body,
     color: colors.primary,
   },
 });

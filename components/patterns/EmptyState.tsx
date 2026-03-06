@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button } from '@/components/primitives';
-import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
+import { colors, spacing, typography, radius } from '@/theme/tokens';
 
 export interface EmptyStateProps {
   iconName: React.ComponentProps<typeof Ionicons>['name'];
@@ -16,7 +16,7 @@ export function EmptyState({ iconName, title, subtitle, actionLabel, onAction }:
   return (
     <View style={styles.card}>
       <View style={styles.iconWrap}>
-        <Ionicons name={iconName} size={36} color={colors.primaryLight} />
+        <Ionicons name={iconName} size={32} color={colors.ink300} />
       </View>
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -39,18 +39,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     padding: spacing.xl,
     alignItems: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: shadow.cardSoft.shadowOffset,
-    shadowOpacity: shadow.cardSoft.shadowOpacity,
-    shadowRadius: shadow.cardSoft.shadowRadius,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
     marginVertical: spacing.sm,
   },
   iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.brandSoft,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.surfaceHighlight,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.md,
