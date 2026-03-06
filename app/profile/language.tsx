@@ -22,7 +22,6 @@ export default function LanguageScreen() {
   const { locale, setLocale } = useLocale();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedFeedback, setSavedFeedback] = useState(false);
 
   const userId = session?.user?.id;
 
@@ -37,9 +36,6 @@ export default function LanguageScreen() {
       setIsSubmitting(false);
       if (isApiError(result)) {
         setError(getUserFacingError(result));
-      } else {
-        setSavedFeedback(true);
-        setTimeout(() => setSavedFeedback(false), 2000);
       }
     },
     [locale, userId, setLocale]
@@ -58,11 +54,6 @@ export default function LanguageScreen() {
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
-      {savedFeedback ? (
-        <View style={styles.successBanner}>
-          <Text style={styles.successText}>{t('language.updated')}</Text>
         </View>
       ) : null}
 
@@ -156,16 +147,6 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.body,
     color: colors.error,
-  },
-  successBanner: {
-    backgroundColor: colors.greenSoft,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-    borderRadius: radius.button,
-  },
-  successText: {
-    ...typography.body,
-    color: colors.success,
   },
   loadingRow: {
     marginTop: spacing.md,

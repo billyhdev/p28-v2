@@ -432,6 +432,39 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
+    async uploadGroupBannerImage(
+      userId: string,
+      imageUri: string,
+      base64Data?: string | null
+    ): Promise<string | ApiError> {
+      try {
+        const { body, contentType } =
+          base64Data != null && base64Data.length > 0
+            ? base64ToArrayBuffer(base64Data, contentTypeFromUri(imageUri))
+            : await readImageFile(imageUri);
+        const ext =
+          contentType === 'image/png'
+            ? 'png'
+            : contentType === 'image/gif'
+              ? 'gif'
+              : contentType === 'image/webp'
+                ? 'webp'
+                : 'jpg';
+        const timestamp = Date.now();
+        const path = `${userId}/${timestamp}.${ext}`;
+
+        const { error } = await getClient()
+          .storage.from('group-banners')
+          .upload(path, body, { upsert: false, contentType });
+        if (error) return toApiError(error);
+
+        const { data } = getClient().storage.from('group-banners').getPublicUrl(path);
+        return data.publicUrl;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
     // Groups
     async getGroups(params?: {
       type?: 'forum' | 'ministry';

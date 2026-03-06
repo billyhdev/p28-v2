@@ -3,7 +3,7 @@ import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import 'react-native-reanimated';
 
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -55,6 +55,8 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const { session, isLoading } = useAuth();
   const { setLocale } = useLocale();
+  const setLocaleRef = useRef(setLocale);
+  setLocaleRef.current = setLocale;
   const segments = useSegments();
   const router = useRouter();
 
@@ -67,26 +69,29 @@ function RootLayoutNav() {
     } else if (session && authScreen === 'sign-in') {
       router.replace('/(tabs)');
     }
-  }, [session, isLoading, segments]);
+  }, [session, isLoading, segments, router]);
 
+  // Sync profile.preferredLanguage → locale only on initial auth load.
+  // Do NOT depend on setLocale: it changes when locale changes, which would re-run
+  // this effect and overwrite the user's in-progress language selection with stale profile data.
   useEffect(() => {
     if (isLoading) return;
     const userId = session?.user?.id;
     if (!userId) return;
     api.data.getProfile(userId).then((r) => {
       if ('userId' in r && r.preferredLanguage) {
-        setLocale(r.preferredLanguage);
+        setLocaleRef.current(r.preferredLanguage);
       }
     });
-  }, [session?.user?.id, isLoading, setLocale]);
+  }, [session?.user?.id, isLoading]);
 
   const navTheme = {
     ...DefaultTheme,
     colors: {
       ...DefaultTheme.colors,
-      background: '#F7F6F3',
+      background: '#F5F8FC',
       card: '#FFFFFF',
-      primary: '#8B9BB8',
+      primary: '#6E9AC0',
       border: 'rgba(28, 28, 28, 0.06)',
       text: '#1C1C1C',
     },

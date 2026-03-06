@@ -26,6 +26,12 @@ export interface DataContract {
     imageUri: string,
     base64Data?: string | null
   ): Promise<string | ApiError>;
+  /** Upload group banner image. Returns public URL. Used when creating/editing groups. */
+  uploadGroupBannerImage(
+    userId: string,
+    imageUri: string,
+    base64Data?: string | null
+  ): Promise<string | ApiError>;
 
   getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError>;
   updateNotificationPreferences(

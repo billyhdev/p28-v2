@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { api, getUserFacingError, isApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -9,9 +10,13 @@ import { Avatar, Button } from '@/components/primitives';
 import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
 import type { Profile } from '@/lib/api';
 
+// Pill height + outer padding; extra buffer so sign out button clears the floating tab bar
+const FLOATING_TAB_BAR_HEIGHT = 110;
+
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +80,10 @@ export default function ProfileScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[
+        styles.scrollContent,
+        { paddingBottom: FLOATING_TAB_BAR_HEIGHT + insets.bottom },
+      ]}
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
     >
@@ -90,7 +98,7 @@ export default function ProfileScreen() {
           <Avatar
             source={profile?.avatarUrl ? { uri: profile.avatarUrl } : null}
             fallbackText={displayName}
-            size="lg"
+            size="xl"
             accessibilityLabel={t('profile.profilePhoto')}
           />
           <View style={styles.headerText}>
@@ -165,20 +173,12 @@ export default function ProfileScreen() {
             accessibilityLabel={t('profile.editProfile')}
           />
           <Button
-            title={t('profile.notificationPreferences')}
-            onPress={() => router.push('/profile/notifications')}
+            title={t('profile.settings')}
+            onPress={() => router.push('/profile/settings')}
             variant="secondary"
             style={styles.actionButton}
-            accessibilityLabel={t('profile.notificationPreferences')}
-            accessibilityHint={t('profile.notificationPreferencesHint')}
-          />
-          <Button
-            title={t('profile.appLanguage')}
-            onPress={() => router.push('/profile/language')}
-            variant="secondary"
-            style={styles.actionButton}
-            accessibilityLabel={t('profile.appLanguage')}
-            accessibilityHint={t('profile.appLanguageHint')}
+            accessibilityLabel={t('profile.settings')}
+            accessibilityHint={t('profile.settingsHint')}
           />
           <Button
             title={t('conduct.title')}
@@ -222,7 +222,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
   },
   animatedContent: { flex: 1 },
   header: {

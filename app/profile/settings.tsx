@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,15 +11,29 @@ import {
 } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { api, getUserFacingError, isApiError } from '@/lib/api';
+import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography, minTouchTarget } from '@/theme/tokens';
 import type { NotificationPreferences } from '@/lib/api';
 
-export default function NotificationPreferencesScreen() {
+type LocaleOption = 'en' | 'ko' | 'km';
+
+const LOCALES: {
+  value: LocaleOption;
+  labelKey: 'language.english' | 'language.korean' | 'language.khmer';
+}[] = [
+  { value: 'en', labelKey: 'language.english' },
+  { value: 'ko', labelKey: 'language.korean' },
+  { value: 'km', labelKey: 'language.khmer' },
+];
+
+export default function SettingsScreen() {
   const { session } = useAuth();
+  const { locale, setLocale } = useLocale();
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingPrefs, setIsSubmittingPrefs] = useState(false);
+  const [isSubmittingLang, setIsSubmittingLang] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
 
@@ -52,7 +66,7 @@ export default function NotificationPreferencesScreen() {
     if (!userId || !prefs) return;
     const next = { ...prefs, [key]: value };
     setPrefs(next);
-    setIsSubmitting(true);
+    setIsSubmittingPrefs(true);
     setError(null);
     const id = ++requestIdRef.current;
     const result = await api.data.updateNotificationPreferences(userId, {
@@ -60,8 +74,8 @@ export default function NotificationPreferencesScreen() {
       announcementsEnabled: next.announcementsEnabled,
       messagesEnabled: next.messagesEnabled,
     });
-    setIsSubmitting(false);
-    if (id !== requestIdRef.current) return; // Stale response, ignore
+    setIsSubmittingPrefs(false);
+    if (id !== requestIdRef.current) return;
     if (isApiError(result)) {
       setError(getUserFacingError(result));
       setPrefs(prefs);
@@ -69,6 +83,22 @@ export default function NotificationPreferencesScreen() {
       setPrefs(result);
     }
   };
+
+  const handleSelectLanguage = useCallback(
+    async (next: LocaleOption) => {
+      if (next === locale) return;
+      if (!userId) return;
+      setLocale(next);
+      setIsSubmittingLang(true);
+      setError(null);
+      const result = await api.data.updateProfile(userId, { preferredLanguage: next });
+      setIsSubmittingLang(false);
+      if (isApiError(result)) {
+        setError(getUserFacingError(result));
+      }
+    },
+    [locale, userId, setLocale]
+  );
 
   if (!userId) return null;
 
@@ -78,7 +108,7 @@ export default function NotificationPreferencesScreen() {
         <ActivityIndicator
           size="large"
           color={colors.primary}
-          accessibilityLabel={t('notifications.loadingLabel')}
+          accessibilityLabel={t('common.loading')}
         />
       </View>
     );
@@ -100,7 +130,6 @@ export default function NotificationPreferencesScreen() {
         />
       }
     >
-      <Text style={styles.intro}>{t('notifications.intro')}</Text>
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
@@ -115,26 +144,29 @@ export default function NotificationPreferencesScreen() {
         </View>
       ) : null}
 
+      {/* Notification preferences */}
+      <Text style={styles.sectionTitle}>{t('profile.notificationPreferences')}</Text>
+      <Text style={styles.intro}>{t('notifications.intro')}</Text>
       {showToggles ? (
         <View style={styles.card}>
           <View style={styles.toggleRow}>
             <Text style={styles.toggleLabel}>{t('notifications.events')}</Text>
             <Pressable
               onPress={() => prefs && handleToggle('eventsEnabled', !prefs.eventsEnabled)}
-              disabled={isSubmitting}
+              disabled={isSubmittingPrefs}
               style={({ pressed }) => [
                 styles.toggleTouchTarget,
                 pressed && styles.toggleTouchTargetPressed,
               ]}
-              accessibilityLabel="Events notifications"
-              accessibilityHint="Toggles events notifications on or off"
+              accessibilityLabel={t('notifications.events')}
+              accessibilityHint={t('notifications.eventsHint')}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.eventsEnabled ?? true }}
             >
               <Switch
                 value={prefs?.eventsEnabled ?? true}
                 onValueChange={(v) => handleToggle('eventsEnabled', v)}
-                disabled={isSubmitting}
+                disabled={isSubmittingPrefs}
                 trackColor={{ false: colors.surface100, true: colors.primary }}
                 thumbColor={colors.surface}
               />
@@ -146,12 +178,12 @@ export default function NotificationPreferencesScreen() {
               onPress={() =>
                 prefs && handleToggle('announcementsEnabled', !prefs.announcementsEnabled)
               }
-              disabled={isSubmitting}
+              disabled={isSubmittingPrefs}
               style={({ pressed }) => [
                 styles.toggleTouchTarget,
                 pressed && styles.toggleTouchTargetPressed,
               ]}
-              accessibilityLabel="Announcements notifications"
+              accessibilityLabel={t('notifications.announcements')}
               accessibilityHint="Toggles announcements notifications on or off"
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.announcementsEnabled ?? true }}
@@ -159,7 +191,7 @@ export default function NotificationPreferencesScreen() {
               <Switch
                 value={prefs?.announcementsEnabled ?? true}
                 onValueChange={(v) => handleToggle('announcementsEnabled', v)}
-                disabled={isSubmitting}
+                disabled={isSubmittingPrefs}
                 trackColor={{ false: colors.surface100, true: colors.primary }}
                 thumbColor={colors.surface}
               />
@@ -169,12 +201,12 @@ export default function NotificationPreferencesScreen() {
             <Text style={styles.toggleLabel}>{t('notifications.messages')}</Text>
             <Pressable
               onPress={() => prefs && handleToggle('messagesEnabled', !prefs.messagesEnabled)}
-              disabled={isSubmitting}
+              disabled={isSubmittingPrefs}
               style={({ pressed }) => [
                 styles.toggleTouchTarget,
                 pressed && styles.toggleTouchTargetPressed,
               ]}
-              accessibilityLabel="Messages notifications"
+              accessibilityLabel={t('notifications.messages')}
               accessibilityHint="Toggles messages notifications on or off"
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.messagesEnabled ?? true }}
@@ -182,12 +214,48 @@ export default function NotificationPreferencesScreen() {
               <Switch
                 value={prefs?.messagesEnabled ?? true}
                 onValueChange={(v) => handleToggle('messagesEnabled', v)}
-                disabled={isSubmitting}
+                disabled={isSubmittingPrefs}
                 trackColor={{ false: colors.surface100, true: colors.primary }}
                 thumbColor={colors.surface}
               />
             </Pressable>
           </View>
+        </View>
+      ) : null}
+
+      {/* App language */}
+      <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>
+        {t('profile.appLanguage')}
+      </Text>
+      <Text style={styles.intro}>{t('language.subtitle')}</Text>
+      <View style={styles.card}>
+        {LOCALES.map(({ value, labelKey }) => (
+          <Pressable
+            key={value}
+            onPress={() => handleSelectLanguage(value)}
+            disabled={isSubmittingLang}
+            style={({ pressed }) => [
+              styles.optionRow,
+              pressed && styles.optionRowPressed,
+              value === locale && styles.optionRowSelected,
+            ]}
+            accessibilityLabel={t(labelKey)}
+            accessibilityHint={t('profile.appLanguageHint')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.optionLabel}>{t(labelKey)}</Text>
+            {value === locale ? <Text style={styles.optionCheck}>✓</Text> : null}
+          </Pressable>
+        ))}
+      </View>
+
+      {isSubmittingLang ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator
+            size="small"
+            color={colors.primary}
+            accessibilityLabel={t('common.loading')}
+          />
         </View>
       ) : null}
     </ScrollView>
@@ -214,10 +282,16 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   centered: { justifyContent: 'center', alignItems: 'center' },
+  sectionTitle: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  sectionTitleSpaced: { marginTop: spacing.lg },
   intro: {
     ...typography.body,
     color: colors.textSecondary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   errorBanner: {
     backgroundColor: colors.accentSoft,
@@ -254,4 +328,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toggleTouchTargetPressed: { opacity: 0.8 },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.cardPadding,
+    minHeight: minTouchTarget,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.surface100,
+  },
+  optionRowPressed: { backgroundColor: colors.surface100 },
+  optionRowSelected: { backgroundColor: colors.brandSoft },
+  optionLabel: { ...typography.body, color: colors.textPrimary },
+  optionCheck: { ...typography.bodyStrong, color: colors.primary },
+  loadingRow: { marginTop: spacing.md, alignItems: 'center' },
 });

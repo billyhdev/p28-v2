@@ -105,14 +105,14 @@ const styles = StyleSheet.create({
 });
 
 const variantStyles = StyleSheet.create({
-  primaryContainer: { backgroundColor: colors.textPrimary },
-  primaryLabel: { color: colors.surface },
+  primaryContainer: { backgroundColor: colors.primary },
+  primaryLabel: { color: colors.onPrimary },
   secondaryContainer: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderColor: colors.primary,
   },
-  secondaryLabel: { color: colors.textPrimary },
+  secondaryLabel: { color: colors.primary },
   textContainer: { backgroundColor: 'transparent' },
   textLabel: { color: colors.primary },
 });

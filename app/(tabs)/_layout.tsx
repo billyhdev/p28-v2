@@ -15,7 +15,7 @@ export default function TabLayout() {
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: colors.textPrimary,
+        tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.ink300,
         headerShown: useClientOnlyValue(false, true),
         headerStyle: {

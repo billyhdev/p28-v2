@@ -19,9 +19,9 @@ import { api, isApiError } from '@/lib/api';
 import { getUserFacingError } from '@/lib/errors';
 import { t } from '@/lib/i18n';
 import type { Group, GroupType } from '@/lib/api';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, radius, spacing, typography } from '@/theme/tokens';
 
-type FilterType = 'all' | GroupType;
+type FilterType = 'all' | 'joined' | GroupType;
 
 export default function GroupsScreen() {
   const { session } = useAuth();
@@ -43,7 +43,7 @@ export default function GroupsScreen() {
     }
     setIsLoading(true);
     setError(null);
-    const typeFilter = filter === 'all' ? undefined : filter;
+    const typeFilter = filter === 'all' || filter === 'joined' ? undefined : filter;
     api.data
       .getGroups({ type: typeFilter, search: search.trim() || undefined })
       .then((r) => {
@@ -83,10 +83,13 @@ export default function GroupsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadGroupsRef.current();
+      setFilter('all');
+      if (filter === 'all') {
+        loadGroupsRef.current();
+      }
       loadMemberGroups();
       loadAdminStatus();
-    }, [loadMemberGroups, loadAdminStatus])
+    }, [loadMemberGroups, loadAdminStatus, filter])
   );
 
   const isFirstMount = useRef(true);
@@ -161,7 +164,7 @@ export default function GroupsScreen() {
         </View>
 
         <View style={styles.filterRow}>
-          {(['all', 'forum', 'ministry'] as const).map((f) => (
+          {(['all', 'joined', 'forum', 'ministry'] as const).map((f) => (
             <Pressable
               key={f}
               onPress={() => setFilter(f)}
@@ -169,17 +172,21 @@ export default function GroupsScreen() {
               accessibilityLabel={
                 f === 'all'
                   ? t('groups.filterAll')
-                  : f === 'forum'
-                    ? t('groups.filterForums')
-                    : t('groups.filterMinistries')
+                  : f === 'joined'
+                    ? t('groups.filterJoined')
+                    : f === 'forum'
+                      ? t('groups.filterForums')
+                      : t('groups.filterMinistries')
               }
             >
               <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
                 {f === 'all'
                   ? t('groups.filterAll')
-                  : f === 'forum'
-                    ? t('groups.filterForums')
-                    : t('groups.filterMinistries')}
+                  : f === 'joined'
+                    ? t('groups.filterJoined')
+                    : f === 'forum'
+                      ? t('groups.filterForums')
+                      : t('groups.filterMinistries')}
               </Text>
             </Pressable>
           ))}
@@ -195,21 +202,36 @@ export default function GroupsScreen() {
           <View style={styles.loading}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : groups.length === 0 ? (
-          <EmptyState
-            title={search || filter !== 'all' ? t('groups.noGroupsFound') : t('groups.noGroups')}
-            subtitle={
-              search || filter !== 'all'
-                ? 'Try a different search or filter'
-                : 'Groups will appear here once they are created.'
-            }
-          />
         ) : (
-          <View style={styles.list}>
-            {groups.map((group) => (
-              <GroupCard key={group.id} group={group} isMember={memberGroupIds.has(group.id)} />
-            ))}
-          </View>
+          (() => {
+            const displayed =
+              filter === 'joined' ? groups.filter((g) => memberGroupIds.has(g.id)) : groups;
+            return displayed.length === 0 ? (
+              <EmptyState
+                iconName="people-outline"
+                title={
+                  filter === 'joined'
+                    ? t('groups.noJoinedGroups')
+                    : search || filter !== 'all'
+                      ? t('groups.noGroupsFound')
+                      : t('groups.noGroups')
+                }
+                subtitle={
+                  filter === 'joined'
+                    ? t('groups.noJoinedGroupsSubtitle')
+                    : search || filter !== 'all'
+                      ? 'Try a different search or filter'
+                      : 'Groups will appear here once they are created.'
+                }
+              />
+            ) : (
+              <View style={styles.list}>
+                {displayed.map((group) => (
+                  <GroupCard key={group.id} group={group} isMember={memberGroupIds.has(group.id)} />
+                ))}
+              </View>
+            );
+          })()
         )}
       </Animated.View>
     </ScrollView>
@@ -223,7 +245,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.screenHorizontal,
-    paddingBottom: spacing.xl,
+    paddingBottom: 100, // Space for floating tab bar
   },
   content: { flex: 1 },
   header: {
@@ -249,7 +271,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: radius.button,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     paddingHorizontal: spacing.md,
@@ -273,7 +295,7 @@ const styles = StyleSheet.create({
   filterChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 8,
+    borderRadius: radius.button,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
@@ -287,12 +309,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   filterTextActive: {
-    color: colors.surface,
+    color: colors.onPrimary,
   },
   errorBanner: {
     backgroundColor: colors.amberSoft,
     padding: spacing.md,
-    borderRadius: 8,
+    borderRadius: radius.button,
     marginBottom: spacing.md,
   },
   errorText: {

@@ -8,7 +8,7 @@ import { Card } from '@/components/primitives/Card';
 import { COUNTRIES } from '@/constants/countries';
 import type { Group } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 function getCountryDisplayName(code: string): string {
   const found = COUNTRIES.find((c) => c.code === code);
@@ -46,76 +46,78 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
       accessibilityLabel={`${group.name}, ${typeLabel}`}
       accessibilityHint="Opens group details"
     >
-      <Card style={styles.card}>
-        {group.bannerImageUrl ? (
-          <Image
-            source={{ uri: group.bannerImageUrl }}
-            style={styles.banner}
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
-        ) : (
-          <View style={styles.bannerPlaceholder}>
-            <Ionicons name="people-outline" size={32} color={colors.ink300} />
-          </View>
-        )}
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Badge label={typeLabel} variant={group.type === 'forum' ? 'neutral' : 'primary'} />
-          </View>
-          <Text style={styles.name} numberOfLines={1}>
-            {group.name}
-          </Text>
-          {group.description ? (
-            <Text style={styles.description} numberOfLines={2}>
-              {group.description}
-            </Text>
-          ) : null}
-          <View style={styles.footer}>
-            <View style={styles.footerLeft}>
-              {isMember ? (
-                <View style={styles.joinedBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                  <Text style={styles.joinedText}>{t('groups.joined')}</Text>
-                </View>
-              ) : null}
-              {onJoin && !isMember && (
-                <Pressable
-                  onPress={handleJoinPress}
-                  style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
-                  accessibilityLabel={t('groups.join')}
-                  accessibilityHint="Joins this group"
-                >
-                  <Text style={styles.actionText}>{t('groups.join')}</Text>
-                </Pressable>
-              )}
-              {onLeave && isMember && (
-                <Pressable
-                  onPress={handleLeavePress}
-                  style={({ pressed }) => [styles.leaveButton, pressed && styles.actionPressed]}
-                  accessibilityLabel={t('groups.leave')}
-                  accessibilityHint="Leaves this group"
-                >
-                  <Text style={styles.leaveText}>{t('groups.leave')}</Text>
-                </Pressable>
-              )}
+      <Card variant="glass" contentPadding={0} style={styles.card}>
+        <View style={styles.cardInner}>
+          {group.bannerImageUrl ? (
+            <Image
+              source={{ uri: group.bannerImageUrl }}
+              style={styles.banner}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={styles.bannerPlaceholder}>
+              <Ionicons name="people-outline" size={32} color={colors.ink300} />
             </View>
-            <View style={styles.footerRight}>
-              <View style={styles.metaItem}>
-                <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
-                <Text style={styles.meta} numberOfLines={1}>
-                  {getCountryDisplayName(group.country)}
-                </Text>
+          )}
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Badge label={typeLabel} variant={group.type === 'forum' ? 'neutral' : 'primary'} />
+            </View>
+            <Text style={styles.name} numberOfLines={1}>
+              {group.name}
+            </Text>
+            {group.description ? (
+              <Text style={styles.description} numberOfLines={2}>
+                {group.description}
+              </Text>
+            ) : null}
+            <View style={styles.footer}>
+              <View style={styles.footerLeft}>
+                {isMember ? (
+                  <View style={styles.joinedBadge}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.joinedText}>{t('groups.joined')}</Text>
+                  </View>
+                ) : null}
+                {onJoin && !isMember && (
+                  <Pressable
+                    onPress={handleJoinPress}
+                    style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
+                    accessibilityLabel={t('groups.join')}
+                    accessibilityHint="Joins this group"
+                  >
+                    <Text style={styles.actionText}>{t('groups.join')}</Text>
+                  </Pressable>
+                )}
+                {onLeave && isMember && (
+                  <Pressable
+                    onPress={handleLeavePress}
+                    style={({ pressed }) => [styles.leaveButton, pressed && styles.actionPressed]}
+                    accessibilityLabel={t('groups.leave')}
+                    accessibilityHint="Leaves this group"
+                  >
+                    <Text style={styles.leaveText}>{t('groups.leave')}</Text>
+                  </Pressable>
+                )}
               </View>
-              {group.memberCount != null && (
+              <View style={styles.footerRight}>
                 <View style={styles.metaItem}>
-                  <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
-                  <Text style={styles.meta}>
-                    {group.memberCount}{' '}
-                    {group.memberCount === 1 ? t('groups.member') : t('groups.members')}
+                  <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {getCountryDisplayName(group.country)}
                   </Text>
                 </View>
-              )}
+                {group.memberCount != null && (
+                  <View style={styles.metaItem}>
+                    <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
+                    <Text style={styles.meta}>
+                      {group.memberCount}{' '}
+                      {group.memberCount === 1 ? t('groups.member') : t('groups.members')}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         </View>
@@ -128,20 +130,33 @@ const styles = StyleSheet.create({
   card: {
     padding: 0,
     overflow: 'hidden',
+    borderWidth: 0,
+  },
+  cardInner: {
+    minHeight: 260,
+    flexDirection: 'column',
   },
   banner: {
+    flex: 1,
     width: '100%',
-    height: 100,
+    minHeight: 130,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    overflow: 'hidden',
     backgroundColor: colors.surface100,
   },
   bannerPlaceholder: {
+    flex: 1,
     width: '100%',
-    height: 100,
-    backgroundColor: colors.surface100,
+    minHeight: 130,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.surface100,
   },
   content: {
+    flex: 1,
     padding: spacing.cardPadding,
     gap: spacing.sm,
   },
@@ -199,7 +214,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: radius.button,
   },
   leaveButton: {
     paddingVertical: spacing.xs,

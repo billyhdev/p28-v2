@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, shadow, typography } from '@/theme/tokens';
+import { colors, shadow } from '@/theme/tokens';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -50,10 +51,10 @@ function TabItem({
         <Ionicons
           name={isFocused ? iconFocused : iconDefault}
           size={20}
-          color={isFocused ? colors.textPrimary : colors.ink300}
+          color={isFocused ? colors.primary : colors.ink300}
         />
         <Text
-          style={[styles.tabLabel, { color: isFocused ? colors.textPrimary : colors.ink300 }]}
+          style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.ink300 }]}
           numberOfLines={1}
         >
           {label}
@@ -78,50 +79,57 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
       style={[styles.outer, { paddingBottom: Math.max(insets.bottom, 12) }]}
       pointerEvents="box-none"
     >
-      <View style={styles.pill}>
-        {state.routes.map((route, index) => {
-          const { options } = descriptors[route.key];
-          const label =
-            typeof options.tabBarLabel === 'string'
-              ? options.tabBarLabel
-              : typeof options.title === 'string'
-                ? options.title
-                : route.name;
+      <View style={styles.pill} collapsable={false}>
+        <BlurView
+          style={StyleSheet.absoluteFill}
+          blurType="light"
+          intensity={Platform.OS === 'ios' ? 70 : 80}
+        />
+        <View style={styles.pillContent}>
+          {state.routes.map((route, index) => {
+            const { options } = descriptors[route.key];
+            const label =
+              typeof options.tabBarLabel === 'string'
+                ? options.tabBarLabel
+                : typeof options.title === 'string'
+                  ? options.title
+                  : route.name;
 
-          const isFocused = state.index === index;
-          const icons = ICON_MAP[route.name] ?? {
-            focused: 'ellipse' as IoniconsName,
-            default: 'ellipse-outline' as IoniconsName,
-          };
+            const isFocused = state.index === index;
+            const icons = ICON_MAP[route.name] ?? {
+              focused: 'ellipse' as IoniconsName,
+              default: 'ellipse-outline' as IoniconsName,
+            };
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
-            }
-          };
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
 
-          const onLongPress = () => {
-            navigation.emit({ type: 'tabLongPress', target: route.key });
-          };
+            const onLongPress = () => {
+              navigation.emit({ type: 'tabLongPress', target: route.key });
+            };
 
-          return (
-            <TabItem
-              key={route.key}
-              label={label}
-              iconFocused={icons.focused}
-              iconDefault={icons.default}
-              isFocused={isFocused}
-              onPress={onPress}
-              onLongPress={onLongPress}
-              accessibilityLabel={options.tabBarAccessibilityLabel}
-            />
-          );
-        })}
+            return (
+              <TabItem
+                key={route.key}
+                label={label}
+                iconFocused={icons.focused}
+                iconDefault={icons.default}
+                isFocused={isFocused}
+                onPress={onPress}
+                onLongPress={onLongPress}
+                accessibilityLabel={options.tabBarAccessibilityLabel}
+              />
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -136,18 +144,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pill: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
+    overflow: 'hidden',
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
     shadowColor: colors.shadow,
     shadowOffset: shadow.floating.shadowOffset,
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
+    shadowOpacity: shadow.floating.shadowOpacity,
+    shadowRadius: shadow.floating.shadowRadius,
     elevation: 8,
     borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderColor: colors.glass.border,
+  },
+  pillContent: {
+    flexDirection: 'row',
+    backgroundColor: colors.glass.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
   },
   tabItem: {
     alignItems: 'center',

@@ -1,8 +1,8 @@
 /**
- * Design tokens — Minimal Monochrome (single source of truth).
+ * Design tokens — Calm & Glass (single source of truth).
  *
- * Aesthetic: Aesop / Kinfolk — calm, intentional, almost monochromatic.
- * Palette: warm off-whites, soft blacks, one accent: muted lavender-blue.
+ * Aesthetic: Church platform invoking bliss and calm.
+ * Palette: light pastel blue primary, glassmorphism surfaces, generous spacing.
  */
 
 // ---------------------------------------------------------------------------
@@ -11,36 +11,45 @@
 
 export const colors = {
   // Neutrals
-  background: '#F7F6F3',
+  background: '#F5F8FC',
   surface: '#FFFFFF',
-  surfaceHighlight: '#EEEDEA',
-  surface100: '#E8E7E4',
+  surfaceHighlight: '#F8FAFD',
+  surface100: '#EEF4FA',
 
-  // Brand / accent — muted lavender-blue
-  primary: '#8B9BB8',
-  primaryDark: '#7889A8',
-  primaryLight: '#A8B4CC',
-  brandSoft: '#E8EBF2',
+  // Brand — pastel blue (bliss and calm, darkened for text contrast)
+  primary: '#6E9AC0',
+  primaryDark: '#5E8AB0',
+  primaryLight: '#9BB8DC',
+  onPrimary: '#FFFFFF',
+  brandSoft: '#E8F0F8',
 
-  // Accent aliases (collapsed to monochrome palette)
-  accent: '#8B9BB8',
-  accentSoft: '#E8EBF2',
-  lavender: '#8B9BB8',
-  lavenderSoft: '#E8EBF2',
-  blue: '#8B9BB8',
-  blueSoft: '#E8EBF2',
-  peach: '#C4B5A8',
+  // Accent aliases
+  accent: '#6E9AC0',
+  accentSoft: '#E8F0F8',
+  lavender: '#6E9AC0',
+  lavenderSoft: '#E8F0F8',
+  blue: '#6E9AC0',
+  blueSoft: '#E8F0F8',
+  peach: '#E8D4C4',
   greenSoft: '#E4E8E5',
   amberSoft: '#EDE9E0',
 
   // Card backgrounds (unified)
   cardDefault: '#FFFFFF',
-  cardAlt: '#F7F6F3',
-  cardHighlight: '#F2F1EE',
+  cardAlt: '#F5F8FC',
+  cardHighlight: '#F8FAFD',
+
+  // Glassmorphism
+  glass: {
+    surface: 'rgba(255, 255, 255, 0.8)',
+    surfaceStrong: 'rgba(255, 255, 255, 0.95)',
+    border: 'rgba(255, 255, 255, 0.5)',
+    borderSubtle: 'rgba(0, 0, 0, 0.04)',
+  },
 
   // Text
   textPrimary: '#1C1C1C',
-  textSecondary: '#7A7770',
+  textSecondary: '#5A5850',
   ink700: '#5A5850',
   ink300: '#B5B3AD',
 
@@ -48,42 +57,43 @@ export const colors = {
   success: '#6A9A7B',
   warning: '#C09A5A',
   error: '#BF6060',
-  info: '#8B9BB8',
+  info: '#6E9AC0',
 
   // Misc
   shadow: '#1C1C1C',
   borderSubtle: 'rgba(28, 28, 28, 0.06)',
-  focusRing: 'rgba(139, 155, 184, 0.30)',
+  focusRing: 'rgba(110, 154, 192, 0.35)',
 } as const;
 
 // ---------------------------------------------------------------------------
-// Spacing
+// Spacing (generous for calm, blissful feel)
 // ---------------------------------------------------------------------------
 
 export const spacing = {
   xxs: 4,
-  xs: 4,
-  sm: 8,
+  xs: 8,
+  sm: 12,
   md: 16,
   lg: 24,
   xl: 32,
+  xxl: 40,
   screenHorizontal: 20,
   cardPadding: 16,
   cardGap: 12,
-  sectionGap: 24,
+  sectionGap: 28,
 } as const;
 
 // ---------------------------------------------------------------------------
-// Radius
+// Radius (larger for calm, rounded feel)
 // ---------------------------------------------------------------------------
 
 export const radius = {
-  sm: 4,
-  button: 8,
-  card: 12,
+  sm: 8,
+  button: 12,
+  card: 16,
   chip: 999,
-  lg: 8,
-  xl: 16,
+  lg: 12,
+  xl: 20,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -105,22 +115,22 @@ export const typography = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Shadow
+// Shadow (soft for glassmorphism feel)
 // ---------------------------------------------------------------------------
 
 export const shadow = {
   cardSoft: {
-    shadowOpacity: 0.03,
+    shadowOpacity: 0.04,
     shadowRadius: 24,
     shadowOffset: { width: 0 as const, height: 4 },
   },
   floating: {
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
     shadowOffset: { width: 0 as const, height: 8 },
   },
   card: {
-    shadowOpacity: 0.03,
+    shadowOpacity: 0.04,
     shadowRadius: 24,
     shadowOffset: { width: 0 as const, height: 4 },
   },

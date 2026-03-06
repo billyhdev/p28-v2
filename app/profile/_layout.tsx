@@ -7,6 +7,7 @@ export default function ProfileLayout() {
   return (
     <Stack>
       <Stack.Screen name="edit" options={{ headerShown: false }} />
+      <Stack.Screen name="settings" options={{ title: t('profile.settings'), headerShown: true }} />
       <Stack.Screen
         name="notifications"
         options={{ title: t('profile.notificationPreferences'), headerShown: true }}

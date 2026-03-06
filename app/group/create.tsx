@@ -1,5 +1,7 @@
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
+import { Image } from 'expo-image';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -40,8 +42,48 @@ export default function CreateGroupScreen() {
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
+  const [localBannerUri, setLocalBannerUri] = useState<string | null>(null);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
 
   const selectedCountryName = COUNTRIES.find((c) => c.code === country)?.name ?? country;
+
+  const pickBannerImage = async () => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setError(t('profile.photoPermissionRequired'));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return;
+    const asset = result.assets[0];
+    setLocalBannerUri(asset.uri);
+    setError(null);
+    setIsUploadingBanner(true);
+    const uploadResult = await api.data.uploadGroupBannerImage(
+      userId,
+      asset.uri,
+      asset.base64 ?? undefined
+    );
+    setIsUploadingBanner(false);
+    if (typeof uploadResult === 'string') {
+      setBannerImageUrl(uploadResult);
+    } else {
+      setError(getUserFacingError(uploadResult));
+    }
+  };
+
+  const removeBannerImage = () => {
+    setBannerImageUrl(null);
+    setLocalBannerUri(null);
+  };
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -56,6 +98,7 @@ export default function CreateGroupScreen() {
         type,
         name: trimmedName,
         description: description.trim() || undefined,
+        bannerImageUrl: bannerImageUrl ?? undefined,
         preferredLanguage,
         country,
       },
@@ -82,6 +125,45 @@ export default function CreateGroupScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <Text style={styles.label}>{t('groups.bannerImage')}</Text>
+        <Pressable
+          onPress={pickBannerImage}
+          disabled={isUploadingBanner}
+          style={styles.bannerContainer}
+          accessibilityLabel={t('groups.addBannerImage')}
+          accessibilityHint={t('groups.addBannerImageHint')}
+        >
+          {bannerImageUrl || localBannerUri ? (
+            <>
+              <Image
+                source={{ uri: bannerImageUrl ?? localBannerUri ?? '' }}
+                style={styles.bannerImage}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+              <Pressable
+                style={styles.removeBannerButton}
+                onPress={removeBannerImage}
+                accessibilityLabel={t('groups.removeBannerImage')}
+                accessibilityHint={t('groups.removeBannerImage')}
+              >
+                <Ionicons name="close-circle" size={28} color={colors.textPrimary} />
+              </Pressable>
+            </>
+          ) : (
+            <View style={styles.bannerPlaceholder}>
+              {isUploadingBanner ? (
+                <Text style={styles.bannerPlaceholderText}>{t('common.loading')}</Text>
+              ) : (
+                <>
+                  <Ionicons name="image-outline" size={40} color={colors.ink300} />
+                  <Text style={styles.bannerPlaceholderText}>{t('groups.addBannerImage')}</Text>
+                </>
+              )}
+            </View>
+          )}
+        </Pressable>
+
         <Input
           label="Group name"
           value={name}
@@ -242,6 +324,34 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: spacing.screenHorizontal,
     paddingBottom: spacing.xl,
+  },
+  bannerContainer: {
+    width: '100%',
+    height: 160,
+    marginBottom: spacing.lg,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.surface100,
+  },
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  bannerPlaceholderText: {
+    ...typography.label,
+    color: colors.ink300,
+  },
+  removeBannerButton: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    padding: spacing.xxs,
   },
   label: {
     ...typography.label,
