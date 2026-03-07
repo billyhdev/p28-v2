@@ -63,26 +63,39 @@ function formatRelativeTime(isoDate: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'short' }).format(d);
 }
 
-function OriginalPostRow({ discussion }: { discussion: Discussion }) {
+function OriginalPostRow({
+  discussion,
+  onAuthorPress,
+}: {
+  discussion: Discussion;
+  onAuthorPress?: () => void;
+}) {
   return (
     <View style={styles.originalPost}>
-      <Avatar
-        source={discussion.authorAvatarUrl ? { uri: discussion.authorAvatarUrl } : null}
-        fallbackText={discussion.authorDisplayName}
-        size="sm"
+      <Pressable
+        onPress={onAuthorPress}
         accessibilityLabel={
           discussion.authorDisplayName
-            ? `${discussion.authorDisplayName} profile picture`
-            : 'Original poster'
+            ? `View ${discussion.authorDisplayName}'s profile`
+            : 'View profile'
         }
-      />
+        accessibilityRole="button"
+      >
+        <Avatar
+          source={discussion.authorAvatarUrl ? { uri: discussion.authorAvatarUrl } : null}
+          fallbackText={discussion.authorDisplayName}
+          size="sm"
+        />
+      </Pressable>
       <View style={styles.originalPostContent}>
         <Text style={styles.topicTitle}>{discussion.title}</Text>
         {discussion.body ? <Text style={styles.postBody}>{discussion.body}</Text> : null}
         <View style={styles.postHeader}>
-          <Text style={styles.authorName}>
-            by {discussion.authorDisplayName ?? t('common.loading')}
-          </Text>
+          <Pressable onPress={onAuthorPress} accessibilityRole="link">
+            <Text style={styles.authorName}>
+              by {discussion.authorDisplayName ?? t('common.loading')}
+            </Text>
+          </Pressable>
           <View style={styles.postHeaderMeta}>
             <Text style={styles.date}>{formatRelativeTime(discussion.createdAt)}</Text>
             {discussion.updatedAt && discussion.updatedAt !== discussion.createdAt ? (
@@ -119,6 +132,7 @@ function ReplyRow({
   onSwipeLeft,
   onAddReaction,
   onRemoveReaction,
+  onAuthorPress,
   canReact,
   currentUserId,
 }: {
@@ -130,6 +144,7 @@ function ReplyRow({
   onSwipeLeft?: () => void;
   onAddReaction?: (reactionType: PostReactionType) => void;
   onRemoveReaction?: (reactionType: PostReactionType) => void;
+  onAuthorPress?: () => void;
   canReact?: boolean;
   currentUserId?: string;
 }) {
@@ -248,20 +263,27 @@ function ReplyRow({
           accessibilityRole="button"
         >
           <View style={styles.replyCardHeader}>
-            <Avatar
-              source={post.authorAvatarUrl ? { uri: post.authorAvatarUrl } : null}
-              fallbackText={post.authorDisplayName}
-              size="sm"
+            <Pressable
+              onPress={onAuthorPress}
               accessibilityLabel={
                 post.authorDisplayName
-                  ? `${post.authorDisplayName} profile picture`
-                  : 'Reply author'
+                  ? `View ${post.authorDisplayName}'s profile`
+                  : 'View profile'
               }
-            />
+              accessibilityRole="button"
+            >
+              <Avatar
+                source={post.authorAvatarUrl ? { uri: post.authorAvatarUrl } : null}
+                fallbackText={post.authorDisplayName}
+                size="sm"
+              />
+            </Pressable>
             <View style={styles.replyCardMeta}>
-              <Text style={styles.replyAuthorName}>
-                {post.authorDisplayName ?? t('common.loading')}
-              </Text>
+              <Pressable onPress={onAuthorPress} accessibilityRole="link">
+                <Text style={styles.replyAuthorName}>
+                  {post.authorDisplayName ?? t('common.loading')}
+                </Text>
+              </Pressable>
               <View style={styles.replyCardMetaRight}>
                 <Text style={styles.replyDate}>{formatRelativeTime(post.createdAt)}</Text>
                 {post.updatedAt && post.updatedAt !== post.createdAt ? (
@@ -663,7 +685,10 @@ export default function DiscussionDetailScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <OriginalPostRow discussion={discussion} />
+        <OriginalPostRow
+          discussion={discussion}
+          onAuthorPress={() => router.push(`/profile/${discussion.userId}`)}
+        />
 
         <View style={styles.repliesSection}>
           <Text style={styles.repliesHeading}>
@@ -688,6 +713,7 @@ export default function DiscussionDetailScreen() {
               }
               onAddReaction={(type) => handleAddReaction(p, type)}
               onRemoveReaction={(type) => handleRemoveReaction(p, type)}
+              onAuthorPress={() => router.push(`/profile/${p.userId}`)}
               canReact={canReact}
               currentUserId={userId}
             />

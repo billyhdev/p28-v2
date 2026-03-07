@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   headerText: { flex: 1, height: avatarSizes.xl },
-  title: { ...typography.h3, color: colors.textPrimary },
+  title: { ...typography.h3, color: colors.textPrimary, marginBottom: spacing.xs },
   friendsButton: {
     flex: 1,
     flexDirection: 'row',
