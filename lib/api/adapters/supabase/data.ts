@@ -9,6 +9,7 @@ import type {
   CreateGroupInput,
   Discussion,
   DiscussionPost,
+  FriendRequest,
   Group,
   PostReactionDetail,
   GroupAdmin,
@@ -53,6 +54,11 @@ function toApiError(err: unknown): ApiError {
       } else if (message.includes('friendships_pkey')) {
         return {
           message: 'Already friends with this user',
+          code: 'ALREADY_EXISTS',
+        };
+      } else if (message.includes('friend_requests_unique_pending')) {
+        return {
+          message: 'Friend request already sent',
           code: 'ALREADY_EXISTS',
         };
       }
@@ -318,6 +324,34 @@ function mapDiscussionPostRow(
         (t): t is 'prayer' | 'laugh' | 'thumbs_up' =>
           t === 'prayer' || t === 'laugh' || t === 'thumbs_up'
       ) ?? undefined,
+  };
+}
+
+type FriendRequestRow = {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapFriendRequestRow(
+  row: FriendRequestRow,
+  senderProfile?: { displayName?: string; avatarUrl?: string } | null,
+  receiverProfile?: { displayName?: string; avatarUrl?: string } | null
+): FriendRequest {
+  return {
+    id: row.id,
+    senderId: row.sender_id,
+    receiverId: row.receiver_id,
+    status: row.status as FriendRequest['status'],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    senderDisplayName: senderProfile?.displayName,
+    senderAvatarUrl: senderProfile?.avatarUrl,
+    receiverDisplayName: receiverProfile?.displayName,
+    receiverAvatarUrl: receiverProfile?.avatarUrl,
   };
 }
 
@@ -1512,6 +1546,201 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         });
         if (error) return toApiError(error);
         return (data as string | null) ?? null;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    // --- Friend requests ---
+
+    async sendFriendRequest(
+      senderId: string,
+      receiverId: string
+    ): Promise<FriendRequest | ApiError> {
+      try {
+        if (senderId === receiverId) {
+          return { message: 'Cannot send a friend request to yourself', code: 'VALIDATION_ERROR' };
+        }
+
+        const { data: existing, error: existErr } = await getClient()
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at, updated_at')
+          .eq('sender_id', senderId)
+          .eq('receiver_id', receiverId)
+          .maybeSingle();
+        if (existErr) return toApiError(existErr);
+
+        if (existing) {
+          if (existing.status === 'pending') {
+            return { message: 'Friend request already sent', code: 'ALREADY_EXISTS' };
+          }
+          if (existing.status === 'accepted') {
+            const friends = await this.areFriends(senderId, receiverId);
+            if (friends === true) {
+              return { message: 'Already friends with this user', code: 'ALREADY_EXISTS' };
+            }
+          }
+          // Previously declined or accepted-without-friendship — re-send by updating back to pending
+          const { data: row, error } = await getClient()
+            .from('friend_requests')
+            .update({ status: 'pending' })
+            .eq('id', existing.id)
+            .select('id, sender_id, receiver_id, status, created_at, updated_at')
+            .single();
+          if (error) return toApiError(error);
+          if (!row) return { message: 'Failed to re-send friend request', code: 'NOT_FOUND' };
+          return mapFriendRequestRow(row as FriendRequestRow);
+        }
+
+        const { data: row, error } = await getClient()
+          .from('friend_requests')
+          .insert({ sender_id: senderId, receiver_id: receiverId })
+          .select('id, sender_id, receiver_id, status, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!row) return { message: 'Failed to send friend request', code: 'NOT_FOUND' };
+        return mapFriendRequestRow(row as FriendRequestRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async cancelFriendRequest(requestId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('friend_requests')
+          .delete()
+          .eq('id', requestId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async acceptFriendRequest(requestId: string, receiverId: string): Promise<void | ApiError> {
+      try {
+        const { data: req, error: fetchErr } = await getClient()
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status')
+          .eq('id', requestId)
+          .single();
+        if (fetchErr) return toApiError(fetchErr);
+        if (!req) return { message: 'Friend request not found', code: 'NOT_FOUND' };
+        if (req.receiver_id !== receiverId) {
+          return { message: 'Not authorized to accept this request', code: 'FORBIDDEN' };
+        }
+        if (req.status !== 'pending') {
+          return { message: 'Friend request is no longer pending', code: 'VALIDATION_ERROR' };
+        }
+
+        const { error: updateErr } = await getClient()
+          .from('friend_requests')
+          .update({ status: 'accepted' })
+          .eq('id', requestId);
+        if (updateErr) return toApiError(updateErr);
+
+        const u = req.sender_id < req.receiver_id ? req.sender_id : req.receiver_id;
+        const f = req.sender_id < req.receiver_id ? req.receiver_id : req.sender_id;
+        const { error: friendErr } = await getClient()
+          .from('friendships')
+          .insert({ user_id: u, friend_id: f });
+        if (friendErr) return toApiError(friendErr);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async declineFriendRequest(requestId: string, receiverId: string): Promise<void | ApiError> {
+      try {
+        const { data: req, error: fetchErr } = await getClient()
+          .from('friend_requests')
+          .select('id, receiver_id, status')
+          .eq('id', requestId)
+          .single();
+        if (fetchErr) return toApiError(fetchErr);
+        if (!req) return { message: 'Friend request not found', code: 'NOT_FOUND' };
+        if (req.receiver_id !== receiverId) {
+          return { message: 'Not authorized to decline this request', code: 'FORBIDDEN' };
+        }
+
+        const { error } = await getClient()
+          .from('friend_requests')
+          .update({ status: 'declined' })
+          .eq('id', requestId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getReceivedFriendRequests(userId: string): Promise<FriendRequest[] | ApiError> {
+      try {
+        const { data: rows, error } = await getClient()
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at, updated_at')
+          .eq('receiver_id', userId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+        if (error) return toApiError(error);
+        const requests = (rows ?? []) as FriendRequestRow[];
+        if (requests.length === 0) return [];
+
+        const senderIds = [...new Set(requests.map((r) => r.sender_id))];
+        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+        for (const uid of senderIds) {
+          const { data: p } = await getClient()
+            .from('profiles')
+            .select('display_name, first_name, last_name, avatar_url')
+            .eq('user_id', uid)
+            .maybeSingle();
+          if (p) {
+            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(uid, { displayName, avatarUrl });
+          }
+        }
+
+        return requests.map((r) => mapFriendRequestRow(r, profileMap.get(r.sender_id) ?? null));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getFriendRequestBetween(
+      userId: string,
+      targetUserId: string
+    ): Promise<FriendRequest | null | ApiError> {
+      try {
+        if (userId === targetUserId) return null;
+        const { data, error } = await getClient()
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at, updated_at')
+          .eq('status', 'pending')
+          .or(
+            `and(sender_id.eq.${userId},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${userId})`
+          )
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!data) return null;
+        return mapFriendRequestRow(data as FriendRequestRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getPendingFriendRequestCount(userId: string): Promise<number | ApiError> {
+      try {
+        const { count, error } = await getClient()
+          .from('friend_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('receiver_id', userId)
+          .eq('status', 'pending');
+        if (error) return toApiError(error);
+        return count ?? 0;
       } catch (e) {
         return toApiError(e);
       }

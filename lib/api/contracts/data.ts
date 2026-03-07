@@ -6,6 +6,7 @@ import type {
   CreateGroupInput,
   Discussion,
   DiscussionPost,
+  FriendRequest,
   Group,
   PostReactionDetail,
   GroupAdmin,
@@ -73,6 +74,18 @@ export interface DataContract {
   areFriends(userId: string, targetUserId: string): Promise<boolean | ApiError>;
   addFriend(userId: string, friendId: string): Promise<void | ApiError>;
   removeFriend(userId: string, friendId: string): Promise<void | ApiError>;
+
+  // Friend requests
+  sendFriendRequest(senderId: string, receiverId: string): Promise<FriendRequest | ApiError>;
+  cancelFriendRequest(requestId: string): Promise<void | ApiError>;
+  acceptFriendRequest(requestId: string, receiverId: string): Promise<void | ApiError>;
+  declineFriendRequest(requestId: string, receiverId: string): Promise<void | ApiError>;
+  getReceivedFriendRequests(userId: string): Promise<FriendRequest[] | ApiError>;
+  getFriendRequestBetween(
+    userId: string,
+    targetUserId: string
+  ): Promise<FriendRequest | null | ApiError>;
+  getPendingFriendRequestCount(userId: string): Promise<number | ApiError>;
 
   // Group admins
   getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError>;

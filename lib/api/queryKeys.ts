@@ -21,4 +21,8 @@ export const queryKeys = {
   friendIds: (userId: string) => ['friendIds', userId] as const,
   areFriends: (userId: string, targetUserId: string) =>
     ['areFriends', userId, targetUserId] as const,
+  friendRequestBetween: (userId: string, targetUserId: string) =>
+    ['friendRequestBetween', userId, targetUserId] as const,
+  receivedFriendRequests: (userId: string) => ['receivedFriendRequests', userId] as const,
+  pendingFriendRequestCount: (userId: string) => ['pendingFriendRequestCount', userId] as const,
 };

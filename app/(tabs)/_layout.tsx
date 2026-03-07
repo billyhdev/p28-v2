@@ -6,11 +6,16 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { FloatingTabBar } from '@/components/navigation/FloatingTabBar';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useAuth } from '@/hooks/useAuth';
+import { usePendingFriendRequestCountQuery } from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
 import { colors, typography } from '@/theme/tokens';
 
 export default function TabLayout() {
   useLocale();
+  const { session } = useAuth();
+  const userId = session?.user?.id;
+  const { data: pendingCount } = usePendingFriendRequestCountQuery(userId);
   return (
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
@@ -66,6 +71,14 @@ export default function TabLayout() {
         options={{
           title: t('tabs.messages'),
           tabBarAccessibilityLabel: t('tabs.messages'),
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: t('tabs.notifications'),
+          tabBarAccessibilityLabel: t('tabs.notifications'),
+          tabBarBadge: pendingCount && pendingCount > 0 ? pendingCount : undefined,
         }}
       />
       <Tabs.Screen

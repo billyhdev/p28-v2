@@ -18,6 +18,7 @@ function TabItem({
   iconFocused,
   iconDefault,
   isFocused,
+  badge,
   onPress,
   onLongPress,
   accessibilityLabel,
@@ -26,6 +27,7 @@ function TabItem({
   iconFocused: IoniconsName;
   iconDefault: IoniconsName;
   isFocused: boolean;
+  badge?: number;
   onPress: () => void;
   onLongPress: () => void;
   accessibilityLabel?: string;
@@ -48,11 +50,18 @@ function TabItem({
         accessibilityLabel={accessibilityLabel ?? label}
         style={styles.tabPressable}
       >
-        <Ionicons
-          name={isFocused ? iconFocused : iconDefault}
-          size={20}
-          color={isFocused ? colors.primary : colors.ink300}
-        />
+        <View style={styles.iconWrap}>
+          <Ionicons
+            name={isFocused ? iconFocused : iconDefault}
+            size={20}
+            color={isFocused ? colors.primary : colors.ink300}
+          />
+          {badge != null && badge > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+            </View>
+          )}
+        </View>
         <Text
           style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.ink300 }]}
           numberOfLines={1}
@@ -68,6 +77,7 @@ const ICON_MAP: Record<string, { focused: IoniconsName; default: IoniconsName }>
   index: { focused: 'home', default: 'home-outline' },
   groups: { focused: 'people', default: 'people-outline' },
   messages: { focused: 'chatbubbles', default: 'chatbubbles-outline' },
+  notifications: { focused: 'notifications', default: 'notifications-outline' },
   profile: { focused: 'person', default: 'person-outline' },
 };
 
@@ -116,6 +126,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               navigation.emit({ type: 'tabLongPress', target: route.key });
             };
 
+            const badge =
+              typeof options.tabBarBadge === 'number' ? options.tabBarBadge : undefined;
+
             return (
               <TabItem
                 key={route.key}
@@ -123,6 +136,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
                 iconFocused={icons.focused}
                 iconDefault={icons.default}
                 isFocused={isFocused}
+                badge={badge}
                 onPress={onPress}
                 onLongPress={onLongPress}
                 accessibilityLabel={options.tabBarAccessibilityLabel}
@@ -169,6 +183,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
+  },
+  iconWrap: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -5,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 12,
   },
   tabLabel: {
     fontSize: 11,

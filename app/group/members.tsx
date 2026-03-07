@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/primitives';
@@ -19,6 +19,11 @@ export default function GroupMembersScreen() {
   const { data: members = [], isLoading: membersLoading } = useGroupMembersQuery(groupId);
   const { data: friendIds = [] } = useFriendIdsQuery(currentUserId || undefined);
   const friendSet = new Set(friendIds);
+
+  const sortedMembers = useMemo(
+    () => [...members].sort((a, b) => (a.userId === currentUserId ? -1 : b.userId === currentUserId ? 1 : 0)),
+    [members, currentUserId]
+  );
 
   const handleMemberPress = useCallback(
     (memberId: string) => {
@@ -57,7 +62,7 @@ export default function GroupMembersScreen() {
         />
       ) : (
         <View style={styles.list}>
-          {members.map((m) => {
+          {sortedMembers.map((m) => {
             const isSelf = m.userId === currentUserId;
             const rowContent = (
               <>
@@ -70,7 +75,7 @@ export default function GroupMembersScreen() {
                   }
                 />
                 <View style={styles.memberInfo}>
-                  <Text style={styles.memberName} numberOfLines={1}>
+                  <Text style={isSelf ? styles.memberNameMuted : styles.memberName} numberOfLines={1}>
                     {m.displayName ?? t('common.loading')}
                   </Text>
                   {isSelf ? (
@@ -85,7 +90,7 @@ export default function GroupMembersScreen() {
               return (
                 <View
                   key={m.userId}
-                  style={styles.memberRow}
+                  style={[styles.memberRow, styles.memberRowSelf]}
                   accessibilityLabel={m.displayName ? `${m.displayName}, yourself` : 'Yourself'}
                 >
                   {rowContent}
@@ -145,6 +150,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
+  memberRowSelf: {
+    opacity: 0.55,
+  },
   memberRowPressed: {
     opacity: 0.8,
   },
@@ -154,6 +162,10 @@ const styles = StyleSheet.create({
   memberName: {
     ...typography.body,
     color: colors.textPrimary,
+  },
+  memberNameMuted: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
   friendLabel: {
     ...typography.caption,

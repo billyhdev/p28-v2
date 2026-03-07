@@ -44,4 +44,6 @@ export type {
   PostReactionCounts,
   PostReactionDetail,
   PostReactionType,
+  FriendRequest,
+  FriendRequestStatus,
 } from './contracts';

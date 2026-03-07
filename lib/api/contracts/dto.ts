@@ -211,6 +211,23 @@ export interface CreateDiscussionPostInput {
   parentPostId?: string;
 }
 
+/** Friend request status. */
+export type FriendRequestStatus = 'pending' | 'accepted' | 'declined';
+
+/** Friend request between two users. From friend_requests table. */
+export interface FriendRequest {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  status: FriendRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  senderDisplayName?: string;
+  senderAvatarUrl?: string;
+  receiverDisplayName?: string;
+  receiverAvatarUrl?: string;
+}
+
 /** Input for updating a discussion post (reply). Partial. */
 export interface UpdateDiscussionPostInput {
   body?: string;

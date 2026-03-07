@@ -193,6 +193,124 @@ export function useRemoveFriendMutation() {
   });
 }
 
+// --- Friend requests ---
+
+export function useFriendRequestBetweenQuery(
+  userId: string | undefined,
+  targetUserId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.friendRequestBetween(userId ?? '', targetUserId ?? ''),
+    queryFn: () =>
+      queryFn(
+        api.data.getFriendRequestBetween(userId!, targetUserId!)
+      ) as Promise<import('@/lib/api').FriendRequest | null>,
+    enabled: !!userId && !!targetUserId && userId !== targetUserId && (options?.enabled ?? true),
+  });
+}
+
+export function useReceivedFriendRequestsQuery(
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.receivedFriendRequests(userId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getReceivedFriendRequests(userId!)) as Promise<
+        import('@/lib/api').FriendRequest[]
+      >,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function usePendingFriendRequestCountQuery(
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.pendingFriendRequestCount(userId ?? ''),
+    queryFn: () => queryFn(api.data.getPendingFriendRequestCount(userId!)) as Promise<number>,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useSendFriendRequestMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ senderId, receiverId }: { senderId: string; receiverId: string }) =>
+      queryFn(api.data.sendFriendRequest(senderId, receiverId)) as Promise<
+        import('@/lib/api').FriendRequest
+      >,
+    onSuccess: (_, { senderId, receiverId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+    },
+  });
+}
+
+export function useCancelFriendRequestMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      senderId,
+      receiverId,
+    }: {
+      requestId: string;
+      senderId: string;
+      receiverId: string;
+    }) => queryFn(api.data.cancelFriendRequest(requestId)),
+    onSuccess: (_, { senderId, receiverId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+    },
+  });
+}
+
+export function useAcceptFriendRequestMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      receiverId,
+    }: {
+      requestId: string;
+      receiverId: string;
+      senderId: string;
+    }) => queryFn(api.data.acceptFriendRequest(requestId, receiverId)),
+    onSuccess: (_, { senderId, receiverId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.friendIds(senderId) });
+      qc.invalidateQueries({ queryKey: queryKeys.friendIds(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.areFriends(senderId, receiverId) });
+    },
+  });
+}
+
+export function useDeclineFriendRequestMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      receiverId,
+    }: {
+      requestId: string;
+      receiverId: string;
+      senderId: string;
+    }) => queryFn(api.data.declineFriendRequest(requestId, receiverId)),
+    onSuccess: (_, { senderId, receiverId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+    },
+  });
+}
+
 export function useGroupAdminsQuery(groupId: string | undefined, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.groupAdmins(groupId ?? ''),
