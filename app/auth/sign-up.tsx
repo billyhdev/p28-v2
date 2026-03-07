@@ -27,19 +27,19 @@ export default function SignUpScreen() {
     setPasswordError(null);
     setConfirmPasswordError(null);
     if (!email.trim()) {
-      setEmailError('Please enter your email.');
+      setEmailError(t('auth.emailRequired'));
       return;
     }
     if (!password) {
-      setPasswordError('Please enter a password.');
+      setPasswordError(t('auth.passwordRequiredCreate'));
       return;
     }
     if (password.length < 6) {
-      setPasswordError('Password should be at least 6 characters.');
+      setPasswordError(t('auth.passwordTooShort'));
       return;
     }
     if (password !== confirmPassword) {
-      setConfirmPasswordError('Passwords do not match.');
+      setConfirmPasswordError(t('auth.passwordsMismatch'));
       return;
     }
     setIsSubmitting(true);
@@ -50,7 +50,7 @@ export default function SignUpScreen() {
       return;
     }
     if (!check.available) {
-      setEmailError('An account with this email already exists. Please sign in instead.');
+      setEmailError(t('auth.emailTaken'));
       return;
     }
     setPendingSignUp(email.trim(), password);
@@ -69,15 +69,15 @@ export default function SignUpScreen() {
           disabled={isSubmitting}
           style={authScreenStyles.secondaryCtaButton}
           accessibilityLabel={t('auth.alreadyHaveAccountSignIn')}
-          accessibilityHint="Navigates back to the sign in screen"
+          accessibilityHint={t('auth.signInNavigateHint')}
         />
       }
     >
       <Input
-        label="Email"
+        label={t('auth.email')}
         value={email}
         onChangeText={setEmail}
-        placeholder="you@example.com"
+        placeholder={t('auth.emailPlaceholder')}
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
@@ -87,10 +87,10 @@ export default function SignUpScreen() {
         inputStyle={authScreen.inputStyle}
       />
       <Input
-        label="Password"
+        label={t('auth.password')}
         value={password}
         onChangeText={setPassword}
-        placeholder="At least 6 characters"
+        placeholder={t('auth.passwordMinLength')}
         secureTextEntry
         autoComplete="new-password"
         editable={!isSubmitting}
@@ -99,10 +99,10 @@ export default function SignUpScreen() {
         inputStyle={authScreen.inputStyle}
       />
       <Input
-        label="Confirm password"
+        label={t('auth.confirmPassword')}
         value={confirmPassword}
         onChangeText={setConfirmPassword}
-        placeholder="Re-enter your password"
+        placeholder={t('auth.confirmPasswordPlaceholder')}
         secureTextEntry
         autoComplete="new-password"
         editable={!isSubmitting}
@@ -116,7 +116,7 @@ export default function SignUpScreen() {
         disabled={!canSubmit || isSubmitting}
         style={authScreenStyles.ctaButton}
         accessibilityLabel={t('common.continue')}
-        accessibilityHint="Continues to the onboarding screen"
+        accessibilityHint={t('auth.continueHint')}
       />
     </AuthFormLayout>
   );

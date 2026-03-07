@@ -1607,10 +1607,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
     async cancelFriendRequest(requestId: string): Promise<void | ApiError> {
       try {
-        const { error } = await getClient()
-          .from('friend_requests')
-          .delete()
-          .eq('id', requestId);
+        const { error } = await getClient().from('friend_requests').delete().eq('id', requestId);
         if (error) return toApiError(error);
       } catch (e) {
         return toApiError(e);

@@ -178,7 +178,7 @@ export default function ProfileScreen() {
             variant="secondary"
             style={styles.actionButton}
             accessibilityLabel={t('profile.signOut')}
-            accessibilityHint="Opens a confirmation before signing out"
+            accessibilityHint={t('profile.signOutHint')}
           />
         </View>
       </Animated.View>

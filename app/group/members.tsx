@@ -21,7 +21,10 @@ export default function GroupMembersScreen() {
   const friendSet = new Set(friendIds);
 
   const sortedMembers = useMemo(
-    () => [...members].sort((a, b) => (a.userId === currentUserId ? -1 : b.userId === currentUserId ? 1 : 0)),
+    () =>
+      [...members].sort((a, b) =>
+        a.userId === currentUserId ? -1 : b.userId === currentUserId ? 1 : 0
+      ),
     [members, currentUserId]
   );
 
@@ -71,11 +74,16 @@ export default function GroupMembersScreen() {
                   fallbackText={m.displayName}
                   size="md"
                   accessibilityLabel={
-                    m.displayName ? `${m.displayName} profile picture` : 'Group member'
+                    m.displayName
+                      ? `${m.displayName} ${t('groups.profilePicture')}`
+                      : t('groups.groupMember')
                   }
                 />
                 <View style={styles.memberInfo}>
-                  <Text style={isSelf ? styles.memberNameMuted : styles.memberName} numberOfLines={1}>
+                  <Text
+                    style={isSelf ? styles.memberNameMuted : styles.memberName}
+                    numberOfLines={1}
+                  >
                     {m.displayName ?? t('common.loading')}
                   </Text>
                   {isSelf ? (
@@ -91,7 +99,11 @@ export default function GroupMembersScreen() {
                 <View
                   key={m.userId}
                   style={[styles.memberRow, styles.memberRowSelf]}
-                  accessibilityLabel={m.displayName ? `${m.displayName}, yourself` : 'Yourself'}
+                  accessibilityLabel={
+                    m.displayName
+                      ? `${m.displayName}, ${t('groups.yourself')}`
+                      : t('groups.yourself')
+                  }
                 >
                   {rowContent}
                 </View>
@@ -102,8 +114,8 @@ export default function GroupMembersScreen() {
                 key={m.userId}
                 onPress={() => handleMemberPress(m.userId)}
                 style={({ pressed }) => [styles.memberRow, pressed && styles.memberRowPressed]}
-                accessibilityLabel={m.displayName ?? 'Group member'}
-                accessibilityHint="Opens profile"
+                accessibilityLabel={m.displayName ?? t('groups.groupMember')}
+                accessibilityHint={t('groups.opensProfile')}
               >
                 {rowContent}
               </Pressable>

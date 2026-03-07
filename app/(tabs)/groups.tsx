@@ -128,7 +128,7 @@ export default function GroupsScreen() {
               onChangeText={setSearch}
               returnKeyType="search"
               accessibilityLabel={t('groups.searchPlaceholder')}
-              accessibilityHint="Search groups by name"
+              accessibilityHint={t('groups.searchGroupsHint')}
             />
           </View>
         </View>
@@ -190,8 +190,8 @@ export default function GroupsScreen() {
                   filter === 'joined'
                     ? t('groups.noJoinedGroupsSubtitle')
                     : search || filter !== 'all'
-                      ? 'Try a different search or filter'
-                      : 'Groups will appear here once they are created.'
+                      ? t('groups.tryDifferentSearch')
+                      : t('groups.groupsWillAppear')
                 }
               />
             ) : (

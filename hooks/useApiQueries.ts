@@ -203,9 +203,9 @@ export function useFriendRequestBetweenQuery(
   return useQuery({
     queryKey: queryKeys.friendRequestBetween(userId ?? '', targetUserId ?? ''),
     queryFn: () =>
-      queryFn(
-        api.data.getFriendRequestBetween(userId!, targetUserId!)
-      ) as Promise<import('@/lib/api').FriendRequest | null>,
+      queryFn(api.data.getFriendRequestBetween(userId!, targetUserId!)) as Promise<
+        import('@/lib/api').FriendRequest | null
+      >,
     enabled: !!userId && !!targetUserId && userId !== targetUserId && (options?.enabled ?? true),
   });
 }

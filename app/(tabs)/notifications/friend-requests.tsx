@@ -1,12 +1,5 @@
 import React, { useCallback } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -18,6 +11,7 @@ import {
   useReceivedFriendRequestsQuery,
 } from '@/hooks/useApiQueries';
 import type { FriendRequest } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 import { colors, radius, shadow, spacing, typography } from '@/theme/tokens';
 
@@ -26,11 +20,7 @@ export default function FriendRequestsScreen() {
   const userId = session?.user?.id ?? '';
   const router = useRouter();
 
-  const {
-    data: requests,
-    isLoading,
-    refetch,
-  } = useReceivedFriendRequestsQuery(userId);
+  const { data: requests, isLoading, refetch } = useReceivedFriendRequestsQuery(userId);
 
   const acceptMutation = useAcceptFriendRequestMutation();
   const declineMutation = useDeclineFriendRequestMutation();
@@ -72,7 +62,7 @@ export default function FriendRequestsScreen() {
           <Pressable
             style={styles.userRow}
             onPress={() => router.push(`/profile/${item.senderId}`)}
-            accessibilityLabel={item.senderDisplayName ?? 'User profile'}
+            accessibilityLabel={item.senderDisplayName ?? t('notifications.userProfile')}
             accessibilityRole="button"
           >
             <Avatar
@@ -81,17 +71,15 @@ export default function FriendRequestsScreen() {
               size="md"
               accessibilityLabel={
                 item.senderDisplayName
-                  ? `${item.senderDisplayName} profile picture`
-                  : 'Profile picture'
+                  ? `${item.senderDisplayName} ${t('notifications.profilePictureOf')}`
+                  : t('notifications.profilePicture')
               }
             />
             <View style={styles.userInfo}>
               <Text style={styles.displayName} numberOfLines={1}>
-                {item.senderDisplayName ?? 'User'}
+                {item.senderDisplayName ?? t('notifications.unknownUser')}
               </Text>
-              <Text style={styles.timestamp}>
-                {new Date(item.createdAt).toLocaleDateString()}
-              </Text>
+              <Text style={styles.timestamp}>{formatRelativeTime(item.createdAt)}</Text>
             </View>
           </Pressable>
 

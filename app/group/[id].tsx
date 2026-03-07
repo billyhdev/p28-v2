@@ -16,30 +16,18 @@ import {
   useLeaveGroupMutation,
 } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
-function formatRelativeTime(isoDate: string): string {
-  const d = new Date(isoDate);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  if (diffMonths < 12) return `${diffMonths}mo ago`;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'short' }).format(d);
+function getLanguageName(code: string): string {
+  const map: Record<string, string> = {
+    en: t('language.english'),
+    km: t('language.khmer'),
+    ko: t('language.korean'),
+  };
+  return map[code] ?? code;
 }
-
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: 'English',
-  km: 'Khmer',
-  ko: 'Korean',
-};
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -171,7 +159,7 @@ export default function GroupDetailScreen() {
   }
 
   const typeLabel = group.type === 'forum' ? t('groups.forum') : t('groups.ministry');
-  const languageName = LANGUAGE_NAMES[group.preferredLanguage] ?? group.preferredLanguage;
+  const languageName = getLanguageName(group.preferredLanguage);
 
   return (
     <ScrollView
@@ -234,7 +222,7 @@ export default function GroupDetailScreen() {
               onPress={handleSeeAllMembers}
               style={({ pressed }) => [styles.seeAllLink, pressed && styles.seeAllLinkPressed]}
               accessibilityLabel={t('groups.seeAll')}
-              accessibilityHint="View all group members"
+              accessibilityHint={t('groups.viewAllMembersHint')}
             >
               <Text style={styles.seeAllText}>{t('groups.seeAll')}</Text>
             </Pressable>
@@ -252,7 +240,9 @@ export default function GroupDetailScreen() {
                     size="md"
                     ringed
                     accessibilityLabel={
-                      m.displayName ? `${m.displayName} profile picture` : `Group member ${idx + 1}`
+                      m.displayName
+                        ? `${m.displayName} ${t('groups.profilePicture')}`
+                        : `${t('groups.groupMember')} ${idx + 1}`
                     }
                   />
                 </View>
@@ -271,7 +261,7 @@ export default function GroupDetailScreen() {
               style={({ pressed }) => [styles.joinedButton, pressed && styles.joinedButtonPressed]}
               disabled={isJoining}
               accessibilityLabel={t('groups.joined')}
-              accessibilityHint="Opens options to leave or manage group settings"
+              accessibilityHint={t('groups.opensOptions')}
             >
               <Ionicons name="people-outline" size={18} color={colors.textPrimary} />
               <Text style={styles.joinedButtonText}>{t('groups.joined')}</Text>
@@ -287,7 +277,7 @@ export default function GroupDetailScreen() {
               ]}
               disabled={isJoining}
               accessibilityLabel={t('groups.join')}
-              accessibilityHint="Joins this group"
+              accessibilityHint={t('groups.joinsGroupHint')}
               accessibilityRole="button"
             >
               {joinMutation.isPending ? (
@@ -337,7 +327,7 @@ export default function GroupDetailScreen() {
                   onPress={() => router.push(`/group/discussion/${d.id}`)}
                   style={styles.discussionCard}
                   accessibilityLabel={`${d.title}, ${d.postCount ?? 0}`}
-                  accessibilityHint="Opens discussion"
+                  accessibilityHint={t('groups.opensDiscussion')}
                 >
                   <View style={styles.discussionTopRight}>
                     <Ionicons
@@ -362,8 +352,8 @@ export default function GroupDetailScreen() {
                         size="sm"
                         accessibilityLabel={
                           d.authorDisplayName
-                            ? `${d.authorDisplayName} profile picture`
-                            : 'Original poster'
+                            ? `${d.authorDisplayName} ${t('groups.profilePicture')}`
+                            : t('groups.originalPoster')
                         }
                       />
                       <Text style={styles.discussionAuthor} numberOfLines={1}>
@@ -387,14 +377,14 @@ export default function GroupDetailScreen() {
             icon: 'notifications-outline',
             label: t('groups.manageNotifications'),
             onPress: handleManageSettings,
-            accessibilityHint: 'Opens group notification settings',
+            accessibilityHint: t('groups.opensNotificationSettings'),
           },
           {
             icon: 'exit-outline',
             label: t('groups.leaveGroup'),
             onPress: handleLeave,
             destructive: true,
-            accessibilityHint: 'Leaves this group',
+            accessibilityHint: t('groups.leavesGroupHint'),
           },
         ]}
       />

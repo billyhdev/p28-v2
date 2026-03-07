@@ -62,7 +62,7 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
     <Pressable
       onPress={handlePress}
       accessibilityLabel={`${group.name}, ${typeLabel}, ${getLanguageDisplayName(group.preferredLanguage)}`}
-      accessibilityHint="Opens group details"
+      accessibilityHint={t('groups.opensGroupDetails')}
     >
       <Card variant="glass" contentPadding={0} style={styles.card}>
         <View style={styles.cardInner}>
@@ -103,7 +103,7 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
                     onPress={handleJoinPress}
                     style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
                     accessibilityLabel={t('groups.join')}
-                    accessibilityHint="Joins this group"
+                    accessibilityHint={t('groups.joinsGroupHint')}
                   >
                     <Text style={styles.actionText}>{t('groups.join')}</Text>
                   </Pressable>
@@ -113,7 +113,7 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
                     onPress={handleLeavePress}
                     style={({ pressed }) => [styles.leaveButton, pressed && styles.actionPressed]}
                     accessibilityLabel={t('groups.leave')}
-                    accessibilityHint="Leaves this group"
+                    accessibilityHint={t('groups.leavesGroupHint')}
                   >
                     <Text style={styles.leaveText}>{t('groups.leave')}</Text>
                   </Pressable>

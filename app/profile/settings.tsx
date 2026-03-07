@@ -169,7 +169,7 @@ export default function SettingsScreen() {
                 pressed && styles.toggleTouchTargetPressed,
               ]}
               accessibilityLabel={t('notifications.announcements')}
-              accessibilityHint="Toggles announcements notifications on or off"
+              accessibilityHint={t('notifications.announcementsHint')}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.announcementsEnabled ?? true }}
             >
@@ -192,7 +192,7 @@ export default function SettingsScreen() {
                 pressed && styles.toggleTouchTargetPressed,
               ]}
               accessibilityLabel={t('notifications.messages')}
-              accessibilityHint="Toggles messages notifications on or off"
+              accessibilityHint={t('notifications.messagesHint')}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.messagesEnabled ?? true }}
             >

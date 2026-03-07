@@ -1,6 +1,6 @@
 /**
  * English (en) translation strings.
- * Keys are namespaced: tabs.*, profile.*, auth.*, common.*, language.*, notifications.*, conduct.*.
+ * Keys are namespaced: tabs.*, profile.*, auth.*, onboarding.*, common.*, language.*, notifications.*, conduct.*.
  */
 export const en = {
   tabs: {
@@ -37,6 +37,7 @@ export const en = {
   profile: {
     title: 'Profile',
     editProfile: 'Edit profile',
+    signOutHint: 'Opens a confirmation before signing out',
     notificationPreferences: 'Notification preferences',
     notificationPreferencesHint:
       'Opens settings for events, announcements, and messages notifications',
@@ -69,6 +70,21 @@ export const en = {
     bioPlaceholderEdit: 'Tell others about yourself (optional)',
     birthDateFormatError: 'Birth date must be in YYYY-MM-DD format.',
     selectDateOptional: 'Select date (optional)',
+    countryOfResidence: 'Country of residence',
+    selectCountryOptional: 'Select country (optional)',
+    datePickerHint: 'Opens date picker',
+    optionsListHint: 'Opens a list of options',
+  },
+  onboarding: {
+    title: 'About you',
+    subtitle:
+      'First name, last name, and a few optional details so we can personalize your experience.',
+    firstAndLastNameRequired: 'Please enter your first and last name.',
+    emailConfirmThenSignIn:
+      'Please check your email to confirm your account, then sign in.',
+    trySigningIn: 'Something went wrong. Please try signing in.',
+    backToSignInHint: 'Returns to the sign in screen',
+    continueHint: 'Creates your profile and continues to the app',
   },
   auth: {
     signIn: 'Sign in',
@@ -82,6 +98,23 @@ export const en = {
     createAccountSubtitle: "Enter your email and a password. We'll ask for a few details next.",
     signingIn: 'Signing in…',
     checking: 'Checking…',
+    email: 'Email',
+    emailPlaceholder: 'you@example.com',
+    password: 'Password',
+    passwordPlaceholder: '••••••••',
+    signInHint: 'Submits the sign in form with your email and password',
+    signUpHint: 'Navigates to the sign up screen',
+    signInNavigateHint: 'Navigates back to the sign in screen',
+    passwordMinLength: 'At least 6 characters',
+    confirmPassword: 'Confirm password',
+    confirmPasswordPlaceholder: 'Re-enter your password',
+    continueHint: 'Continues to the onboarding screen',
+    emailRequired: 'Please enter your email.',
+    passwordRequired: 'Please enter your password.',
+    passwordRequiredCreate: 'Please enter a password.',
+    passwordTooShort: 'Password should be at least 6 characters.',
+    passwordsMismatch: 'Passwords do not match.',
+    emailTaken: 'An account with this email already exists. Please sign in instead.',
   },
   language: {
     title: 'App language',
@@ -101,6 +134,11 @@ export const en = {
     error: 'Something went wrong',
     continue: 'Continue',
     done: 'Done',
+    justNow: 'just now',
+    minutesAgo: '{{count}}m ago',
+    hoursAgo: '{{count}}h ago',
+    daysAgo: '{{count}}d ago',
+    monthsAgo: '{{count}}mo ago',
   },
   notifications: {
     intro: 'Choose which types of notifications you want to receive.',
@@ -115,9 +153,16 @@ export const en = {
     friendRequestsHint: 'View and manage your friend requests',
     noRequests: 'No friend requests',
     noRequestsSubtitle: 'When someone sends you a friend request, it will appear here.',
+    userProfile: 'User profile',
+    profilePicture: 'Profile picture',
+    profilePictureOf: 'profile picture',
+    unknownUser: 'User',
     pendingCount: 'pending',
     noNotifications: 'No notifications',
     noNotificationsSubtitle: "You're all caught up! New notifications will appear here.",
+    eventsHint: 'Toggles events notifications on or off',
+    announcementsHint: 'Toggles announcements notifications on or off',
+    messagesHint: 'Toggles messages notifications on or off',
   },
   admin: {
     title: 'Organization admin',
@@ -218,6 +263,27 @@ export const en = {
       'Your notification preferences apply across all groups. Tap to customize events, announcements, and messages.',
     deleteGroup: 'Delete group',
     deleteGroupConfirm: 'Are you sure you want to delete this group?',
+    groupName: 'Group name',
+    groupNamePlaceholder: 'Enter group name',
+    type: 'Type',
+    descriptionPlaceholder: 'Optional description',
+    locationSelectionHint: 'Opens location selection',
+    createGroupSaveHint: 'Creates the group',
+    deleteGroupPermanentlyHint: 'Deletes the group permanently',
+    opensGroupDetails: 'Opens group details',
+    joinsGroupHint: 'Joins this group',
+    leavesGroupHint: 'Leaves this group',
+    viewAllMembersHint: 'View all group members',
+    groupMember: 'Group member',
+    opensOptions: 'Opens options',
+    opensProfile: 'Opens profile',
+    opensDiscussion: 'Opens discussion',
+    originalPoster: 'Original poster',
+    searchGroupsHint: 'Search groups by name',
+    tryDifferentSearch: 'Try a different search or filter',
+    groupsWillAppear: 'Groups will appear here once they are created.',
+    opensNotificationSettings: 'Opens group notification settings',
+    profilePicture: 'profile picture',
   },
   discussions: {
     title: 'Discussions',
@@ -263,6 +329,8 @@ export const en = {
     edited: 'edited',
     reactions: 'Reactions',
     tapToRemove: 'Tap to remove',
+    selectGroupHint: 'Select which group to post in',
+    createDiscussionHint: 'Creates the discussion topic',
   },
   conduct: {
     title: 'Conduct guidelines',

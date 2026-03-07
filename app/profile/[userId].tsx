@@ -116,7 +116,7 @@ export default function UserProfileScreen() {
             size="xl"
             accessibilityLabel={
               profile?.displayName
-                ? `${profile.displayName} profile picture`
+                ? `${profile.displayName} ${t('groups.profilePicture')}`
                 : t('profile.profilePhoto')
             }
           />
@@ -132,7 +132,7 @@ export default function UserProfileScreen() {
                   ]}
                   disabled={removeFriendMutation.isPending}
                   accessibilityLabel={t('friends.friends')}
-                  accessibilityHint="Opens options"
+                  accessibilityHint={t('groups.opensOptions')}
                   accessibilityRole="button"
                 >
                   <Ionicons name="people-outline" size={18} color={colors.textPrimary} />

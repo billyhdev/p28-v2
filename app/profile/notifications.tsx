@@ -101,8 +101,8 @@ export default function NotificationPreferencesScreen() {
                 styles.toggleTouchTarget,
                 pressed && styles.toggleTouchTargetPressed,
               ]}
-              accessibilityLabel="Events notifications"
-              accessibilityHint="Toggles events notifications on or off"
+              accessibilityLabel={t('notifications.events')}
+              accessibilityHint={t('notifications.eventsHint')}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.eventsEnabled ?? true }}
             >
@@ -126,8 +126,8 @@ export default function NotificationPreferencesScreen() {
                 styles.toggleTouchTarget,
                 pressed && styles.toggleTouchTargetPressed,
               ]}
-              accessibilityLabel="Announcements notifications"
-              accessibilityHint="Toggles announcements notifications on or off"
+              accessibilityLabel={t('notifications.announcements')}
+              accessibilityHint={t('notifications.announcementsHint')}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.announcementsEnabled ?? true }}
             >
@@ -149,8 +149,8 @@ export default function NotificationPreferencesScreen() {
                 styles.toggleTouchTarget,
                 pressed && styles.toggleTouchTargetPressed,
               ]}
-              accessibilityLabel="Messages notifications"
-              accessibilityHint="Toggles messages notifications on or off"
+              accessibilityLabel={t('notifications.messages')}
+              accessibilityHint={t('notifications.messagesHint')}
               accessibilityRole="switch"
               accessibilityState={{ checked: prefs?.messagesEnabled ?? true }}
             >

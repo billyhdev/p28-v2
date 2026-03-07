@@ -44,24 +44,9 @@ import {
 import { api, getUserFacingError } from '@/lib/api';
 import { queryKeys } from '@/lib/api/queryKeys';
 import type { Discussion, DiscussionPost, PostReactionType } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
-
-function formatRelativeTime(isoDate: string): string {
-  const d = new Date(isoDate);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  if (diffMonths < 12) return `${diffMonths}mo ago`;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'short' }).format(d);
-}
 
 function OriginalPostRow({
   discussion,
@@ -266,9 +251,7 @@ function ReplyRow({
             <Pressable
               onPress={onAuthorPress}
               accessibilityLabel={
-                post.authorDisplayName
-                  ? `View ${post.authorDisplayName}'s profile`
-                  : 'View profile'
+                post.authorDisplayName ? `View ${post.authorDisplayName}'s profile` : 'View profile'
               }
               accessibilityRole="button"
             >

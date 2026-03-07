@@ -151,10 +151,10 @@ const COUNTRY_OPTIONS: Option[] = [
   { value: 'ZW', label: 'Zimbabwe' },
 ];
 
-const LANGUAGE_OPTIONS: Option[] = [
-  { value: 'en', label: 'English' },
-  { value: 'km', label: 'Khmer' },
-  { value: 'ko', label: 'Korean' },
+const LANGUAGE_OPTION_KEYS: { value: string; labelKey: 'language.english' | 'language.korean' | 'language.khmer' }[] = [
+  { value: 'en', labelKey: 'language.english' },
+  { value: 'km', labelKey: 'language.khmer' },
+  { value: 'ko', labelKey: 'language.korean' },
 ];
 
 function isIsoDate(value: string) {
@@ -209,7 +209,7 @@ function BirthDateField({
         style={[styles.select, disabled ? styles.selectDisabled : null]}
         accessibilityRole="button"
         accessibilityLabel={t('profile.birthDate')}
-        accessibilityHint="Opens date picker"
+        accessibilityHint={t('profile.datePickerHint')}
       >
         <Text style={[styles.selectText, !value ? styles.placeholderText : null]}>
           {value ? formatDateForDisplay(value) : t('profile.selectDateOptional')}
@@ -247,6 +247,8 @@ function SelectField({
   options,
   disabled,
   onChange,
+  accessibilityHint,
+  doneLabel,
 }: {
   label: string;
   value: string | null;
@@ -254,6 +256,8 @@ function SelectField({
   options: Option[];
   disabled?: boolean;
   onChange: (next: string) => void;
+  accessibilityHint?: string;
+  doneLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selectedLabel = options.find((o) => o.value === value)?.label;
@@ -263,7 +267,7 @@ function SelectField({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
-        accessibilityHint="Opens a list of options"
+        accessibilityHint={accessibilityHint}
         disabled={disabled}
         onPress={() => setOpen(true)}
         style={[styles.select, disabled ? styles.selectDisabled : null]}
@@ -277,7 +281,12 @@ function SelectField({
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{label}</Text>
-            <Button title="Done" variant="text" onPress={() => setOpen(false)} />
+            <Button
+              title={doneLabel ?? t('common.done')}
+              variant="text"
+              onPress={() => setOpen(false)}
+              accessibilityLabel={doneLabel ?? t('common.done')}
+            />
           </View>
           <ScrollView contentContainerStyle={styles.modalList}>
             {options.map((opt) => {
@@ -306,14 +315,14 @@ function SelectField({
 
 export default function OnboardingScreen() {
   const { session } = useAuth();
-  const { setLocale } = useLocale();
+  const { setLocale, locale } = useLocale();
   const { pendingSignUp, clearPendingSignUp } = usePendingSignUp();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [country, setCountry] = useState<string | null>(null);
-  const [preferredLanguage, setPreferredLanguage] = useState<string | null>('en');
+  const [preferredLanguage, setPreferredLanguage] = useState<string | null>(locale);
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmittingSignUp, setIsSubmittingSignUp] = useState(false);
@@ -336,7 +345,7 @@ export default function OnboardingScreen() {
   async function handleSubmit() {
     setError(null);
     if (!firstName.trim() || !lastName.trim()) {
-      setError('Please enter your first and last name.');
+      setError(t('onboarding.firstAndLastNameRequired'));
       return;
     }
     if (birthDate.trim() && !isIsoDate(birthDate)) {
@@ -353,7 +362,7 @@ export default function OnboardingScreen() {
         const err = signUpResult.error as ApiError;
         if (err.code === 'EMAIL_CONFIRMATION_REQUIRED') {
           clearPendingSignUp();
-          setError('Please check your email to confirm your account, then sign in.');
+          setError(t('onboarding.emailConfirmThenSignIn'));
           setIsSubmittingSignUp(false);
           return;
         }
@@ -368,7 +377,7 @@ export default function OnboardingScreen() {
     }
 
     if (!userId) {
-      setError('Something went wrong. Please try signing in.');
+      setError(t('onboarding.trySigningIn'));
       setIsSubmittingSignUp(false);
       return;
     }
@@ -403,10 +412,19 @@ export default function OnboardingScreen() {
     router.replace('/auth/sign-in');
   }
 
+  const languageOptions: Option[] = useMemo(
+    () =>
+      LANGUAGE_OPTION_KEYS.map((o) => ({
+        value: o.value,
+        label: t(o.labelKey),
+      })),
+    [locale]
+  );
+
   return (
     <AuthFormLayout
-      title="About you"
-      subtitle="First name, last name, and a few optional details so we can personalize your experience."
+      title={t('onboarding.title')}
+      subtitle={t('onboarding.subtitle')}
       contentContainerStyle={{ paddingBottom: spacing.xl * 2 }}
       footer={
         <Button
@@ -416,24 +434,24 @@ export default function OnboardingScreen() {
           disabled={isSubmitting}
           style={authScreenStyles.secondaryCtaButton}
           accessibilityLabel={t('auth.backToSignIn')}
-          accessibilityHint="Returns to the sign in screen"
+          accessibilityHint={t('onboarding.backToSignInHint')}
         />
       }
     >
       <Input
-        label="First name"
+        label={t('profile.firstName')}
         value={firstName}
         onChangeText={setFirstName}
-        placeholder="First name"
+        placeholder={t('profile.firstName')}
         editable={!isSubmitting}
         containerStyle={authScreenStyles.inputSpacing}
         inputStyle={authScreen.inputStyle}
       />
       <Input
-        label="Last name"
+        label={t('profile.lastName')}
         value={lastName}
         onChangeText={setLastName}
-        placeholder="Last name"
+        placeholder={t('profile.lastName')}
         editable={!isSubmitting}
         containerStyle={authScreenStyles.inputSpacing}
         inputStyle={authScreen.inputStyle}
@@ -442,22 +460,24 @@ export default function OnboardingScreen() {
 
       <View style={authScreenStyles.inputSpacing}>
         <SelectField
-          label="Country of residence"
+          label={t('profile.countryOfResidence')}
           value={country}
-          placeholder="Select country (optional)"
+          placeholder={t('profile.selectCountryOptional')}
           options={COUNTRY_OPTIONS}
           disabled={isSubmitting}
           onChange={setCountry}
+          accessibilityHint={t('profile.optionsListHint')}
         />
       </View>
       <View style={authScreenStyles.inputSpacing}>
         <SelectField
-          label="Preferred language"
+          label={t('profile.preferredLanguage')}
           value={preferredLanguage}
-          placeholder="Select language"
-          options={LANGUAGE_OPTIONS}
+          placeholder={t('language.selectLanguage')}
+          options={languageOptions}
           disabled={isSubmitting}
           onChange={setPreferredLanguage}
+          accessibilityHint={t('profile.optionsListHint')}
         />
       </View>
 
@@ -471,7 +491,7 @@ export default function OnboardingScreen() {
         disabled={isSubmitting || !canSubmit}
         style={authScreenStyles.ctaButton}
         accessibilityLabel={t('common.continue')}
-        accessibilityHint="Creates your profile and continues to the app"
+        accessibilityHint={t('onboarding.continueHint')}
       />
     </AuthFormLayout>
   );

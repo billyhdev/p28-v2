@@ -87,7 +87,7 @@ export default function CreateDiscussionScreen() {
               onPress={() => setGroupPickerVisible(true)}
               style={styles.groupPicker}
               accessibilityLabel={t('groups.title')}
-              accessibilityHint="Select which group to post in"
+              accessibilityHint={t('discussions.selectGroupHint')}
             >
               <Text style={styles.groupPickerText}>
                 {selectedGroup ? selectedGroup.name : t('common.loading')}
@@ -151,7 +151,7 @@ export default function CreateDiscussionScreen() {
             onPress={handleSubmit}
             disabled={!title.trim() || !groupId || isSubmitting}
             accessibilityLabel={t('discussions.createDiscussion')}
-            accessibilityHint="Creates the discussion topic"
+            accessibilityHint={t('discussions.createDiscussionHint')}
           />
         </View>
       </ScrollView>

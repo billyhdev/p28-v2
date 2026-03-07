@@ -33,9 +33,9 @@ import { t } from '@/lib/i18n';
 import { colors, spacing, typography } from '@/theme/tokens';
 
 const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'km', name: 'Khmer' },
-  { code: 'ko', name: 'Korean' },
+  { code: 'en', nameKey: 'language.english' as const },
+  { code: 'km', nameKey: 'language.khmer' as const },
+  { code: 'ko', nameKey: 'language.korean' as const },
 ];
 
 export default function EditGroupScreen() {
@@ -225,19 +225,19 @@ export default function EditGroupScreen() {
         </Pressable>
 
         <Input
-          label="Group name"
+          label={t('groups.groupName')}
           value={name}
           onChangeText={setName}
-          placeholder="Enter group name"
+          placeholder={t('groups.groupNamePlaceholder')}
           autoCapitalize="words"
-          accessibilityLabel="Group name"
+          accessibilityLabel={t('groups.groupName')}
         />
 
         <Input
           label={t('groups.description')}
           value={description}
           onChangeText={setDescription}
-          placeholder="Optional description"
+          placeholder={t('groups.descriptionPlaceholder')}
           multiline
           numberOfLines={3}
           inputStyle={{ minHeight: 80 }}
@@ -251,12 +251,12 @@ export default function EditGroupScreen() {
               key={lang.code}
               onPress={() => setPreferredLanguage(lang.code)}
               style={[styles.chip, preferredLanguage === lang.code && styles.chipActive]}
-              accessibilityLabel={lang.name}
+              accessibilityLabel={t(lang.nameKey)}
             >
               <Text
                 style={[styles.chipText, preferredLanguage === lang.code && styles.chipTextActive]}
               >
-                {lang.name}
+                {t(lang.nameKey)}
               </Text>
             </Pressable>
           ))}
@@ -267,7 +267,7 @@ export default function EditGroupScreen() {
           style={styles.dropdown}
           onPress={() => setLocationModalVisible(true)}
           accessibilityLabel={t('groups.location')}
-          accessibilityHint="Opens location selection"
+          accessibilityHint={t('groups.locationSelectionHint')}
         >
           <Text style={styles.dropdownText}>{selectedCountryName}</Text>
           <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
@@ -368,7 +368,7 @@ export default function EditGroupScreen() {
                   onPress={handleDeleteConfirm}
                   disabled={isDeleting}
                   accessibilityLabel={t('groups.deleteGroup')}
-                  accessibilityHint="Deletes the group permanently"
+                  accessibilityHint={t('groups.deleteGroupPermanentlyHint')}
                 />
               </View>
             </View>

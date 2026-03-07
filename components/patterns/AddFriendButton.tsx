@@ -201,7 +201,10 @@ export function AddFriendButton({
   if (pendingRequest && isReceivedByMe) {
     if (compact) {
       return (
-        <View style={[wrapperStyle, styles.compactActions]} pointerEvents={isPending ? 'none' : 'auto'}>
+        <View
+          style={[wrapperStyle, styles.compactActions]}
+          pointerEvents={isPending ? 'none' : 'auto'}
+        >
           <IconButton
             name="checkmark-circle-outline"
             onPress={handleAccept}

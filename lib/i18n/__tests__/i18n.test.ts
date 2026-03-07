@@ -44,6 +44,16 @@ describe('i18n', () => {
       expect(t('conduct.intro').length).toBeGreaterThan(10);
     });
 
+    it('interpolates params into translated string', () => {
+      changeLanguage('en');
+      expect(t('common.minutesAgo', { count: 5 })).toBe('5m ago');
+      expect(t('common.hoursAgo', { count: 2 })).toBe('2h ago');
+
+      changeLanguage('ko');
+      expect(t('common.minutesAgo', { count: 5 })).toBe('5분 전');
+      expect(t('common.hoursAgo', { count: 2 })).toBe('2시간 전');
+    });
+
     it('falls back to en for unknown key', () => {
       changeLanguage('ko');
       expect(t('tabs.nonexistent')).toBe('tabs.nonexistent');

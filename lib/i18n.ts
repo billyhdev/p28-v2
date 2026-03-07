@@ -54,14 +54,22 @@ function getNested(obj: Record<string, unknown>, path: string): unknown {
 /**
  * Translate key (e.g. 'tabs.home', 'profile.editProfile').
  * Returns English fallback for missing keys or unsupported locale.
+ * Supports interpolation: t('common.minutesAgo', { count: 5 }) → "5m ago".
  */
-export function t(key: string): string {
+export function t(key: string, params?: Record<string, string | number>): string {
   const locale = isSupported(currentLocale) ? currentLocale : FALLBACK;
   const dict = resources[locale] ?? resources.en;
-  const value = getNested(dict as Record<string, unknown>, key);
-  if (typeof value === 'string') return value;
-  const fallback = getNested(resources.en as Record<string, unknown>, key);
-  return typeof fallback === 'string' ? fallback : key;
+  let value = getNested(dict as Record<string, unknown>, key);
+  if (typeof value !== 'string') {
+    value = getNested(resources.en as Record<string, unknown>, key);
+  }
+  let result = typeof value === 'string' ? value : key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      result = result.replace(`{{${k}}}`, String(v));
+    }
+  }
+  return result;
 }
 
 export { SupportedLocale as Locale };
