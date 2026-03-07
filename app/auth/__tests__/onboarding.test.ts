@@ -9,9 +9,9 @@ const onboardingPath = path.join(__dirname, '..', 'onboarding.tsx');
 const onboardingSource = fs.readFileSync(onboardingPath, 'utf8');
 
 describe('OnboardingScreen contract', () => {
-  it('uses api from @/lib/api for profile creation', () => {
+  it('uses api/auth from @/lib/api and useCreateProfileMutation for profile creation', () => {
     expect(onboardingSource).toMatch(/from\s+['"]@\/lib\/api['"]/);
-    expect(onboardingSource).toMatch(/api\.data\.createProfile\s*\(/);
+    expect(onboardingSource).toMatch(/useCreateProfileMutation/);
   });
 
   it('uses getUserFacingError from @/lib/errors for error display', () => {

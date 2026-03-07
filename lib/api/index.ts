@@ -35,4 +35,13 @@ export type {
   UpdateGroupInput,
   GroupMember,
   GroupAdmin,
+  Discussion,
+  CreateDiscussionInput,
+  UpdateDiscussionInput,
+  DiscussionPost,
+  CreateDiscussionPostInput,
+  UpdateDiscussionPostInput,
+  PostReactionCounts,
+  PostReactionDetail,
+  PostReactionType,
 } from './contracts';

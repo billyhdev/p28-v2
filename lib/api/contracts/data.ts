@@ -1,14 +1,24 @@
 import type { ApiError } from './errors';
 import type {
+  CreateDiscussionInput,
+  CreateDiscussionPostInput,
+  CreateGroupDiscussionInput,
   CreateGroupInput,
+  Discussion,
+  DiscussionPost,
   Group,
+  PostReactionDetail,
   GroupAdmin,
+  GroupDiscussion,
   GroupMember,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
+  PostReactionType,
   Profile,
   ProfileUpdates,
+  UpdateDiscussionInput,
+  UpdateDiscussionPostInput,
   UpdateGroupInput,
 } from './dto';
 
@@ -32,6 +42,12 @@ export interface DataContract {
     imageUri: string,
     base64Data?: string | null
   ): Promise<string | ApiError>;
+  /** Upload discussion post image. Returns public URL. Used when replying with attachments. */
+  uploadDiscussionPostImage(
+    userId: string,
+    imageUri: string,
+    base64Data?: string | null
+  ): Promise<string | ApiError>;
 
   getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError>;
   updateNotificationPreferences(
@@ -44,6 +60,7 @@ export interface DataContract {
   getGroup(id: string): Promise<Group | ApiError>;
   createGroup(params: CreateGroupInput, createdByUserId: string): Promise<Group | ApiError>;
   updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError>;
+  deleteGroup(id: string): Promise<void | ApiError>;
 
   // Group membership
   getGroupMembers(groupId: string): Promise<GroupMember[] | ApiError>;
@@ -51,8 +68,61 @@ export interface DataContract {
   leaveGroup(groupId: string, userId: string): Promise<void | ApiError>;
   getGroupsForUser(userId: string): Promise<Group[] | ApiError>;
 
+  // Friendships
+  getFriendIds(userId: string): Promise<string[] | ApiError>;
+  areFriends(userId: string, targetUserId: string): Promise<boolean | ApiError>;
+  addFriend(userId: string, friendId: string): Promise<void | ApiError>;
+  removeFriend(userId: string, friendId: string): Promise<void | ApiError>;
+
   // Group admins
   getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError>;
+
+  // Group discussions
+  getGroupDiscussions(groupId: string): Promise<GroupDiscussion[] | ApiError>;
+  createGroupDiscussion(
+    groupId: string,
+    userId: string,
+    input: CreateGroupDiscussionInput
+  ): Promise<GroupDiscussion | ApiError>;
+
+  // Reddit-style discussions (topics + replies)
+  getDiscussions(params?: { groupId?: string }): Promise<Discussion[] | ApiError>;
+  getDiscussion(id: string): Promise<Discussion | ApiError>;
+  createDiscussion(
+    groupId: string,
+    userId: string,
+    input: CreateDiscussionInput
+  ): Promise<Discussion | ApiError>;
+  updateDiscussion(id: string, params: UpdateDiscussionInput): Promise<Discussion | ApiError>;
+  deleteDiscussion(id: string): Promise<void | ApiError>;
+  getDiscussionPosts(
+    discussionId: string,
+    options?: { userId?: string }
+  ): Promise<DiscussionPost[] | ApiError>;
+  createDiscussionPost(
+    discussionId: string,
+    userId: string,
+    input: CreateDiscussionPostInput
+  ): Promise<DiscussionPost | ApiError>;
+  updateDiscussionPost(
+    postId: string,
+    userId: string,
+    input: UpdateDiscussionPostInput
+  ): Promise<DiscussionPost | ApiError>;
+  /** Add or replace reaction on a discussion post. One reaction per user per post. */
+  reactToDiscussionPost(
+    postId: string,
+    userId: string,
+    reactionType: PostReactionType
+  ): Promise<void | ApiError>;
+  /** Remove reaction from a discussion post. */
+  removeDiscussionPostReaction(
+    postId: string,
+    userId: string,
+    reactionType: PostReactionType
+  ): Promise<void | ApiError>;
+  /** Get who gave which reaction on a post. */
+  getDiscussionPostReactions(postId: string): Promise<PostReactionDetail[] | ApiError>;
 
   // App roles (Super Admin, Admin)
   isSuperAdmin(userId: string): Promise<boolean | ApiError>;

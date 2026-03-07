@@ -113,7 +113,7 @@ npx create-expo-app@latest --template tabs
 
 **Important Decisions (Shape Architecture):**
 - **Backend abstraction:** The app is backend-agnostic. All server-side capabilities (auth, data, realtime) are accessed only through **contracts** (TypeScript interfaces). The current backend (Supabase) is one **adapter** implementing those contracts. Migrating to a custom API means implementing the same contracts in a new adapter; app code does not change.
-- State management: Backend facade + React state/context first; add TanStack Query (or similar) if cache invalidation and server state grow in complexity.
+- State management: Backend facade + TanStack Query for server state (implemented in `hooks/useApiQueries`); React state/context for auth/session and UI state.
 - Push: Expo Notifications (FCM/APNs); trigger path from backend (e.g. Supabase Edge Function or custom API webhook) to be designed in implementation.
 - Migrations: Backend-specific (e.g. Supabase migrations); run via CLI or CI. Contract types and DTOs are owned by the app and stay stable across backend changes.
 
@@ -136,7 +136,7 @@ npx create-expo-app@latest --template tabs
 - **Data modeling:** Relational; foreign keys and constraints for hierarchy and membership; JSON or columns for i18n where needed (EN/KR/KH).
 - **Data validation:** Database/backend constraints; optional client-side validation (e.g. Zod) for forms and payloads at the boundary.
 - **Migrations:** Backend-specific (e.g. Supabase migrations SQL); versioned in repo; applied via CLI or CI.
-- **Caching:** Handled inside the facade/adapter or via TanStack Query on top of the contract; no direct backend client in UI code.
+- **Caching:** TanStack Query via `hooks/useApiQueries` on top of the facade; query keys in `lib/api/queryKeys.ts`. No direct backend client in UI code.
 
 ### Authentication & Security
 
@@ -156,7 +156,7 @@ npx create-expo-app@latest --template tabs
 
 ### Frontend Architecture
 
-- **State management:** Backend **facade** (contract + adapter) for server state; React state and context for auth/session and UI state. Screens and hooks call the facade only (e.g. `api.getMessages(channelId)`, `auth.getSession()`). Add TanStack Query (or similar) on top of the facade if caching and invalidation justify it.
+- **State management:** Backend **facade** (contract + adapter) for server state; **TanStack Query** in `hooks/useApiQueries` wraps the facade for caching, deduplication, and invalidation. Screens use the query/mutation hooks, not raw `api.data.*`. React state and context for auth/session and UI state.
 - **Component architecture:** Custom design system per UX spec: design tokens → primitives → feature components; Expo Router for routing and layout.
 - **Routing:** Expo Router file-based (tabs + stack); bottom tabs: Home, Groups, Messages, Profile; stacks for flows (e.g. event detail, thread, compose).
 - **Performance:** Lazy-load tab screens where helpful; optimize images (Expo Image); avoid unnecessary Realtime subscriptions per screen.

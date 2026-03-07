@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,11 +10,15 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
-import { api, getUserFacingError, isApiError } from '@/lib/api';
+import {
+  useNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
+  useUpdateProfileMutation,
+} from '@/hooks/useApiQueries';
+import { getUserFacingError } from '@/lib/api';
 import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography, minTouchTarget } from '@/theme/tokens';
-import type { NotificationPreferences } from '@/lib/api';
 
 type LocaleOption = 'en' | 'ko' | 'km';
 
@@ -30,74 +34,59 @@ const LOCALES: {
 export default function SettingsScreen() {
   const { session } = useAuth();
   const { locale, setLocale } = useLocale();
-  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isSubmittingPrefs, setIsSubmittingPrefs] = useState(false);
-  const [isSubmittingLang, setIsSubmittingLang] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestIdRef = useRef(0);
-
   const userId = session?.user?.id;
 
-  const fetchPrefs = useCallback(() => {
-    if (!userId) return;
-    setLoading(true);
-    setError(null);
-    api.data.getNotificationPreferences(userId).then((r) => {
-      setLoading(false);
-      if (isApiError(r)) {
-        setError(getUserFacingError(r));
-        setPrefs(null);
-      } else {
-        setPrefs(r);
-        setError(null);
-      }
-    });
-  }, [userId]);
+  const {
+    data: prefs,
+    isLoading: loading,
+    isError: prefsError,
+    error: prefsErrorObj,
+    refetch: fetchPrefs,
+  } = useNotificationPreferencesQuery(userId);
 
-  useEffect(() => {
-    fetchPrefs();
-  }, [fetchPrefs]);
+  const updatePrefsMutation = useUpdateNotificationPreferencesMutation();
+  const updateProfileMutation = useUpdateProfileMutation();
 
-  const handleToggle = async (
-    key: 'eventsEnabled' | 'announcementsEnabled' | 'messagesEnabled',
-    value: boolean
-  ) => {
-    if (!userId || !prefs) return;
-    const next = { ...prefs, [key]: value };
-    setPrefs(next);
-    setIsSubmittingPrefs(true);
-    setError(null);
-    const id = ++requestIdRef.current;
-    const result = await api.data.updateNotificationPreferences(userId, {
-      eventsEnabled: next.eventsEnabled,
-      announcementsEnabled: next.announcementsEnabled,
-      messagesEnabled: next.messagesEnabled,
-    });
-    setIsSubmittingPrefs(false);
-    if (id !== requestIdRef.current) return;
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-      setPrefs(prefs);
-    } else {
-      setPrefs(result);
-    }
-  };
+  const isSubmittingPrefs = updatePrefsMutation.isPending;
+  const isSubmittingLang = updateProfileMutation.isPending;
+  const mutationError = updatePrefsMutation.error ?? updateProfileMutation.error;
+  const error =
+    (prefsError && prefsErrorObj && 'message' in prefsErrorObj
+      ? getUserFacingError(prefsErrorObj)
+      : null) ??
+    (mutationError && 'message' in mutationError ? getUserFacingError(mutationError) : null);
+
+  const handleToggle = useCallback(
+    (key: 'eventsEnabled' | 'announcementsEnabled' | 'messagesEnabled', value: boolean) => {
+      if (!userId || !prefs) return;
+      const next = {
+        eventsEnabled: prefs.eventsEnabled,
+        announcementsEnabled: prefs.announcementsEnabled,
+        messagesEnabled: prefs.messagesEnabled,
+        [key]: value,
+      };
+      updatePrefsMutation.mutate(
+        {
+          userId,
+          updates: next,
+        },
+        { onError: () => {} }
+      );
+    },
+    [userId, prefs, updatePrefsMutation]
+  );
 
   const handleSelectLanguage = useCallback(
-    async (next: LocaleOption) => {
+    (next: LocaleOption) => {
       if (next === locale) return;
       if (!userId) return;
       setLocale(next);
-      setIsSubmittingLang(true);
-      setError(null);
-      const result = await api.data.updateProfile(userId, { preferredLanguage: next });
-      setIsSubmittingLang(false);
-      if (isApiError(result)) {
-        setError(getUserFacingError(result));
-      }
+      updateProfileMutation.mutate(
+        { userId, updates: { preferredLanguage: next } },
+        { onError: () => {} }
+      );
     },
-    [locale, userId, setLocale]
+    [locale, userId, setLocale, updateProfileMutation]
   );
 
   if (!userId) return null;
@@ -123,11 +112,7 @@ export default function SettingsScreen() {
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl
-          refreshing={loading && !!prefs}
-          onRefresh={fetchPrefs}
-          tintColor={colors.primary}
-        />
+        <RefreshControl refreshing={loading} onRefresh={fetchPrefs} tintColor={colors.primary} />
       }
     >
       {error ? (

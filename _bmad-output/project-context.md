@@ -18,6 +18,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Expo Router ~6.0.23 (file-based routing, all screens under `app/`)
 - TypeScript ~5.9.2 — strict mode enabled, `@/` path alias maps to project root
 - `@supabase/supabase-js` ^2.95.3 — **adapter layer only** (never import directly in `app/`, `components/`, `hooks/`, `contexts/`)
+- `@tanstack/react-query` — server state caching; use hooks from `hooks/useApiQueries` (never call `api.data.*` directly in screens)
 - `react-native-reanimated` ~4.1.1 — available for animations
 - `expo-image` ^55.0.5 — use instead of React Native's `<Image>`
 - `@expo/vector-icons` ^15.0.3 — available for icons
@@ -39,7 +40,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 
 - Functional components and hooks only; default export for route files, named exports for components
 - `app/` is routes only — no business logic; use hooks and `api.*`
-- Data fetching in screens: use `useFocusEffect` + `useCallback` (not bare `useEffect`) so data refreshes on focus
+- Data fetching: use React Query hooks from `hooks/useApiQueries` (e.g. `useProfileQuery`, `useUpdateProfileMutation`). These wrap `api.data.*` and provide caching, deduplication, and invalidation. Use `refetch()` in `useFocusEffect` when a screen needs fresh data on focus.
 - Navigation: `useRouter()` for programmatic nav; `useLocalSearchParams()` for route params
 - Loading state naming: `isLoading` for fetch, `creating`/`isSubmitting` for mutations — do not mix conventions
 - State updates must be immutable — never mutate arrays or objects directly
@@ -71,7 +72,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 **Structure:**
 - `components/primitives/` — reusable UI building blocks (no API, no routing)
 - `components/patterns/` — domain blocks (EventCard, GroupRow, etc.)
-- `hooks/` — shared hooks using `api.*` facade only
+- `hooks/` — shared hooks; `useApiQueries` for server state (queries/mutations via React Query); `useAuth` for session
 - `utils/` — pure helpers with no API or React dependencies
 - `supabase/migrations/` — numbered SQL files (e.g. `00003_description.sql`)
 - Never put components in `app/`; no `components/screens/` folder
@@ -92,14 +93,14 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Apply migrations immediately using the Supabase MCP `apply_migration` tool — do not leave migrations unapplied
 - Supabase URL + anon key live in `.env` (never committed); document new env vars in `.env.example`
 - No secrets or API keys in source; use EAS secrets for production
-- To add a new data operation: (1) add to `lib/api/contracts/data.ts`, (2) implement in `lib/api/adapters/supabase/data.ts`, (3) call via `api.data.*` — never shortcut this flow
+- To add a new data operation: (1) add to `lib/api/contracts/data.ts`, (2) implement in `lib/api/adapters/supabase/data.ts`, (3) add query/mutation hooks in `hooks/useApiQueries.ts` and keys in `lib/api/queryKeys.ts`, (4) call via the hooks in screens — never call `api.data.*` directly in `app/` or `components/`
 - `lib/api/index.ts` is the single backend entry point — `api.auth`, `api.data`, `api.realtime`
 
 ## Critical Don't-Miss Rules
 
 **Never do these:**
 - Import `@supabase/supabase-js` (or any backend SDK) outside `lib/api/adapters/supabase/`
-- Use bare `useEffect` for data fetching in tab/stack screens — use `useFocusEffect` + `useCallback`
+- Do not call `api.data.*` directly in screens — use React Query hooks from `hooks/useApiQueries`; call `refetch()` in `useFocusEffect` when screen needs fresh data on focus
 - Pass raw error messages to UI — always use `getUserFacingError(error)`
 - Hardcode English strings in UI — always use `t()` from `@/lib/i18n`
 - Use magic numbers in styles — always use `@/theme/tokens`
@@ -110,7 +111,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 **Easy-to-miss details:**
 - RLS enforces authorization on the backend — don't replicate role checks in UI; handle `ApiError` instead
 - New types/interfaces in `lib/api/contracts/dto.ts` must also be re-exported from `lib/api/index.ts`
-- If using `useFocusEffect` with a realtime subscription, return a cleanup function to unsubscribe on blur
+- If using `useFocusEffect` with a realtime subscription, return a cleanup function to unsubscribe on blur. For React Query, call `refetch()` in the focus effect when the screen needs fresh data.
 - `isLoading` = fetch in progress; `creating`/`isSubmitting` = mutation in progress — never mix these names
 
 ---
@@ -128,4 +129,4 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Update when technology stack or patterns change
 - Review periodically to remove rules that become obvious over time
 
-_Last Updated: 2026-03-04_
+_Last Updated: 2026-03-06_

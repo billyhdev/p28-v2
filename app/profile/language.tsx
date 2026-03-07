@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
-import { api, getUserFacingError, isApiError } from '@/lib/api';
+import { useUpdateProfileMutation } from '@/hooks/useApiQueries';
+import { getUserFacingError } from '@/lib/api';
 import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography, minTouchTarget } from '@/theme/tokens';
@@ -20,26 +21,27 @@ const LOCALES: {
 export default function LanguageScreen() {
   const { session } = useAuth();
   const { locale, setLocale } = useLocale();
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const userId = session?.user?.id;
+  const updateMutation = useUpdateProfileMutation();
 
   const handleSelect = useCallback(
-    async (next: LocaleOption) => {
+    (next: LocaleOption) => {
       if (next === locale) return;
       if (!userId) return;
       setLocale(next);
-      setIsSubmitting(true);
       setError(null);
-      const result = await api.data.updateProfile(userId, { preferredLanguage: next });
-      setIsSubmitting(false);
-      if (isApiError(result)) {
-        setError(getUserFacingError(result));
-      }
+      updateMutation.mutate(
+        { userId, updates: { preferredLanguage: next } },
+        {
+          onError: (err) => setError(getUserFacingError(err)),
+        }
+      );
     },
-    [locale, userId, setLocale]
+    [locale, userId, setLocale, updateMutation]
   );
+
+  const isSubmitting = updateMutation.isPending;
 
   if (!userId) return null;
 
@@ -51,9 +53,14 @@ export default function LanguageScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.subtitle}>{t('language.subtitle')}</Text>
-      {error ? (
+      {error || (updateMutation.error && 'message' in updateMutation.error) ? (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>
+            {error ??
+              (updateMutation.error && 'message' in updateMutation.error
+                ? getUserFacingError(updateMutation.error)
+                : '')}
+          </Text>
         </View>
       ) : null}
 

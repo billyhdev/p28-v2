@@ -6,6 +6,13 @@ export default function ProfileLayout() {
   useLocale(); // Re-render when locale changes so titles update
   return (
     <Stack>
+      <Stack.Screen
+        name="[userId]"
+        options={{
+          title: t('profile.title'),
+          headerShown: true,
+        }}
+      />
       <Stack.Screen name="edit" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ title: t('profile.settings'), headerShown: true }} />
       <Stack.Screen

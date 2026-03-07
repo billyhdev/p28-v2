@@ -19,7 +19,7 @@ Apply these practices to every edit in this project.
 - For interactive elements (Button, Input, touchables): always set `accessibilityLabel` and, when helpful, `accessibilityHint`.
 
 ## API & errors
-- Call API through `@/lib/api` (e.g. `api.data.getProfile`, `auth.checkEmailAvailable`). Use `isApiError()` to detect errors and `getUserFacingError()` for user-facing messages.
+- Server data: use React Query hooks from `@/hooks/useApiQueries` (e.g. `useProfileQuery`, `useUpdateProfileMutation`). Do not call `api.data.*` directly in screens or components. Auth: use `auth.*` from `@/lib/api` or `useAuth`. Use `getUserFacingError()` for user-facing error messages.
 - Never swallow errors: log and/or surface to the user; rethrow when the caller should handle.
 
 ## Security & data
@@ -37,7 +37,7 @@ Apply these practices to every edit in this project.
 import React, { useState } from 'react';
 import { router } from 'expo-router';
 import { Button } from '@/components/primitives';
-import { api, isApiError } from '@/lib/api';
+import { useProfileQuery } from '@/hooks/useApiQueries';
 import { colors, spacing } from '@/theme/tokens';
 ```
 
@@ -51,12 +51,9 @@ import { colors, spacing } from '@/theme/tokens';
 />
 ```
 
-```ts
-// ✅ API error handling
-const result = await api.data.getProfile(userId);
-if (isApiError(result)) {
-  setError(getUserFacingError(result));
-  return;
-}
-setProfile(result);
+```tsx
+// ✅ Server data: use React Query hooks from hooks/useApiQueries
+const { data: profile, isError, error, refetch } = useProfileQuery(userId);
+const updateMutation = useUpdateProfileMutation();
+const errorMessage = isError && error && 'message' in error ? getUserFacingError(error) : null;
 ```

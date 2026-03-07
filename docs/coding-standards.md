@@ -60,8 +60,9 @@ This document defines coding practices and tooling for **p28-v2**: a React Nativ
 ## 5. Supabase & API Layer
 
 - **Contract-based API:** App code depends on `lib/api/contracts`, not Supabase types. Adapters in `lib/api/adapters/supabase` implement contracts and map to/from Supabase.
-- **Auth:** Use the shared `auth` facade from `@/lib/api`. Handle errors via `getUserFacingError()` and contract error types (`ApiError`).
-- **Data:** Same pattern: contracts in `lib/api/contracts`, implementation in adapters. Use RPC or typed client wrappers rather than raw Supabase calls in UI.
+- **React Query:** Server state flows through TanStack Query hooks in `hooks/useApiQueries`. Screens use `useProfileQuery`, `useUpdateProfileMutation`, etc.—never call `api.data.*` directly. Query keys live in `lib/api/queryKeys.ts`.
+- **Auth:** Use the shared `auth` facade from `@/lib/api` or `useAuth`. Handle errors via `getUserFacingError()` and contract error types (`ApiError`).
+- **Data:** Same pattern: contracts in `lib/api/contracts`, implementation in adapters. Screens use the React Query hooks which wrap the facade.
 - **Errors:** Map Supabase/network errors to a single API error shape; surface user-facing messages in UI.
 
 ---

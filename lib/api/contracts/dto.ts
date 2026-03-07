@@ -103,11 +103,13 @@ export interface UpdateGroupInput {
   country?: string;
 }
 
-/** Group membership. From group_members table. */
+/** Group membership. From group_members table. Optional profile fields when enriched. */
 export interface GroupMember {
   userId: string;
   groupId: string;
   joinedAt?: string;
+  displayName?: string;
+  avatarUrl?: string;
 }
 
 /** Group admin (creator or assigned). From group_admins table. */
@@ -115,4 +117,103 @@ export interface GroupAdmin {
   userId: string;
   groupId: string;
   assignedAt?: string;
+}
+
+/** Group discussion post. From group_discussions table. @deprecated Use Discussion/DiscussionPost for Reddit-style topics. */
+export interface GroupDiscussion {
+  id: string;
+  groupId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  authorDisplayName?: string;
+  authorAvatarUrl?: string;
+}
+
+/** Input for creating a group discussion. @deprecated Use CreateDiscussionInput for Reddit-style topics. */
+export interface CreateGroupDiscussionInput {
+  body: string;
+}
+
+/** Reddit-style discussion topic. From discussions table. */
+export interface Discussion {
+  id: string;
+  groupId: string;
+  userId: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  /** When the discussion was last edited. If present and different from createdAt, show "[edited]". */
+  updatedAt?: string;
+  postCount?: number;
+  authorDisplayName?: string;
+  authorAvatarUrl?: string;
+  groupName?: string;
+}
+
+/** Input for creating a discussion (topic). */
+export interface CreateDiscussionInput {
+  title: string;
+  body: string;
+}
+
+/** Input for updating a discussion (partial). */
+export interface UpdateDiscussionInput {
+  title?: string;
+  body?: string;
+}
+
+/** Reaction type on a discussion post reply. */
+export type PostReactionType = 'prayer' | 'laugh' | 'thumbs_up';
+
+/** Reaction counts per type for a discussion post. */
+export interface PostReactionCounts {
+  prayer: number;
+  laugh: number;
+  thumbsUp: number;
+}
+
+/** Who gave which reaction on a post. */
+export interface PostReactionDetail {
+  userId: string;
+  displayName?: string;
+  avatarUrl?: string;
+  reactionType: PostReactionType;
+}
+
+/** Reply to a discussion. From discussion_posts table. */
+export interface DiscussionPost {
+  id: string;
+  discussionId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  /** When the post was last edited. If present and different from createdAt, show "[edited]". */
+  updatedAt?: string;
+  authorDisplayName?: string;
+  authorAvatarUrl?: string;
+  /** Parent post id when replying to a reply. */
+  parentPostId?: string;
+  /** Public URLs of attached images. */
+  imageUrls?: string[];
+  /** Counts per reaction type. */
+  reactionCounts?: PostReactionCounts;
+  /** Reaction types the current user has on this post (when userId provided to fetch). */
+  userReactionTypes?: PostReactionType[];
+}
+
+/** Input for creating a discussion post (reply). */
+export interface CreateDiscussionPostInput {
+  body: string;
+  /** Public URLs of attached images (must be uploaded first via uploadDiscussionPostImage). */
+  imageUrls?: string[];
+  /** Parent post id when replying to a reply. */
+  parentPostId?: string;
+}
+
+/** Input for updating a discussion post (reply). Partial. */
+export interface UpdateDiscussionPostInput {
+  body?: string;
+  /** Public URLs of attached images (must be uploaded first via uploadDiscussionPostImage). */
+  imageUrls?: string[];
 }

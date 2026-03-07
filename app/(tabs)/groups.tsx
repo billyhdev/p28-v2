@@ -1,5 +1,5 @@
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -15,10 +15,10 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { EmptyState } from '@/components/patterns/EmptyState';
 import { GroupCard } from '@/components/patterns/GroupCard';
 import { useAuth } from '@/hooks/useAuth';
-import { api, isApiError } from '@/lib/api';
+import { useGroupsQuery, useGroupsForUserQuery, useIsAdminQuery } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/errors';
 import { t } from '@/lib/i18n';
-import type { Group, GroupType } from '@/lib/api';
+import type { GroupType } from '@/lib/api';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 type FilterType = 'all' | 'joined' | GroupType;
@@ -27,89 +27,53 @@ export default function GroupsScreen() {
   const { session } = useAuth();
   const router = useRouter();
   const navigation = useNavigation();
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [memberGroupIds, setMemberGroupIds] = useState<Set<string>>(new Set());
+  const params = useLocalSearchParams<{ filter?: string }>();
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
 
-  const loadGroups = useCallback(() => {
-    const userId = session?.user?.id;
-    if (!userId) {
-      setIsLoading(false);
-      return;
+  useEffect(() => {
+    const p = params?.filter as FilterType | undefined;
+    if (p && ['all', 'joined', 'forum', 'ministry'].includes(p)) {
+      setFilter(p);
     }
-    setIsLoading(true);
-    setError(null);
-    const typeFilter = filter === 'all' || filter === 'joined' ? undefined : filter;
-    api.data
-      .getGroups({ type: typeFilter, search: search.trim() || undefined })
-      .then((r) => {
-        if (isApiError(r)) {
-          setError(getUserFacingError(r));
-          setGroups([]);
-        } else {
-          setGroups(r);
-        }
-      })
-      .finally(() => setIsLoading(false));
-  }, [session?.user?.id, filter, search]);
+  }, [params?.filter]);
 
-  const loadGroupsRef = useRef(loadGroups);
-  loadGroupsRef.current = loadGroups;
+  const userId = session?.user?.id;
+  const typeFilter = filter === 'all' || filter === 'joined' ? undefined : filter;
+  const {
+    data: groups = [],
+    isLoading,
+    isError,
+    error,
+    refetch: refetchGroups,
+  } = useGroupsQuery({
+    type: typeFilter,
+    search,
+    enabled: !!userId,
+  });
+  const { data: memberGroups = [], refetch: refetchMemberGroups } = useGroupsForUserQuery(userId);
+  const { data: isAdminFromApi } = useIsAdminQuery(userId);
+  const email = session?.user?.email?.toLowerCase();
+  const isAdmin = isAdminFromApi === true || email === 'billyhdev@gmail.com';
 
-  const loadMemberGroups = useCallback(() => {
-    const userId = session?.user?.id;
-    if (!userId) return;
-    api.data.getGroupsForUser(userId).then((r) => {
-      if (!isApiError(r)) {
-        setMemberGroupIds(new Set(r.map((g) => g.id)));
-      }
-    });
-  }, [session?.user?.id]);
+  const memberGroupIds = new Set(memberGroups.map((g) => g.id));
 
-  const loadAdminStatus = useCallback(() => {
-    const userId = session?.user?.id;
-    const email = session?.user?.email?.toLowerCase();
-    if (!userId) return;
-    api.data.isAdmin(userId).then((r) => {
-      const fromApi = !isApiError(r) && r === true;
-      const superAdminFallback = email === 'billyhdev@gmail.com';
-      setIsAdmin(fromApi || superAdminFallback);
-    });
-  }, [session?.user?.id, session?.user?.email]);
+  const showAddGroup = isAdmin;
 
   useFocusEffect(
     useCallback(() => {
       setFilter('all');
-      if (filter === 'all') {
-        loadGroupsRef.current();
-      }
-      loadMemberGroups();
-      loadAdminStatus();
-    }, [loadMemberGroups, loadAdminStatus, filter])
+      refetchGroups();
+      refetchMemberGroups();
+    }, [refetchGroups, refetchMemberGroups])
   );
 
-  const isFirstMount = useRef(true);
   useLayoutEffect(() => {
-    if (isFirstMount.current) {
-      isFirstMount.current = false;
-      return;
-    }
-    const timer = setTimeout(loadGroups, 300);
-    return () => clearTimeout(timer);
-  }, [filter, search, loadGroups]);
-
-  useLayoutEffect(() => {
-    if (!isAdmin) {
-      navigation.setOptions({ headerRight: undefined });
-      return;
-    }
-    navigation.setOptions({
-      headerRight: () => (
+    const buttons: React.ReactNode[] = [];
+    if (showAddGroup) {
+      buttons.push(
         <Pressable
+          key="create-group"
           onPress={() => router.push('/group/create')}
           accessibilityLabel={t('groups.createGroup')}
           accessibilityHint={t('groups.createGroupHint')}
@@ -124,9 +88,15 @@ export default function GroupsScreen() {
             />
           )}
         </Pressable>
-      ),
+      );
+    }
+    navigation.setOptions({
+      headerRight:
+        buttons.length > 0
+          ? () => <View style={{ flexDirection: 'row', alignItems: 'center' }}>{buttons}</View>
+          : undefined,
     });
-  }, [isAdmin, navigation, router]);
+  }, [showAddGroup, navigation, router]);
 
   return (
     <ScrollView
@@ -192,9 +162,9 @@ export default function GroupsScreen() {
           ))}
         </View>
 
-        {error ? (
+        {isError && error && 'message' in error ? (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{getUserFacingError(error)}</Text>
           </View>
         ) : null}
 

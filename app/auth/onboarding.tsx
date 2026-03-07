@@ -9,7 +9,8 @@ import { Button, Input } from '@/components/primitives';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingSignUp } from '@/contexts/PendingSignUpContext';
-import { api, auth } from '@/lib/api';
+import { useCreateProfileMutation } from '@/hooks/useApiQueries';
+import { auth } from '@/lib/api';
 import { getUserFacingError } from '@/lib/errors';
 import type { ApiError } from '@/lib/api/contracts/errors';
 import { t } from '@/lib/i18n';
@@ -314,8 +315,10 @@ export default function OnboardingScreen() {
   const [country, setCountry] = useState<string | null>(null);
   const [preferredLanguage, setPreferredLanguage] = useState<string | null>('en');
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmittingSignUp, setIsSubmittingSignUp] = useState(false);
+  const createProfileMutation = useCreateProfileMutation();
+  const isSubmitting = isSubmittingSignUp || createProfileMutation.isPending;
 
   // User must have either pending sign-up (from sign-up screen) or existing session
   useEffect(() => {
@@ -344,18 +347,18 @@ export default function OnboardingScreen() {
     let userId: string | null = session?.user?.id ?? pendingSignUp?.userId ?? null;
 
     if (pendingSignUp && !userId) {
-      setIsSubmitting(true);
+      setIsSubmittingSignUp(true);
       const signUpResult = await auth.signUp(pendingSignUp.email, pendingSignUp.password);
       if ('error' in signUpResult) {
         const err = signUpResult.error as ApiError;
         if (err.code === 'EMAIL_CONFIRMATION_REQUIRED') {
           clearPendingSignUp();
           setError('Please check your email to confirm your account, then sign in.');
-          setIsSubmitting(false);
+          setIsSubmittingSignUp(false);
           return;
         }
         setError(getUserFacingError(err));
-        setIsSubmitting(false);
+        setIsSubmittingSignUp(false);
         return;
       }
       userId = signUpResult.session?.user?.id ?? null;
@@ -366,26 +369,33 @@ export default function OnboardingScreen() {
 
     if (!userId) {
       setError('Something went wrong. Please try signing in.');
-      setIsSubmitting(false);
+      setIsSubmittingSignUp(false);
       return;
     }
 
-    const result = await api.data.createProfile(userId, {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      birthDate: birthDate.trim() ? birthDate.trim() : undefined,
-      country: country ?? undefined,
-      preferredLanguage: preferredLanguage ?? undefined,
-    });
-    setIsSubmitting(false);
-
-    if ('message' in result) {
-      setError(getUserFacingError(result));
-      return;
-    }
-
-    if (result.preferredLanguage) setLocale(result.preferredLanguage);
-    router.replace('/(tabs)');
+    createProfileMutation.mutate(
+      {
+        userId,
+        data: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          birthDate: birthDate.trim() ? birthDate.trim() : undefined,
+          country: country ?? undefined,
+          preferredLanguage: preferredLanguage ?? undefined,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setIsSubmittingSignUp(false);
+          if (result.preferredLanguage) setLocale(result.preferredLanguage);
+          router.replace('/(tabs)');
+        },
+        onError: (err) => {
+          setIsSubmittingSignUp(false);
+          setError(getUserFacingError(err));
+        },
+      }
+    );
   }
 
   function handleBackToSignIn() {

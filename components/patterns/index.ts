@@ -6,3 +6,5 @@ export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { AddSheet } from './AddSheet';
 export type { AddSheetProps } from './AddSheet';
+export { FadeActionSheet } from './FadeActionSheet';
+export type { FadeActionSheetProps, FadeActionSheetOption } from './FadeActionSheet';

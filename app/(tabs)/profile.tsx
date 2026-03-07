@@ -1,14 +1,14 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
-import { api, getUserFacingError, isApiError } from '@/lib/api';
+import { useProfileQuery } from '@/hooks/useApiQueries';
+import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { Avatar, Button } from '@/components/primitives';
 import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
-import type { Profile } from '@/lib/api';
 
 // Pill height + outer padding; extra buffer so sign out button clears the floating tab bar
 const FLOATING_TAB_BAR_HEIGHT = 110;
@@ -17,32 +17,16 @@ export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const userId = session?.user?.id;
-  const fetchProfile = useCallback(() => {
-    if (!userId) return;
-    setLoading(true);
-    setError(null);
-    api.data.getProfile(userId).then((r) => {
-      setLoading(false);
-      if (isApiError(r)) {
-        setError(getUserFacingError(r));
-        setProfile(null);
-      } else {
-        setProfile(r);
-        setError(null);
-      }
-    });
-  }, [userId]);
+  const { data: profile, isLoading: loading, isError, error, refetch } = useProfileQuery(userId);
 
   useFocusEffect(
     useCallback(() => {
-      fetchProfile();
-    }, [fetchProfile])
+      void refetch();
+    }, [refetch])
   );
+
+  const errorMessage = isError && error && 'message' in error ? getUserFacingError(error) : null;
 
   const displayName = profile?.displayName ?? session?.user?.email ?? 'Your profile';
   const fullName = useMemo(() => {
@@ -88,9 +72,9 @@ export default function ProfileScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Animated.View entering={FadeIn.duration(250)} style={styles.animatedContent}>
-        {error ? (
+        {errorMessage ? (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
 

@@ -1,15 +1,39 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useLayoutEffect, useState } from 'react';
+import { Image } from 'expo-image';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-
-import { Button } from '@/components/primitives/Button';
+import { Avatar } from '@/components/primitives';
+import { EmptyState } from '@/components/patterns/EmptyState';
+import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
 import { useAuth } from '@/hooks/useAuth';
-import { api, isApiError } from '@/lib/api';
-import { getUserFacingError } from '@/lib/errors';
+import {
+  useDiscussionsQuery,
+  useGroupQuery,
+  useGroupMembersQuery,
+  useGroupsForUserQuery,
+  useJoinGroupMutation,
+  useLeaveGroupMutation,
+} from '@/hooks/useApiQueries';
+import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import type { Group } from '@/lib/api';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, radius, spacing, typography } from '@/theme/tokens';
+
+function formatRelativeTime(isoDate: string): string {
+  const d = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  if (diffMonths < 12) return `${diffMonths}mo ago`;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'short' }).format(d);
+}
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
@@ -21,83 +45,129 @@ export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const router = useRouter();
-  const [group, setGroup] = useState<Group | null>(null);
-  const [isMember, setIsMember] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isJoining, setIsJoining] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const userId = session?.user?.id;
 
-  const loadGroup = useCallback(() => {
-    if (!id) return;
-    setIsLoading(true);
-    setError(null);
-    api.data.getGroup(id).then((r) => {
-      if (isApiError(r)) {
-        setError(getUserFacingError(r));
-        setGroup(null);
-      } else {
-        setGroup(r);
-      }
-      setIsLoading(false);
-    });
-  }, [id]);
+  const {
+    data: group,
+    isLoading,
+    isError: isGroupError,
+    error: groupError,
+    refetch: refetchGroup,
+  } = useGroupQuery(id);
+  const { data: memberGroups = [], refetch: refetchMembership } = useGroupsForUserQuery(userId);
+  const isMember = !!id && memberGroups.some((g) => g.id === id);
+  const { data: members = [], refetch: refetchMembers } = useGroupMembersQuery(id, {
+    enabled: !!id,
+  });
+  const {
+    data: discussions = [],
+    isLoading: discussionsLoading,
+    refetch: refetchDiscussions,
+  } = useDiscussionsQuery({ groupId: id, enabled: !!id });
 
-  const loadMembership = useCallback(() => {
-    const userId = session?.user?.id;
-    if (!userId || !id) return;
-    api.data.getGroupsForUser(userId).then((r) => {
-      if (!isApiError(r)) {
-        setIsMember(r.some((g) => g.id === id));
-      }
+  const joinMutation = useJoinGroupMutation();
+  const leaveMutation = useLeaveGroupMutation();
+  const isJoining = joinMutation.isPending || leaveMutation.isPending;
+
+  const isCreator = !!userId && !!group && group.createdByUserId === userId;
+  const navigation = useNavigation();
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: isCreator
+        ? () => (
+            <Pressable
+              onPress={() => id && router.push(`/group/edit?groupId=${id}`)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8, marginRight: 4 })}
+              accessibilityLabel={t('groups.editGroup')}
+              accessibilityHint={t('groups.editGroupHint')}
+              accessibilityRole="button"
+            >
+              <Ionicons name="pencil-outline" size={24} color={colors.primary} />
+            </Pressable>
+          )
+        : undefined,
     });
-  }, [session?.user?.id, id]);
+  }, [isCreator, id, navigation, router]);
+
+  const mutationError = joinMutation.error ?? leaveMutation.error;
+  const error =
+    (isGroupError && groupError && 'message' in groupError ? groupError : null) ?? mutationError;
 
   useFocusEffect(
     useCallback(() => {
-      loadGroup();
-      loadMembership();
-    }, [loadGroup, loadMembership])
+      refetchGroup();
+      refetchMembership();
+      refetchMembers();
+      refetchDiscussions();
+    }, [refetchGroup, refetchMembership, refetchMembers, refetchDiscussions])
   );
 
-  const handleJoin = useCallback(async () => {
-    const userId = session?.user?.id;
+  const handleJoin = useCallback(() => {
     if (!userId || !id) return;
-    setIsJoining(true);
-    setError(null);
-    const result = await api.data.joinGroup(id, userId);
-    setIsJoining(false);
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      setIsMember(true);
-    }
-  }, [session?.user?.id, id]);
+    joinMutation.mutate(
+      { groupId: id, userId },
+      {
+        onError: () => {},
+      }
+    );
+  }, [userId, id, joinMutation]);
 
-  const handleLeave = useCallback(async () => {
-    const userId = session?.user?.id;
+  const handleLeave = useCallback(() => {
     if (!userId || !id) return;
-    setIsJoining(true);
-    setError(null);
-    const result = await api.data.leaveGroup(id, userId);
-    setIsJoining(false);
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      setIsMember(false);
-    }
-  }, [session?.user?.id, id]);
+    leaveMutation.mutate(
+      { groupId: id, userId },
+      {
+        onError: () => {},
+      }
+    );
+  }, [userId, id, leaveMutation]);
+
+  const handleCreateDiscussion = useCallback(() => {
+    router.push(`/group/discussion/create?groupId=${id}`);
+  }, [router, id]);
+
+  const handleSeeAllMembers = useCallback(() => {
+    router.push(`/group/members?groupId=${id}`);
+  }, [router, id]);
+
+  const [joinedSheetVisible, setJoinedSheetVisible] = useState(false);
+
+  const handleOpenJoinedSheet = useCallback(() => {
+    setJoinedSheetVisible(true);
+  }, []);
+
+  const handleCloseJoinedSheet = useCallback(() => {
+    setJoinedSheetVisible(false);
+  }, []);
+
+  const handleManageSettings = useCallback(() => {
+    router.push(`/group/settings?groupId=${id}`);
+  }, [router, id]);
 
   if (!id) {
     router.back();
     return null;
   }
 
-  if (isLoading || !group) {
+  if ((isLoading && !group) || (isGroupError && !group)) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        {isGroupError ? (
+          <Text style={styles.errorText}>
+            {groupError && 'message' in groupError
+              ? getUserFacingError(groupError)
+              : t('common.error')}
+          </Text>
+        ) : (
+          <ActivityIndicator size="large" color={colors.primary} />
+        )}
       </View>
     );
+  }
+
+  if (!group) {
+    return null;
   }
 
   const typeLabel = group.type === 'forum' ? t('groups.forum') : t('groups.ministry');
@@ -113,7 +183,7 @@ export default function GroupDetailScreen() {
         <Image
           source={{ uri: group.bannerImageUrl }}
           style={styles.banner}
-          resizeMode="cover"
+          contentFit="cover"
           accessibilityIgnoresInvertColors
         />
       ) : (
@@ -125,69 +195,209 @@ export default function GroupDetailScreen() {
       <View style={styles.content}>
         <View style={styles.badgeRow}>
           <Text style={styles.badge}>{typeLabel}</Text>
-          {group.country && (
-            <View style={styles.locationRow}>
-              <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.location}>{group.country}</Text>
+          <View style={styles.badgeRowRight}>
+            {group.country && (
+              <View style={styles.locationRow}>
+                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
+                <Text style={styles.location}>{group.country}</Text>
+              </View>
+            )}
+            <View
+              style={styles.languageMeta}
+              accessibilityLabel={t('groups.language')}
+              accessibilityHint={languageName}
+            >
+              <Ionicons name="language-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.languageText}>{languageName}</Text>
             </View>
-          )}
+          </View>
         </View>
 
         <Text style={styles.name}>{group.name}</Text>
 
         {group.description ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('groups.description')}</Text>
             <Text style={styles.description}>{group.description}</Text>
           </View>
         ) : null}
 
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>{t('groups.language')}</Text>
-            <Text style={styles.metaValue}>{languageName}</Text>
-          </View>
-          {group.country && (
-            <View style={styles.metaItem}>
-              <Text style={styles.metaLabel}>{t('groups.location')}</Text>
-              <Text style={styles.metaValue}>{group.country}</Text>
-            </View>
-          )}
-        </View>
-
-        {error ? (
+        {error && 'message' in error ? (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{getUserFacingError(error)}</Text>
           </View>
         ) : null}
 
+        <View style={styles.peopleSection}>
+          <View style={styles.peopleHeader}>
+            <Text style={styles.peopleSectionTitle}>{t('groups.people')}</Text>
+            <Pressable
+              onPress={handleSeeAllMembers}
+              style={({ pressed }) => [styles.seeAllLink, pressed && styles.seeAllLinkPressed]}
+              accessibilityLabel={t('groups.seeAll')}
+              accessibilityHint="View all group members"
+            >
+              <Text style={styles.seeAllText}>{t('groups.seeAll')}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.peopleContent}>
+            <View style={styles.peopleAvatars}>
+              {members.slice(0, 3).map((m, idx) => (
+                <View
+                  key={m.userId}
+                  style={[styles.peopleAvatarWrap, { marginLeft: idx > 0 ? -12 : 0 }]}
+                >
+                  <Avatar
+                    source={m.avatarUrl ? { uri: m.avatarUrl } : null}
+                    fallbackText={m.displayName}
+                    size="md"
+                    ringed
+                    accessibilityLabel={
+                      m.displayName ? `${m.displayName} profile picture` : `Group member ${idx + 1}`
+                    }
+                  />
+                </View>
+              ))}
+            </View>
+            <Text style={styles.memberCount}>
+              {members.length} {members.length === 1 ? t('groups.member') : t('groups.members')}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.actions}>
           {isMember ? (
-            <Button
-              title={t('groups.leave')}
-              variant="secondary"
-              onPress={handleLeave}
+            <Pressable
+              onPress={handleOpenJoinedSheet}
+              style={({ pressed }) => [styles.joinedButton, pressed && styles.joinedButtonPressed]}
               disabled={isJoining}
-              accessibilityLabel={t('groups.leave')}
-              accessibilityHint="Leaves this group"
-            />
+              accessibilityLabel={t('groups.joined')}
+              accessibilityHint="Opens options to leave or manage group settings"
+            >
+              <Ionicons name="people-outline" size={18} color={colors.textPrimary} />
+              <Text style={styles.joinedButtonText}>{t('groups.joined')}</Text>
+              <Ionicons name="chevron-down" size={18} color={colors.textPrimary} />
+            </Pressable>
           ) : (
-            <Button
-              title={isJoining ? t('common.loading') : t('groups.join')}
+            <Pressable
               onPress={handleJoin}
+              style={({ pressed }) => [
+                styles.joinButton,
+                pressed && styles.joinButtonPressed,
+                isJoining && styles.joinButtonDisabled,
+              ]}
               disabled={isJoining}
               accessibilityLabel={t('groups.join')}
               accessibilityHint="Joins this group"
-            />
+              accessibilityRole="button"
+            >
+              {joinMutation.isPending ? (
+                <ActivityIndicator size="small" color={colors.onPrimary} />
+              ) : (
+                <>
+                  <Ionicons name="person-add-outline" size={18} color={colors.onPrimary} />
+                  <Text style={styles.joinButtonText}>{t('groups.join')}</Text>
+                </>
+              )}
+            </Pressable>
           )}
         </View>
 
-        <View style={styles.placeholder}>
-          <Text style={styles.placeholderText}>
-            Announcements, events, and discussions will appear here.
-          </Text>
+        <View style={styles.discussionsSection}>
+          <View style={styles.discussionsHeader}>
+            <Text style={[styles.sectionTitle, styles.discussionsSectionTitle]}>
+              {t('groups.discussions')}
+            </Text>
+            {isMember ? (
+              <Pressable
+                onPress={handleCreateDiscussion}
+                style={styles.createDiscussionButton}
+                accessibilityLabel={t('discussions.addDiscussion')}
+                accessibilityHint={t('discussions.addDiscussionHint')}
+              >
+                <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                <Text style={styles.createDiscussionText}>{t('discussions.addDiscussion')}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {discussionsLoading ? (
+            <View style={styles.discussionsLoading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : discussions.length === 0 ? (
+            <EmptyState
+              iconName="chatbubble-outline"
+              title={t('discussions.noDiscussions')}
+              subtitle={t('discussions.noDiscussionsHint')}
+            />
+          ) : (
+            <View style={styles.discussionList}>
+              {discussions.map((d) => (
+                <Pressable
+                  key={d.id}
+                  onPress={() => router.push(`/group/discussion/${d.id}`)}
+                  style={styles.discussionCard}
+                  accessibilityLabel={`${d.title}, ${d.postCount ?? 0}`}
+                  accessibilityHint="Opens discussion"
+                >
+                  <View style={styles.discussionTopRight}>
+                    <Ionicons
+                      name="chatbubble-outline"
+                      size={18}
+                      color={colors.textSecondary}
+                      style={styles.replyIcon}
+                    />
+                    <Text style={styles.discussionReplies}>{d.postCount ?? 0}</Text>
+                  </View>
+                  <Text style={styles.discussionTitle} numberOfLines={2}>
+                    {d.title}
+                  </Text>
+                  <Text style={styles.discussionMeta} numberOfLines={2}>
+                    {d.body}
+                  </Text>
+                  <View style={styles.discussionBottom}>
+                    <View style={styles.discussionAuthorRow}>
+                      <Avatar
+                        source={d.authorAvatarUrl ? { uri: d.authorAvatarUrl } : null}
+                        fallbackText={d.authorDisplayName}
+                        size="sm"
+                        accessibilityLabel={
+                          d.authorDisplayName
+                            ? `${d.authorDisplayName} profile picture`
+                            : 'Original poster'
+                        }
+                      />
+                      <Text style={styles.discussionAuthor} numberOfLines={1}>
+                        {d.authorDisplayName ?? t('common.loading')}
+                      </Text>
+                    </View>
+                    <Text style={styles.discussionDate}>{formatRelativeTime(d.createdAt)}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
       </View>
+
+      <FadeActionSheet
+        visible={joinedSheetVisible}
+        onRequestClose={handleCloseJoinedSheet}
+        options={[
+          {
+            icon: 'notifications-outline',
+            label: t('groups.manageNotifications'),
+            onPress: handleManageSettings,
+            accessibilityHint: 'Opens group notification settings',
+          },
+          {
+            icon: 'exit-outline',
+            label: t('groups.leaveGroup'),
+            onPress: handleLeave,
+            destructive: true,
+            accessibilityHint: 'Leaves this group',
+          },
+        ]}
+      />
     </ScrollView>
   );
 }
@@ -228,6 +438,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.sm,
   },
+  badgeRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginLeft: 'auto',
+  },
   badge: {
     ...typography.label,
     color: colors.primary,
@@ -247,6 +463,16 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: spacing.lg,
   },
+  languageMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  languageText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
   section: {
     marginBottom: spacing.lg,
   },
@@ -260,23 +486,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     lineHeight: 24,
   },
-  metaRow: {
-    flexDirection: 'row',
-    gap: spacing.xl,
-    marginBottom: spacing.lg,
-  },
-  metaItem: {
-    flex: 1,
-  },
-  metaLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  metaValue: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
   errorBanner: {
     backgroundColor: colors.amberSoft,
     padding: spacing.md,
@@ -287,16 +496,167 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
   },
+  peopleSection: {
+    marginBottom: spacing.xl,
+  },
+  peopleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  peopleSectionTitle: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  peopleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  peopleAvatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  peopleAvatarWrap: {
+    zIndex: 1,
+  },
+  seeAllLink: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  seeAllLinkPressed: {
+    opacity: 0.7,
+  },
+  seeAllText: {
+    ...typography.label,
+    color: colors.primary,
+  },
+  memberCount: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
   actions: {
     marginBottom: spacing.xl,
   },
-  placeholder: {
-    paddingVertical: spacing.xl,
+  joinedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.surface100,
+    borderRadius: radius.button,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  joinedButtonPressed: {
+    opacity: 0.8,
+  },
+  joinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.primary,
+    borderRadius: radius.button,
+  },
+  joinButtonPressed: {
+    opacity: 0.9,
+  },
+  joinButtonDisabled: {
+    opacity: 0.4,
+  },
+  joinButtonText: {
+    ...typography.buttonLabel,
+    color: colors.onPrimary,
+  },
+  joinedButtonText: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  discussionsSection: {
+    marginTop: spacing.lg,
+  },
+  discussionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  discussionsSectionTitle: {
+    marginBottom: 0,
+  },
+  createDiscussionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  createDiscussionText: {
+    ...typography.label,
+    color: colors.primary,
+  },
+  discussionsLoading: {
+    paddingVertical: spacing.lg,
     alignItems: 'center',
   },
-  placeholderText: {
-    ...typography.body,
+  discussionList: {
+    gap: spacing.md,
+  },
+  discussionCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  discussionTopRight: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  replyIcon: {
+    marginRight: 0,
+  },
+  discussionReplies: {
+    ...typography.caption,
     color: colors.textSecondary,
-    textAlign: 'center',
+  },
+  discussionTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    paddingRight: 80,
+  },
+  discussionMeta: {
+    ...typography.body,
+    fontSize: typography.body.fontSize,
+    color: colors.textSecondary,
+    lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+  discussionBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  discussionAuthorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  discussionAuthor: {
+    ...typography.caption,
+    color: colors.textPrimary,
+  },
+  discussionDate: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
 });

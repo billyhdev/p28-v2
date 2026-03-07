@@ -1,4 +1,3 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,64 +9,44 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
-import { api, getUserFacingError, isApiError } from '@/lib/api';
+import {
+  useNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
+} from '@/hooks/useApiQueries';
+import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography, minTouchTarget } from '@/theme/tokens';
-import type { NotificationPreferences } from '@/lib/api';
 
 export default function NotificationPreferencesScreen() {
   const { session } = useAuth();
-  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestIdRef = useRef(0);
-
   const userId = session?.user?.id;
 
-  const fetchPrefs = useCallback(() => {
-    if (!userId) return;
-    setLoading(true);
-    setError(null);
-    api.data.getNotificationPreferences(userId).then((r) => {
-      setLoading(false);
-      if (isApiError(r)) {
-        setError(getUserFacingError(r));
-        setPrefs(null);
-      } else {
-        setPrefs(r);
-        setError(null);
-      }
-    });
-  }, [userId]);
+  const {
+    data: prefs,
+    isLoading: loading,
+    isError,
+    error,
+    refetch: fetchPrefs,
+  } = useNotificationPreferencesQuery(userId);
+  const updateMutation = useUpdateNotificationPreferencesMutation();
+  const isSubmitting = updateMutation.isPending;
+  const mutationError = updateMutation.error;
+  const errorMessage =
+    (isError && error && 'message' in error ? getUserFacingError(error) : null) ??
+    (mutationError && 'message' in mutationError ? getUserFacingError(mutationError) : null);
 
-  useEffect(() => {
-    fetchPrefs();
-  }, [fetchPrefs]);
-
-  const handleToggle = async (
+  const handleToggle = (
     key: 'eventsEnabled' | 'announcementsEnabled' | 'messagesEnabled',
     value: boolean
   ) => {
     if (!userId || !prefs) return;
-    const next = { ...prefs, [key]: value };
-    setPrefs(next);
-    setIsSubmitting(true);
-    setError(null);
-    const id = ++requestIdRef.current;
-    const result = await api.data.updateNotificationPreferences(userId, {
-      eventsEnabled: next.eventsEnabled,
-      announcementsEnabled: next.announcementsEnabled,
-      messagesEnabled: next.messagesEnabled,
-    });
-    setIsSubmitting(false);
-    if (id !== requestIdRef.current) return; // Stale response, ignore
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-      setPrefs(prefs);
-    } else {
-      setPrefs(result);
-    }
+    const next = {
+      eventsEnabled: prefs.eventsEnabled,
+      announcementsEnabled: prefs.announcementsEnabled,
+      messagesEnabled: prefs.messagesEnabled,
+      [key]: value,
+    };
+    updateMutation.mutate({ userId, updates: next }, { onError: () => {} });
   };
 
   if (!userId) return null;
@@ -93,17 +72,13 @@ export default function NotificationPreferencesScreen() {
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl
-          refreshing={loading && !!prefs}
-          onRefresh={fetchPrefs}
-          tintColor={colors.primary}
-        />
+        <RefreshControl refreshing={loading} onRefresh={fetchPrefs} tintColor={colors.primary} />
       }
     >
       <Text style={styles.intro}>{t('notifications.intro')}</Text>
-      {error ? (
+      {errorMessage ? (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{errorMessage}</Text>
           <Pressable
             onPress={() => fetchPrefs()}
             style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}

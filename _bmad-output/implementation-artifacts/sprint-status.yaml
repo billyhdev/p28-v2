@@ -29,14 +29,15 @@ tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 # Epic names (simplified MVP - see sprint-change-proposal-2026-03-05.md)
+# NOTE: epic-3 removed (group functionality flushed out outside BMad); 5-2, 7-2 removed
 epic_names:
   epic-1: App foundation and user identity
   epic-2: Groups (Forums and Ministries) — simplified
-  epic-3: Discovery and group membership
   epic-4: Home, events, and announcements
   epic-5: Messaging and discussions
   epic-6: Push notifications
   epic-7: Group admin tools
+  epic-8: Faith Assistant (AI-powered Bible verse lookup and discovery)  # parallelizable with any epic
 
 development_status:
   epic-1: done
@@ -55,14 +56,9 @@ development_status:
   2-2-groups-tab-browse-search: done
   2-3-group-detail-join-leave: done
   2-4-group-creation-admin: done
-  2-5-discussions-within-groups: backlog
+  2-5-discussions-within-groups: review
+  2-6-discussions-as-topics-reddit-style: review
   epic-2-retrospective: optional
-
-  epic-3: backlog
-  3-1-browse-groups: done
-  3-2-join-leave-groups: done
-  3-3-guest-mode: backlog
-  epic-3-retrospective: optional
 
   epic-4: backlog
   4-1-home-feed-layout: backlog
@@ -73,7 +69,6 @@ development_status:
 
   epic-5: backlog
   5-1-one-to-one-messaging: backlog
-  5-2-group-discussions: backlog
   5-3-message-preview-list: backlog
   epic-5-retrospective: optional
 
@@ -84,5 +79,9 @@ development_status:
 
   epic-7: backlog
   7-1-group-admin-announcements-events: backlog
-  7-2-assign-admin-role: backlog
   epic-7-retrospective: optional
+
+  epic-8: in-progress
+  8-1-faith-assistant-verse-lookup: ready-for-dev
+  8-2-find-related-verses-llm: backlog
+  epic-8-retrospective: optional

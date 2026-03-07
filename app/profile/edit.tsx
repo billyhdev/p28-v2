@@ -1,15 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { api, getUserFacingError, isApiError } from '@/lib/api';
+import { getUserFacingError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  useProfileQuery,
+  useUpdateProfileMutation,
+  useUploadProfileImageMutation,
+} from '@/hooks/useApiQueries';
 import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
 import { Avatar, Button, Input, ListItem } from '@/components/primitives';
 import { colors, radius, spacing, typography, shadow } from '@/theme/tokens';
-import type { Profile, ProfileUpdates } from '@/lib/api';
+import type { ProfileUpdates } from '@/lib/api';
 
 const LANGUAGE_OPTIONS: {
   value: string;
@@ -102,32 +107,32 @@ export default function ProfileEditScreen() {
   const { session } = useAuth();
   const { setLocale } = useLocale();
   const router = useRouter();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const userId = session?.user?.id;
+
+  const { data: profile } = useProfileQuery(userId);
+  const updateMutation = useUpdateProfileMutation();
+  const uploadMutation = useUploadProfileImageMutation();
+
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [preferredLanguage, setPreferredLanguage] = useState<string | undefined>(undefined);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [localPreviewUri, setLocalPreviewUri] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const userId = session?.user?.id;
-
+  const syncedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!userId) return;
-    api.data.getProfile(userId).then((r) => {
-      if (isApiError(r)) {
-        setProfile(null);
-        setPreferredLanguage(undefined);
-      } else {
-        setProfile(r);
-        setDisplayName(r.displayName ?? '');
-        setBio(r.bio ?? '');
-        setAvatarUrl(r.avatarUrl);
-        setPreferredLanguage(r.preferredLanguage);
-      }
-    });
-  }, [userId]);
+    if (profile && syncedRef.current !== profile.userId) {
+      syncedRef.current = profile.userId;
+      setDisplayName(profile.displayName ?? '');
+      setBio(profile.bio ?? '');
+      setPreferredLanguage(profile.preferredLanguage);
+      setAvatarUrl(profile.avatarUrl);
+    }
+  }, [profile]);
+
+  const isSubmitting = updateMutation.isPending || uploadMutation.isPending;
+  const mutationError = updateMutation.error ?? uploadMutation.error;
 
   const pickImage = async () => {
     if (!userId) return;
@@ -144,21 +149,19 @@ export default function ProfileEditScreen() {
     });
     if (result.canceled || !result.assets[0]?.uri) return;
     const asset = result.assets[0];
-    const pickedUri = asset.uri;
-    setLocalPreviewUri(pickedUri);
+    setLocalPreviewUri(asset.uri);
     setError(null);
-    setIsSubmitting(true);
-    const uploadResult = await api.data.uploadProfileImage(
-      userId,
-      pickedUri,
-      asset.base64 ?? undefined
+    uploadMutation.mutate(
+      {
+        userId,
+        imageUri: asset.uri,
+        base64Data: asset.base64 ?? undefined,
+      },
+      {
+        onSuccess: (url) => setAvatarUrl(url),
+        onError: (err) => setError(getUserFacingError(err)),
+      }
     );
-    setIsSubmitting(false);
-    if (typeof uploadResult === 'string') {
-      setAvatarUrl(uploadResult);
-    } else {
-      setError(getUserFacingError(uploadResult));
-    }
   };
 
   const hasChanges =
@@ -167,9 +170,8 @@ export default function ProfileEditScreen() {
     (preferredLanguage ?? undefined) !== (profile?.preferredLanguage ?? undefined) ||
     (avatarUrl ?? undefined) !== (profile?.avatarUrl ?? undefined);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!userId) return;
-    setIsSubmitting(true);
     setError(null);
     const updates: ProfileUpdates = {
       displayName: displayName.trim() || undefined,
@@ -177,14 +179,16 @@ export default function ProfileEditScreen() {
       preferredLanguage: preferredLanguage || undefined,
     };
     if (avatarUrl) updates.avatarUrl = avatarUrl;
-    const result = await api.data.updateProfile(userId, updates);
-    setIsSubmitting(false);
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      if (result.preferredLanguage) setLocale(result.preferredLanguage);
-      router.back();
-    }
+    updateMutation.mutate(
+      { userId, updates },
+      {
+        onSuccess: (result) => {
+          if (result.preferredLanguage) setLocale(result.preferredLanguage);
+          router.back();
+        },
+        onError: (err) => setError(getUserFacingError(err)),
+      }
+    );
   };
 
   if (!userId) return null;
@@ -254,9 +258,14 @@ export default function ProfileEditScreen() {
         />
       </View>
 
-      {error ? (
+      {error || (mutationError && 'message' in mutationError) ? (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>
+            {error ??
+              (mutationError && 'message' in mutationError
+                ? getUserFacingError(mutationError)
+                : '')}
+          </Text>
         </View>
       ) : null}
 

@@ -19,8 +19,8 @@ import { Button } from '@/components/primitives/Button';
 import { Input } from '@/components/primitives/Input';
 import { COUNTRIES } from '@/constants/countries';
 import { useAuth } from '@/hooks/useAuth';
-import { api, isApiError } from '@/lib/api';
-import { getUserFacingError } from '@/lib/errors';
+import { useCreateGroupMutation, useUploadGroupBannerImageMutation } from '@/hooks/useApiQueries';
+import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import type { GroupType } from '@/lib/api';
 import { colors, spacing, typography } from '@/theme/tokens';
@@ -40,11 +40,16 @@ export default function CreateGroupScreen() {
   const [preferredLanguage, setPreferredLanguage] = useState('en');
   const [country, setCountry] = useState('Online');
   const [locationModalVisible, setLocationModalVisible] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
   const [localBannerUri, setLocalBannerUri] = useState<string | null>(null);
-  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+
+  const createMutation = useCreateGroupMutation();
+  const uploadMutation = useUploadGroupBannerImageMutation();
+  const isSubmitting = createMutation.isPending;
+  const isUploadingBanner = uploadMutation.isPending;
+
+  const mutationError = createMutation.error ?? uploadMutation.error;
 
   const selectedCountryName = COUNTRIES.find((c) => c.code === country)?.name ?? country;
 
@@ -66,18 +71,17 @@ export default function CreateGroupScreen() {
     const asset = result.assets[0];
     setLocalBannerUri(asset.uri);
     setError(null);
-    setIsUploadingBanner(true);
-    const uploadResult = await api.data.uploadGroupBannerImage(
-      userId,
-      asset.uri,
-      asset.base64 ?? undefined
+    uploadMutation.mutate(
+      {
+        userId,
+        imageUri: asset.uri,
+        base64Data: asset.base64 ?? undefined,
+      },
+      {
+        onSuccess: (url) => setBannerImageUrl(url),
+        onError: (err) => setError(getUserFacingError(err)),
+      }
     );
-    setIsUploadingBanner(false);
-    if (typeof uploadResult === 'string') {
-      setBannerImageUrl(uploadResult);
-    } else {
-      setError(getUserFacingError(uploadResult));
-    }
   };
 
   const removeBannerImage = () => {
@@ -85,32 +89,30 @@ export default function CreateGroupScreen() {
     setLocalBannerUri(null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
     const userId = session?.user?.id;
     if (!userId) return;
 
-    setIsSubmitting(true);
     setError(null);
-    const result = await api.data.createGroup(
+    createMutation.mutate(
       {
-        type,
-        name: trimmedName,
-        description: description.trim() || undefined,
-        bannerImageUrl: bannerImageUrl ?? undefined,
-        preferredLanguage,
-        country,
+        params: {
+          type,
+          name: trimmedName,
+          description: description.trim() || undefined,
+          bannerImageUrl: bannerImageUrl ?? undefined,
+          preferredLanguage,
+          country,
+        },
+        createdByUserId: userId,
       },
-      userId
+      {
+        onSuccess: (group) => router.replace(`/group/${group.id}`),
+        onError: (err) => setError(getUserFacingError(err)),
+      }
     );
-    setIsSubmitting(false);
-
-    if (isApiError(result)) {
-      setError(getUserFacingError(result));
-    } else {
-      router.replace(`/group/${result.id}`);
-    }
   };
 
   return (
@@ -286,9 +288,14 @@ export default function CreateGroupScreen() {
           </View>
         </Modal>
 
-        {error ? (
+        {error || (mutationError && 'message' in mutationError) ? (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>
+              {error ??
+                (mutationError && 'message' in mutationError
+                  ? getUserFacingError(mutationError)
+                  : '')}
+            </Text>
           </View>
         ) : null}
 

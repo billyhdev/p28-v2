@@ -4,7 +4,12 @@
  * Story 2.2: Unit tests for org/ministry/group operations.
  */
 import type { ApiError } from '../../../contracts/errors';
-import type { Group, NotificationPreferences, Profile } from '../../../contracts/dto';
+import type {
+  Group,
+  GroupDiscussion,
+  NotificationPreferences,
+  Profile,
+} from '../../../contracts/dto';
 import { isApiError } from '../../../contracts/guards';
 import { createSupabaseDataAdapter } from '../data';
 
@@ -548,7 +553,7 @@ describe('Supabase data adapter', () => {
     });
 
     describe('createGroup', () => {
-      it('returns Group on success', async () => {
+      it('returns Group on success and adds creator as member', async () => {
         const row = {
           id: 'grp-new',
           type: 'forum',
@@ -561,15 +566,23 @@ describe('Supabase data adapter', () => {
           created_at: '2024-01-02T00:00:00Z',
           updated_at: '2024-01-02T00:00:00Z',
         };
-        const getClient = (() => ({
-          from: jest.fn().mockReturnValue({
-            insert: jest.fn().mockReturnValue({
-              select: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({ data: row, error: null }),
+        const groupMembersInsert = jest.fn().mockResolvedValue({ error: null });
+        const fromMock = jest.fn((table: string) => {
+          if (table === 'groups') {
+            return {
+              insert: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                  single: jest.fn().mockResolvedValue({ data: row, error: null }),
+                }),
               }),
-            }),
-          }),
-        })) as unknown as GetClient;
+            };
+          }
+          if (table === 'group_members') {
+            return { insert: groupMembersInsert };
+          }
+          return { insert: jest.fn() };
+        });
+        const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
         const adapter = createSupabaseDataAdapter(getClient);
         const result = await adapter.createGroup({ type: 'forum', name: 'New Forum' }, 'user-1');
         expect(isApiError(result)).toBe(false);
@@ -577,6 +590,10 @@ describe('Supabase data adapter', () => {
           expect((result as Group).id).toBe('grp-new');
           expect((result as Group).name).toBe('New Forum');
         }
+        expect(groupMembersInsert).toHaveBeenCalledWith({
+          group_id: 'grp-new',
+          user_id: 'user-1',
+        });
       });
 
       it('returns ApiError when name is empty', async () => {
@@ -588,6 +605,22 @@ describe('Supabase data adapter', () => {
           expect((result as ApiError).message).toBe('Group name is required');
           expect((result as ApiError).code).toBe('VALIDATION_ERROR');
         }
+      });
+    });
+
+    describe('deleteGroup', () => {
+      it('returns undefined on success', async () => {
+        const eqMock = jest.fn().mockResolvedValue({ error: null });
+        const deleteMock = jest.fn().mockReturnValue({ eq: eqMock });
+        const fromMock = jest.fn((table: string) =>
+          table === 'groups' ? { delete: deleteMock } : {}
+        );
+        const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.deleteGroup('grp-1');
+        expect(result).toBeUndefined();
+        expect(fromMock).toHaveBeenCalledWith('groups');
+        expect(eqMock).toHaveBeenCalledWith('id', 'grp-1');
       });
     });
 
@@ -618,6 +651,411 @@ describe('Supabase data adapter', () => {
         const adapter = createSupabaseDataAdapter(getClient);
         const result = await adapter.leaveGroup('grp-1', 'user-1');
         expect(result).toBeUndefined();
+      });
+    });
+
+    describe('getGroupDiscussions', () => {
+      it('returns GroupDiscussion[] on success with author profiles', async () => {
+        const discussionRows = [
+          {
+            id: 'disc-1',
+            group_id: 'grp-1',
+            user_id: 'user-1',
+            body: 'Hello everyone',
+            created_at: '2024-01-02T10:00:00Z',
+          },
+        ];
+        const profileRow = {
+          display_name: 'Alice',
+          first_name: 'Alice',
+          last_name: 'Smith',
+          avatar_url: null,
+        };
+        let callCount = 0;
+        const fromMock = jest.fn().mockImplementation((table: string) => {
+          if (table === 'group_discussions') {
+            return {
+              select: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  order: jest.fn().mockResolvedValue({
+                    data: discussionRows,
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'profiles') {
+            callCount++;
+            return {
+              select: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  maybeSingle: jest.fn().mockResolvedValue({
+                    data: profileRow,
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          return {};
+        });
+        const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getGroupDiscussions('grp-1');
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          const list = result as GroupDiscussion[];
+          expect(list).toHaveLength(1);
+          expect(list[0].id).toBe('disc-1');
+          expect(list[0].groupId).toBe('grp-1');
+          expect(list[0].userId).toBe('user-1');
+          expect(list[0].body).toBe('Hello everyone');
+          expect(list[0].createdAt).toBe('2024-01-02T10:00:00Z');
+          expect(list[0].authorDisplayName).toBe('Alice');
+        }
+      });
+
+      it('returns empty array when no discussions', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                order: jest.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getGroupDiscussions('grp-1');
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect(result as GroupDiscussion[]).toHaveLength(0);
+        }
+      });
+
+      it('returns ApiError when query fails', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                order: jest.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
+              }),
+            }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getGroupDiscussions('grp-1');
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('DB error');
+        }
+      });
+    });
+
+    describe('createGroupDiscussion', () => {
+      it('returns GroupDiscussion on success', async () => {
+        const insertedRow = {
+          id: 'disc-new',
+          group_id: 'grp-1',
+          user_id: 'user-1',
+          body: 'My first post',
+          created_at: '2024-01-03T12:00:00Z',
+        };
+        const profileRow = {
+          display_name: 'Bob',
+          first_name: 'Bob',
+          last_name: 'Jones',
+          avatar_url: null,
+        };
+        let callCount = 0;
+        const fromMock = jest.fn().mockImplementation((table: string) => {
+          if (table === 'group_discussions') {
+            return {
+              insert: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                  single: jest.fn().mockResolvedValue({
+                    data: insertedRow,
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'profiles') {
+            return {
+              select: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  maybeSingle: jest.fn().mockResolvedValue({
+                    data: profileRow,
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          return {};
+        });
+        const getClient = (() => ({ from: fromMock })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.createGroupDiscussion('grp-1', 'user-1', {
+          body: 'My first post',
+        });
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          const d = result as GroupDiscussion;
+          expect(d.id).toBe('disc-new');
+          expect(d.groupId).toBe('grp-1');
+          expect(d.userId).toBe('user-1');
+          expect(d.body).toBe('My first post');
+          expect(d.authorDisplayName).toBe('Bob');
+        }
+      });
+
+      it('returns ApiError when body is empty', async () => {
+        const getClient = (() => ({ from: jest.fn() })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.createGroupDiscussion('grp-1', 'user-1', { body: '' });
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('Message body is required');
+          expect((result as ApiError).code).toBe('VALIDATION_ERROR');
+        }
+      });
+
+      it('returns ApiError when body is only whitespace', async () => {
+        const getClient = (() => ({ from: jest.fn() })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.createGroupDiscussion('grp-1', 'user-1', {
+          body: '   \n\t  ',
+        });
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('Message body is required');
+        }
+      });
+    });
+
+    describe('getDiscussions', () => {
+      it('returns Discussion[] ordered by created_at desc', async () => {
+        const rows = [
+          {
+            id: 'd1',
+            group_id: 'grp-1',
+            user_id: 'u1',
+            title: 'Topic A',
+            body: 'Body A',
+            created_at: '2024-01-02T10:00:00Z',
+            groups: { name: 'Forum 1' },
+          },
+        ];
+        const getClient = (() => ({
+          from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'discussions') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  order: jest.fn().mockResolvedValue({ data: rows, error: null }),
+                  eq: jest.fn().mockReturnValue({
+                    order: jest.fn().mockResolvedValue({ data: rows, error: null }),
+                  }),
+                }),
+              };
+            }
+            if (table === 'profiles') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getDiscussions();
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect(result).toHaveLength(1);
+          expect(result[0].id).toBe('d1');
+          expect(result[0].title).toBe('Topic A');
+          expect(result[0].groupName).toBe('Forum 1');
+        }
+      });
+    });
+
+    describe('createDiscussion', () => {
+      it('returns Discussion on success', async () => {
+        const insertedRow = {
+          id: 'd-new',
+          group_id: 'grp-1',
+          user_id: 'u1',
+          title: 'My Topic',
+          body: 'My body',
+          created_at: '2024-01-03T12:00:00Z',
+        };
+        const getClient = (() => ({
+          from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'discussions') {
+              return {
+                insert: jest.fn().mockReturnValue({
+                  select: jest.fn().mockReturnValue({
+                    single: jest.fn().mockResolvedValue({
+                      data: insertedRow,
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            if (table === 'groups') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    single: jest.fn().mockResolvedValue({ data: { name: 'Forum 1' }, error: null }),
+                  }),
+                }),
+              };
+            }
+            if (table === 'profiles') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.createDiscussion('grp-1', 'u1', {
+          title: 'My Topic',
+          body: 'My body',
+        });
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect(result.id).toBe('d-new');
+          expect(result.title).toBe('My Topic');
+          expect(result.groupName).toBe('Forum 1');
+        }
+      });
+
+      it('returns ApiError when title is empty', async () => {
+        const adapter = createSupabaseDataAdapter((() => ({})) as unknown as GetClient);
+        const result = await adapter.createDiscussion('grp-1', 'u1', { title: '', body: 'x' });
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('Discussion topic is required');
+        }
+      });
+    });
+
+    describe('getDiscussionPosts', () => {
+      it('returns DiscussionPost[] ordered by created_at asc', async () => {
+        const rows = [
+          {
+            id: 'p1',
+            discussion_id: 'd1',
+            user_id: 'u1',
+            body: 'Reply 1',
+            created_at: '2024-01-02T11:00:00Z',
+          },
+        ];
+        const getClient = (() => ({
+          from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'discussion_posts') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    order: jest.fn().mockResolvedValue({ data: rows, error: null }),
+                  }),
+                }),
+              };
+            }
+            if (table === 'discussion_post_reactions') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  in: jest.fn().mockResolvedValue({ data: [], error: null }),
+                }),
+              };
+            }
+            if (table === 'profiles') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getDiscussionPosts('d1');
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect(result).toHaveLength(1);
+          expect(result[0].id).toBe('p1');
+          expect(result[0].body).toBe('Reply 1');
+        }
+      });
+    });
+
+    describe('createDiscussionPost', () => {
+      it('returns DiscussionPost on success', async () => {
+        const insertedRow = {
+          id: 'p-new',
+          discussion_id: 'd1',
+          user_id: 'u1',
+          body: 'My reply',
+          created_at: '2024-01-03T13:00:00Z',
+        };
+        const getClient = (() => ({
+          from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'discussion_posts') {
+              return {
+                insert: jest.fn().mockReturnValue({
+                  select: jest.fn().mockReturnValue({
+                    single: jest.fn().mockResolvedValue({
+                      data: insertedRow,
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            if (table === 'profiles') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.createDiscussionPost('d1', 'u1', { body: 'My reply' });
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect(result.id).toBe('p-new');
+          expect(result.body).toBe('My reply');
+        }
+      });
+
+      it('returns ApiError when body is empty and no images', async () => {
+        const adapter = createSupabaseDataAdapter((() => ({})) as unknown as GetClient);
+        const result = await adapter.createDiscussionPost('d1', 'u1', { body: '' });
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('Reply must have text or at least one image');
+        }
       });
     });
 

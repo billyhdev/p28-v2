@@ -15,6 +15,24 @@ function getCountryDisplayName(code: string): string {
   return found?.name ?? code;
 }
 
+function getLanguageAbbreviation(code: string): string {
+  const map: Record<string, string> = {
+    en: 'EN',
+    ko: 'KO',
+    km: 'KM',
+  };
+  return map[code.toLowerCase()] ?? code.toUpperCase().slice(0, 2);
+}
+
+function getLanguageDisplayName(code: string): string {
+  const map: Record<string, string> = {
+    en: t('language.english'),
+    ko: t('language.korean'),
+    km: t('language.khmer'),
+  };
+  return map[code] ?? code;
+}
+
 export interface GroupCardProps {
   group: Group;
   isMember?: boolean;
@@ -43,7 +61,7 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
   return (
     <Pressable
       onPress={handlePress}
-      accessibilityLabel={`${group.name}, ${typeLabel}`}
+      accessibilityLabel={`${group.name}, ${typeLabel}, ${getLanguageDisplayName(group.preferredLanguage)}`}
       accessibilityHint="Opens group details"
     >
       <Card variant="glass" contentPadding={0} style={styles.card}>
@@ -61,12 +79,12 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
             </View>
           )}
           <View style={styles.content}>
-            <View style={styles.header}>
+            <View style={styles.titleRow}>
+              <Text style={styles.name} numberOfLines={1}>
+                {group.name}
+              </Text>
               <Badge label={typeLabel} variant={group.type === 'forum' ? 'neutral' : 'primary'} />
             </View>
-            <Text style={styles.name} numberOfLines={1}>
-              {group.name}
-            </Text>
             {group.description ? (
               <Text style={styles.description} numberOfLines={2}>
                 {group.description}
@@ -103,6 +121,12 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
               </View>
               <View style={styles.footerRight}>
                 <View style={styles.metaItem}>
+                  <Ionicons name="language-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {getLanguageAbbreviation(group.preferredLanguage)}
+                  </Text>
+                </View>
+                <View style={styles.metaItem}>
                   <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
                   <Text style={styles.meta} numberOfLines={1}>
                     {getCountryDisplayName(group.country)}
@@ -111,10 +135,7 @@ export function GroupCard({ group, isMember, onJoin, onLeave }: GroupCardProps) 
                 {group.memberCount != null && (
                   <View style={styles.metaItem}>
                     <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
-                    <Text style={styles.meta}>
-                      {group.memberCount}{' '}
-                      {group.memberCount === 1 ? t('groups.member') : t('groups.members')}
-                    </Text>
+                    <Text style={styles.meta}>{group.memberCount}</Text>
                   </View>
                 )}
               </View>
@@ -160,22 +181,23 @@ const styles = StyleSheet.create({
     padding: spacing.cardPadding,
     gap: spacing.sm,
   },
-  header: {
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    flexWrap: 'wrap',
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.xxs,
   },
   meta: {
     ...typography.caption,
     color: colors.textSecondary,
   },
   name: {
+    flex: 1,
+    minWidth: 0,
     ...typography.title,
     color: colors.textPrimary,
   },
