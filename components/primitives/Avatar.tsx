@@ -34,7 +34,8 @@ export function Avatar({
     { width: dim, height: dim, borderRadius: dim / 2 },
     ringed && styles.ring,
   ];
-  const textStyle = [styles.fallbackText, { fontSize: dim * 0.38 }];
+  const fontSize = dim * 0.38;
+  const textStyle = [styles.fallbackText, { fontSize, lineHeight: fontSize * 1.2 }];
 
   if (showImage) {
     return (
