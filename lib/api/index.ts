@@ -46,4 +46,13 @@ export type {
   PostReactionType,
   FriendRequest,
   FriendRequestStatus,
+  Chat,
+  ChatMember,
+  ChatMessage,
+  ChatFolder,
+  ChatFolderItem,
+  CreateChatInput,
+  UpdateChatInput,
+  CreateChatMessageInput,
+  UpdateChatMessageInput,
 } from './contracts';

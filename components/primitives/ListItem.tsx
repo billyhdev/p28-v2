@@ -105,6 +105,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.surfaceContainerLow,
   },
   left: { marginRight: spacing.md },
   textWrap: { flex: 1 },

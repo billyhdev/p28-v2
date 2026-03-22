@@ -24,5 +24,20 @@ export const queryKeys = {
   friendRequestBetween: (userId: string, targetUserId: string) =>
     ['friendRequestBetween', userId, targetUserId] as const,
   receivedFriendRequests: (userId: string) => ['receivedFriendRequests', userId] as const,
+  sentFriendRequests: (userId: string) => ['sentFriendRequests', userId] as const,
   pendingFriendRequestCount: (userId: string) => ['pendingFriendRequestCount', userId] as const,
+  chatsForUser: (userId: string, folderId?: string) =>
+    ['chatsForUser', userId, folderId ?? null] as const,
+  chat: (id: string) => ['chat', id] as const,
+  findExisting1on1Chat: (userId: string, otherUserId: string) =>
+    ['findExisting1on1Chat', userId, otherUserId] as const,
+  chatMessages: (chatId: string, userId?: string) =>
+    ['chatMessages', chatId, userId ?? null] as const,
+  chatMessageReactions: (messageId: string) => ['chatMessageReactions', messageId] as const,
+  chatFolders: (userId: string) => ['chatFolders', userId] as const,
+  chatFolderItems: (folderId: string) => ['chatFolderItems', folderId] as const,
+  profiles: (userIds: string[]) => ['profiles', [...userIds].sort()] as const,
+  searchProfiles: (search: string, excludeUserId: string) =>
+    ['searchProfiles', search.trim(), excludeUserId] as const,
+  groupsWhereUserIsAdmin: (userId: string) => ['groupsWhereUserIsAdmin', userId] as const,
 };

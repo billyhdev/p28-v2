@@ -224,6 +224,20 @@ export function useReceivedFriendRequestsQuery(
   });
 }
 
+export function useSentFriendRequestsQuery(
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.sentFriendRequests(userId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getSentFriendRequests(userId!)) as Promise<
+        import('@/lib/api').FriendRequest[]
+      >,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
 export function usePendingFriendRequestCountQuery(
   userId: string | undefined,
   options?: { enabled?: boolean }
@@ -245,6 +259,7 @@ export function useSendFriendRequestMutation() {
     onSuccess: (_, { senderId, receiverId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
     },
   });
@@ -265,6 +280,7 @@ export function useCancelFriendRequestMutation() {
     onSuccess: (_, { senderId, receiverId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
     },
   });
@@ -284,6 +300,7 @@ export function useAcceptFriendRequestMutation() {
     onSuccess: (_, { senderId, receiverId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.friendIds(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.friendIds(receiverId) });
@@ -306,6 +323,7 @@ export function useDeclineFriendRequestMutation() {
     onSuccess: (_, { senderId, receiverId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.friendRequestBetween(senderId, receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
     },
   });
@@ -332,6 +350,18 @@ export function useIsSuperAdminQuery(userId: string | undefined, options?: { ena
   return useQuery({
     queryKey: queryKeys.isSuperAdmin(userId ?? ''),
     queryFn: () => queryFn(api.data.isSuperAdmin(userId!)) as Promise<boolean>,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useGroupsWhereUserIsAdminQuery(
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.groupsWhereUserIsAdmin(userId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getGroupsWhereUserIsAdmin(userId!)) as Promise<import('@/lib/api').Group[]>,
     enabled: !!userId && (options?.enabled ?? true),
   });
 }
@@ -721,5 +751,378 @@ export function useUploadDiscussionPostImageMutation() {
       base64Data?: string | null;
     }) =>
       queryFn(api.data.uploadDiscussionPostImage(userId, imageUri, base64Data)) as Promise<string>,
+  });
+}
+
+// --- Chats ---
+
+export function useChatsForUserQuery(
+  userId: string | undefined,
+  options?: { folderId?: string; enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.chatsForUser(userId ?? '', options?.folderId),
+    queryFn: () =>
+      queryFn(api.data.getChatsForUser(userId!, { folderId: options?.folderId })) as Promise<
+        import('@/lib/api').Chat[]
+      >,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useChatQuery(chatId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.chat(chatId ?? ''),
+    queryFn: () => queryFn(api.data.getChat(chatId!)) as Promise<import('@/lib/api').Chat>,
+  });
+}
+
+export function useFindExisting1on1ChatQuery(
+  userId: string | undefined,
+  otherUserId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.findExisting1on1Chat(userId ?? '', otherUserId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.findExisting1on1Chat(userId!, otherUserId!)) as Promise<
+        import('@/lib/api').Chat | null
+      >,
+    enabled: !!userId && !!otherUserId && (options?.enabled ?? true),
+  });
+}
+
+export function useChatMessagesQuery(
+  chatId: string | undefined,
+  options?: { userId?: string; enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.chatMessages(chatId ?? '', options?.userId),
+    queryFn: () =>
+      queryFn(api.data.getChatMessages(chatId!, { userId: options?.userId })) as Promise<
+        import('@/lib/api').ChatMessage[]
+      >,
+    enabled: !!chatId && (options?.enabled ?? true),
+  });
+}
+
+export function useCreateChatMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      input,
+    }: {
+      userId: string;
+      input: import('@/lib/api').CreateChatInput;
+    }) => queryFn(api.data.createChat(userId, input)) as Promise<import('@/lib/api').Chat>,
+    onSuccess: (chat, { userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatsForUser(userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chat(chat.id) });
+    },
+  });
+}
+
+export function useAddChatMembersMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      chatId,
+      addedByUserId,
+      memberUserIds,
+    }: {
+      chatId: string;
+      addedByUserId: string;
+      memberUserIds: string[];
+    }) => queryFn(api.data.addChatMembers(chatId, addedByUserId, memberUserIds)) as Promise<void>,
+    onSuccess: (_, { chatId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chat(chatId) });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+    },
+  });
+}
+
+export function useUpdateChatMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      chatId,
+      input,
+    }: {
+      chatId: string;
+      input: import('@/lib/api').UpdateChatInput;
+    }) => queryFn(api.data.updateChat(chatId, input)) as Promise<import('@/lib/api').Chat>,
+    onSuccess: (chat) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chat(chat.id) });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+    },
+  });
+}
+
+export function useCreateChatMessageMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      chatId,
+      userId,
+      input,
+    }: {
+      chatId: string;
+      userId: string;
+      input: import('@/lib/api').CreateChatMessageInput;
+    }) =>
+      queryFn(api.data.createChatMessage(chatId, userId, input)) as Promise<
+        import('@/lib/api').ChatMessage
+      >,
+    onSuccess: (_, { chatId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chat(chatId) });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+    },
+  });
+}
+
+export function useUpdateChatMessageMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      messageId,
+      chatId,
+      userId,
+      input,
+    }: {
+      messageId: string;
+      chatId: string;
+      userId: string;
+      input: import('@/lib/api').UpdateChatMessageInput;
+    }) =>
+      queryFn(api.data.updateChatMessage(messageId, userId, input)) as Promise<
+        import('@/lib/api').ChatMessage
+      >,
+    onSuccess: (_, { chatId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, userId) });
+    },
+  });
+}
+
+export function useReactToChatMessageMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      messageId,
+      chatId,
+      userId,
+      reactionType,
+    }: {
+      messageId: string;
+      chatId: string;
+      userId: string;
+      reactionType: import('@/lib/api').PostReactionType;
+    }) =>
+      queryFn(
+        api.data.reactToChatMessage(messageId, chatId, userId, reactionType)
+      ) as Promise<void>,
+    onSuccess: (_, { messageId, chatId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessageReactions(messageId) });
+    },
+  });
+}
+
+export function useRemoveChatMessageReactionMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      messageId,
+      chatId,
+      userId,
+      reactionType,
+    }: {
+      messageId: string;
+      chatId: string;
+      userId: string;
+      reactionType: import('@/lib/api').PostReactionType;
+    }) =>
+      queryFn(
+        api.data.removeChatMessageReaction(messageId, chatId, userId, reactionType)
+      ) as Promise<void>,
+    onSuccess: (_, { messageId, chatId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessageReactions(messageId) });
+    },
+  });
+}
+
+export function useChatMessageReactionsQuery(
+  messageId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.chatMessageReactions(messageId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getChatMessageReactions(messageId!)) as Promise<
+        import('@/lib/api').PostReactionDetail[]
+      >,
+    enabled: !!messageId && (options?.enabled ?? true),
+  });
+}
+
+export function useChatFoldersQuery(userId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.chatFolders(userId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getChatFolders(userId!)) as Promise<import('@/lib/api').ChatFolder[]>,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useChatFolderItemsQuery(
+  folderId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.chatFolderItems(folderId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getChatFolderItems(folderId!)) as Promise<
+        import('@/lib/api').ChatFolderItem[]
+      >,
+    enabled: !!folderId && (options?.enabled ?? true),
+  });
+}
+
+export function useCreateChatFolderMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, name }: { userId: string; name: string }) =>
+      queryFn(api.data.createChatFolder(userId, name)) as Promise<import('@/lib/api').ChatFolder>,
+    onSuccess: (_, { userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolders(userId) });
+    },
+  });
+}
+
+export function useUpdateChatFolderMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      folderId,
+      userId,
+      name,
+    }: {
+      folderId: string;
+      userId: string;
+      name: string;
+    }) =>
+      queryFn(api.data.updateChatFolder(folderId, userId, name)) as Promise<
+        import('@/lib/api').ChatFolder
+      >,
+    onSuccess: (_, { folderId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolders(userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolderItems(folderId) });
+    },
+  });
+}
+
+export function useDeleteChatFolderMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ folderId, userId }: { folderId: string; userId: string }) =>
+      queryFn(api.data.deleteChatFolder(folderId, userId)) as Promise<void>,
+    onSuccess: (_, { folderId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolders(userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolderItems(folderId) });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+    },
+  });
+}
+
+export function useAddChatToFolderMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      folderId,
+      chatId,
+      userId,
+    }: {
+      folderId: string;
+      chatId: string;
+      userId: string;
+    }) =>
+      queryFn(api.data.addChatToFolder(folderId, chatId, userId)) as Promise<
+        import('@/lib/api').ChatFolderItem
+      >,
+    onSuccess: (_, { folderId, chatId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolderItems(folderId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatsForUser(userId) });
+      qc.invalidateQueries({
+        queryKey: queryKeys.chatsForUser(userId, folderId),
+      });
+    },
+  });
+}
+
+export function useRemoveChatFromFolderMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      folderId,
+      chatId,
+      userId,
+    }: {
+      folderId: string;
+      chatId: string;
+      userId: string;
+    }) => queryFn(api.data.removeChatFromFolder(folderId, chatId, userId)) as Promise<void>,
+    onSuccess: (_, { folderId, chatId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chatFolderItems(folderId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatsForUser(userId) });
+      qc.invalidateQueries({
+        queryKey: queryKeys.chatsForUser(userId, folderId),
+      });
+    },
+  });
+}
+
+export function useProfilesQuery(userIds: string[] | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.profiles(userIds ?? []),
+    queryFn: () =>
+      queryFn(api.data.getProfiles(userIds!)) as Promise<import('@/lib/api').Profile[]>,
+    enabled: !!userIds && userIds.length > 0 && (options?.enabled ?? true),
+  });
+}
+
+export function useSearchProfilesQuery(
+  search: string,
+  excludeUserId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  const trimmed = search.trim();
+  return useQuery({
+    queryKey: queryKeys.searchProfiles(trimmed, excludeUserId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.searchProfiles(trimmed, excludeUserId!)) as Promise<
+        import('@/lib/api').Profile[]
+      >,
+    enabled: trimmed.length >= 2 && !!excludeUserId && (options?.enabled ?? true),
+  });
+}
+
+export function useUploadChatImageMutation() {
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      imageUri,
+      base64Data,
+      chatId,
+    }: {
+      userId: string;
+      imageUri: string;
+      base64Data?: string | null;
+      chatId?: string;
+    }) =>
+      queryFn(
+        api.data.uploadChatImage(userId, imageUri, base64Data, chatId ? { chatId } : undefined)
+      ) as Promise<string>,
   });
 }

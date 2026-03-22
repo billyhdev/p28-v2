@@ -10,7 +10,7 @@ import { auth } from '@/lib/api';
 import type { ApiError } from '@/lib/api/contracts/errors';
 import { getUserFacingError } from '@/lib/errors';
 import { t } from '@/lib/i18n';
-import { authScreen, colors, spacing, typography } from '@/theme/tokens';
+import { colors, spacing, typography } from '@/theme/tokens';
 
 type LocaleOption = 'en' | 'ko' | 'km';
 
@@ -78,9 +78,7 @@ export default function SignInScreen() {
             accessibilityHint={t('language.subtitle')}
             accessibilityRole="button"
           >
-            <Text style={styles.languageDropdownText}>
-              {t(currentLocaleLabelKey(locale))}
-            </Text>
+            <Text style={styles.languageDropdownText}>{t(currentLocaleLabelKey(locale))}</Text>
             <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
           </Pressable>
         </View>
@@ -112,10 +110,7 @@ export default function SignInScreen() {
               {LOCALES.map(({ value, labelKey }) => (
                 <Pressable
                   key={value}
-                  style={[
-                    styles.modalOption,
-                    value === locale && styles.modalOptionSelected,
-                  ]}
+                  style={[styles.modalOption, value === locale && styles.modalOptionSelected]}
                   onPress={() => {
                     setLocale(value);
                     setLanguageModalVisible(false);
@@ -133,7 +128,7 @@ export default function SignInScreen() {
                     {t(labelKey)}
                   </Text>
                   {value === locale && (
-                    <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    <Ionicons name="checkmark" size={20} color={colors.onSecondaryContainer} />
                   )}
                 </Pressable>
               ))}
@@ -152,7 +147,6 @@ export default function SignInScreen() {
         editable={!isSubmitting}
         error={emailError ?? undefined}
         containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
       />
       <Input
         label={t('auth.password')}
@@ -164,7 +158,6 @@ export default function SignInScreen() {
         editable={!isSubmitting}
         error={passwordError ?? undefined}
         containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
       />
       <Button
         title={isSubmitting ? t('auth.signingIn') : t('auth.signIn')}
@@ -206,7 +199,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLowest,
     borderRadius: 12,
     maxHeight: '70%',
     width: '100%',
@@ -218,8 +211,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
   },
   modalTitle: {
     ...typography.title,
@@ -236,7 +227,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   modalOptionSelected: {
-    backgroundColor: colors.brandSoft,
+    backgroundColor: colors.secondaryContainer,
   },
   modalOptionText: {
     ...typography.body,
@@ -244,6 +235,6 @@ const styles = StyleSheet.create({
   },
   modalOptionTextSelected: {
     ...typography.bodyStrong,
-    color: colors.primary,
+    color: colors.onSecondaryContainer,
   },
 });

@@ -234,3 +234,94 @@ export interface UpdateDiscussionPostInput {
   /** Public URLs of attached images (must be uploaded first via uploadDiscussionPostImage). */
   imageUrls?: string[];
 }
+
+// --- Chats ---
+
+/** Chat (DM or group chat). */
+export interface Chat {
+  id: string;
+  createdByUserId: string;
+  name?: string;
+  description?: string;
+  imageUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+  /** Last message preview when listing chats. */
+  lastMessagePreview?: string;
+  /** Last message timestamp. */
+  lastMessageAt?: string;
+  /** Member count. */
+  memberCount?: number;
+  /** Members with displayName, avatarUrl (when enriched, e.g. getChat). */
+  members?: ChatMember[];
+  /** Comma-separated display names of other participants (for list view when no name). */
+  participantDisplayNames?: string;
+}
+
+/** Chat member. */
+export interface ChatMember {
+  userId: string;
+  chatId: string;
+  joinedAt?: string;
+  displayName?: string;
+  avatarUrl?: string;
+}
+
+/** Input for creating a chat. */
+export interface CreateChatInput {
+  name?: string;
+  description?: string;
+  imageUrl?: string;
+  memberUserIds: string[];
+}
+
+/** Input for updating a chat (partial). */
+export interface UpdateChatInput {
+  name?: string;
+  description?: string;
+  imageUrl?: string;
+}
+
+/** Chat message. Same shape as DiscussionPost for component reuse. */
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+  authorDisplayName?: string;
+  authorAvatarUrl?: string;
+  parentMessageId?: string;
+  imageUrls?: string[];
+  reactionCounts?: PostReactionCounts;
+  userReactionTypes?: PostReactionType[];
+}
+
+/** Input for creating a chat message. */
+export interface CreateChatMessageInput {
+  body: string;
+  imageUrls?: string[];
+  parentMessageId?: string;
+}
+
+/** Input for updating a chat message (partial). */
+export interface UpdateChatMessageInput {
+  body?: string;
+  imageUrls?: string[];
+}
+
+/** Chat folder (user-defined organization). */
+export interface ChatFolder {
+  id: string;
+  userId: string;
+  name: string;
+  createdAt?: string;
+}
+
+/** Chat folder item (chat in a folder). */
+export interface ChatFolderItem {
+  folderId: string;
+  chatId: string;
+  createdAt?: string;
+}

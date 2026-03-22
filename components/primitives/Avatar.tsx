@@ -66,14 +66,14 @@ export function Avatar({
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
-    backgroundColor: colors.lavenderSoft,
+    backgroundColor: colors.surfaceContainer,
     justifyContent: 'center',
     alignItems: 'center',
   },
   fallback: {},
   ring: {
     borderWidth: 1.5,
-    borderColor: colors.surface,
+    borderColor: colors.surfaceContainerLowest,
   },
   fallbackText: {
     ...typography.bodyStrong,

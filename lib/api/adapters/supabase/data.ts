@@ -3,6 +3,13 @@ import type { DataContract } from '../../contracts';
 import type { ApiError } from '../../contracts/errors';
 import { isApiError } from '../../contracts/guards';
 import type {
+  Chat,
+  ChatFolder,
+  ChatFolderItem,
+  ChatMember,
+  ChatMessage,
+  CreateChatInput,
+  CreateChatMessageInput,
   CreateDiscussionInput,
   CreateDiscussionPostInput,
   CreateGroupDiscussionInput,
@@ -21,6 +28,8 @@ import type {
   PostReactionType,
   Profile,
   ProfileUpdates,
+  UpdateChatInput,
+  UpdateChatMessageInput,
   UpdateDiscussionInput,
   UpdateDiscussionPostInput,
   UpdateGroupInput,
@@ -636,6 +645,42 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         if (error) return toApiError(error);
 
         const { data } = getClient().storage.from('discussion-post-images').getPublicUrl(path);
+        return data.publicUrl;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async uploadChatImage(
+      userId: string,
+      imageUri: string,
+      base64Data?: string | null,
+      options?: { chatId?: string }
+    ): Promise<string | ApiError> {
+      try {
+        const { body, contentType } =
+          base64Data != null && base64Data.length > 0
+            ? base64ToArrayBuffer(base64Data, contentTypeFromUri(imageUri))
+            : await readImageFile(imageUri);
+        const ext =
+          contentType === 'image/png'
+            ? 'png'
+            : contentType === 'image/gif'
+              ? 'gif'
+              : contentType === 'image/webp'
+                ? 'webp'
+                : 'jpg';
+        const timestamp = Date.now();
+        const path = options?.chatId
+          ? `avatars/${options.chatId}/${timestamp}.${ext}`
+          : `messages/${userId}/${timestamp}.${ext}`;
+
+        const { error } = await getClient()
+          .storage.from('chat-images')
+          .upload(path, body, { upsert: false, contentType });
+        if (error) return toApiError(error);
+
+        const { data } = getClient().storage.from('chat-images').getPublicUrl(path);
         return data.publicUrl;
       } catch (e) {
         return toApiError(e);
@@ -1462,6 +1507,917 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
+    // Chats
+    async getChatsForUser(
+      userId: string,
+      options?: { folderId?: string }
+    ): Promise<Chat[] | ApiError> {
+      try {
+        let chatIds: string[];
+        if (options?.folderId) {
+          const [{ data: items, error }, { data: memberRows, error: memberErr }] =
+            await Promise.all([
+              getClient()
+                .from('chat_folder_items')
+                .select('chat_id')
+                .eq('folder_id', options.folderId),
+              getClient().from('chat_members').select('chat_id').eq('user_id', userId),
+            ]);
+          if (error) return toApiError(error);
+          if (memberErr) return toApiError(memberErr);
+          const folderChatIds = new Set((items ?? []).map((r) => r.chat_id));
+          const myChatIds = new Set((memberRows ?? []).map((r) => r.chat_id));
+          chatIds = [...folderChatIds].filter((id) => myChatIds.has(id));
+          if (chatIds.length === 0) return [];
+        } else {
+          const { data: memberRows, error } = await getClient()
+            .from('chat_members')
+            .select('chat_id')
+            .eq('user_id', userId);
+          if (error) return toApiError(error);
+          chatIds = (memberRows ?? []).map((r) => r.chat_id);
+          if (chatIds.length === 0) return [];
+        }
+
+        const { data: chatRows, error } = await getClient()
+          .from('chats')
+          .select('id, created_by_user_id, name, description, image_url, created_at, updated_at')
+          .in('id', chatIds)
+          .order('updated_at', { ascending: false });
+        if (error) return toApiError(error);
+        const chats = chatRows ?? [];
+        if (chats.length === 0) return [];
+
+        const cids = chats.map((r) => r.id);
+
+        const { data: lastMsg } = await getClient()
+          .from('chat_messages')
+          .select('chat_id, body, created_at')
+          .in('chat_id', cids)
+          .order('created_at', { ascending: false });
+        const lastByChat = new Map<string, { body: string; created_at: string }>();
+        if (lastMsg) {
+          for (const m of lastMsg) {
+            if (!lastByChat.has(m.chat_id)) {
+              lastByChat.set(m.chat_id, { body: m.body, created_at: m.created_at });
+            }
+          }
+        }
+
+        const { data: memberRows } = await getClient()
+          .from('chat_members')
+          .select('chat_id, user_id')
+          .in('chat_id', cids);
+
+        const countMap = new Map<string, number>();
+        const otherUserIdsByChat = new Map<string, string[]>();
+        for (const r of memberRows ?? []) {
+          countMap.set(r.chat_id, (countMap.get(r.chat_id) ?? 0) + 1);
+          if (r.user_id !== userId) {
+            const arr = otherUserIdsByChat.get(r.chat_id) ?? [];
+            arr.push(r.user_id);
+            otherUserIdsByChat.set(r.chat_id, arr);
+          }
+        }
+
+        const allMemberIds = [...new Set((memberRows ?? []).map((r) => r.user_id))];
+        const profileMap = new Map<string, { displayName: string; avatarUrl?: string }>();
+        if (allMemberIds.length > 0) {
+          const { data: profiles } = await getClient()
+            .from('profiles')
+            .select('user_id, display_name, first_name, last_name, avatar_url')
+            .in('user_id', allMemberIds);
+          for (const p of profiles ?? []) {
+            const derived = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derived || 'User';
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(p.user_id, { displayName, avatarUrl });
+          }
+        }
+
+        return chats.map((r) => {
+          const last = lastByChat.get(r.id);
+          const chatMemberRows = (memberRows ?? []).filter((row) => row.chat_id === r.id);
+          const members: ChatMember[] = chatMemberRows.map((row) => {
+            const profile = profileMap.get(row.user_id);
+            return {
+              userId: row.user_id,
+              chatId: r.id,
+              joinedAt: undefined,
+              displayName: profile?.displayName ?? 'User',
+              avatarUrl: profile?.avatarUrl,
+            };
+          });
+          const otherIds = otherUserIdsByChat.get(r.id) ?? [];
+          const names = otherIds
+            .map((uid) => profileMap.get(uid)?.displayName || 'User')
+            .filter(Boolean);
+          const participantDisplayNames = names.length > 0 ? names.join(', ') : undefined;
+          return {
+            id: r.id,
+            createdByUserId: r.created_by_user_id,
+            name: r.name ?? undefined,
+            description: r.description ?? undefined,
+            imageUrl: r.image_url ?? undefined,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at ?? undefined,
+            lastMessagePreview: last?.body ?? undefined,
+            lastMessageAt: last?.created_at ?? undefined,
+            memberCount: countMap.get(r.id) ?? 0,
+            participantDisplayNames,
+            members,
+          };
+        });
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getChat(id: string): Promise<Chat | ApiError> {
+      try {
+        const { data: row, error } = await getClient()
+          .from('chats')
+          .select('id, created_by_user_id, name, description, image_url, created_at, updated_at')
+          .eq('id', id)
+          .single();
+        if (error) return toApiError(error);
+        if (!row) return { message: 'Chat not found', code: 'NOT_FOUND' };
+
+        const { data: memberRows } = await getClient()
+          .from('chat_members')
+          .select('user_id, chat_id, joined_at')
+          .eq('chat_id', id);
+
+        const memberUserIds = (memberRows ?? []).map((r) => r.user_id);
+        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+        for (const uid of memberUserIds) {
+          const { data: p } = await getClient()
+            .from('profiles')
+            .select('display_name, first_name, last_name, avatar_url')
+            .eq('user_id', uid)
+            .maybeSingle();
+          if (p) {
+            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(uid, { displayName, avatarUrl });
+          }
+        }
+
+        const members: ChatMember[] = (memberRows ?? []).map((r) => {
+          const profile = profileMap.get(r.user_id);
+          return {
+            userId: r.user_id,
+            chatId: r.chat_id,
+            joinedAt: r.joined_at,
+            displayName: profile?.displayName,
+            avatarUrl: profile?.avatarUrl,
+          };
+        });
+
+        return {
+          id: row.id,
+          createdByUserId: row.created_by_user_id,
+          name: row.name ?? undefined,
+          description: row.description ?? undefined,
+          imageUrl: row.image_url ?? undefined,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+          memberCount: members.length,
+          members,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async findExisting1on1Chat(
+      userId: string,
+      otherUserId: string
+    ): Promise<Chat | null | ApiError> {
+      try {
+        const { data: rows, error } = await getClient()
+          .from('chat_members')
+          .select('chat_id, user_id')
+          .in('user_id', [userId, otherUserId]);
+        if (error) return toApiError(error);
+        const byChat = new Map<string, Set<string>>();
+        for (const r of rows ?? []) {
+          const set = byChat.get(r.chat_id) ?? new Set();
+          set.add(r.user_id);
+          byChat.set(r.chat_id, set);
+        }
+        for (const [chatId, members] of byChat) {
+          if (members.size === 2 && members.has(userId) && members.has(otherUserId)) {
+            const chat = await this.getChat(chatId);
+            return chat && !('message' in chat) ? chat : null;
+          }
+        }
+        return null;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async findExistingChatByMembers(
+      userId: string,
+      memberUserIds: string[]
+    ): Promise<Chat | null | ApiError> {
+      try {
+        const otherIds = memberUserIds.filter((id) => id && id !== userId);
+        const targetSet = new Set([userId, ...otherIds]);
+        if (targetSet.size < 2) return null;
+
+        const { data: userChatRows, error: userErr } = await getClient()
+          .from('chat_members')
+          .select('chat_id')
+          .eq('user_id', userId);
+        if (userErr) return toApiError(userErr);
+        const chatIds = [...new Set((userChatRows ?? []).map((r) => r.chat_id))];
+        if (chatIds.length === 0) return null;
+
+        const { data: allRows, error } = await getClient()
+          .from('chat_members')
+          .select('chat_id, user_id')
+          .in('chat_id', chatIds);
+        if (error) return toApiError(error);
+
+        const byChat = new Map<string, Set<string>>();
+        const rows = (allRows ?? []) as Array<{ chat_id: string; user_id: string }>;
+        for (const r of rows) {
+          const set = byChat.get(r.chat_id) ?? new Set();
+          set.add(r.user_id);
+          byChat.set(r.chat_id, set);
+        }
+        for (const [chatId, members] of byChat) {
+          if (members.size === targetSet.size && [...targetSet].every((id) => members.has(id))) {
+            const chat = await this.getChat(chatId);
+            return chat && !('message' in chat) ? chat : null;
+          }
+        }
+        return null;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createChat(userId: string, input: CreateChatInput): Promise<Chat | ApiError> {
+      try {
+        const memberUserIds = input.memberUserIds?.filter((id) => id && id !== userId) ?? [];
+
+        // Return existing chat if one already exists with these exact members
+        const existing = await this.findExistingChatByMembers(userId, memberUserIds);
+        if (existing && !('message' in existing)) {
+          return existing;
+        }
+
+        const allMemberIds = [userId, ...memberUserIds];
+
+        for (const mid of memberUserIds) {
+          const friends = await this.areFriends(userId, mid);
+          if (friends !== true) {
+            return {
+              message: 'You can only add friends to a chat',
+              code: 'VALIDATION_ERROR',
+            };
+          }
+        }
+
+        const { data: chatRow, error } = await getClient()
+          .from('chats')
+          .insert({
+            created_by_user_id: userId,
+            name: input.name?.trim() || null,
+            description: input.description?.trim() || null,
+            image_url: input.imageUrl?.trim() || null,
+          })
+          .select('id, created_by_user_id, name, description, image_url, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!chatRow) return { message: 'Failed to create chat', code: 'NOT_FOUND' };
+
+        const memberInserts = allMemberIds.map((uid) => ({
+          chat_id: chatRow.id,
+          user_id: uid,
+        }));
+        const { error: memberErr } = await getClient().from('chat_members').insert(memberInserts);
+        if (memberErr) return toApiError(memberErr);
+
+        return this.getChat(chatRow.id);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async addChatMembers(
+      chatId: string,
+      addedByUserId: string,
+      memberUserIds: string[]
+    ): Promise<void | ApiError> {
+      try {
+        const { data: memberRows } = await getClient()
+          .from('chat_members')
+          .select('user_id')
+          .eq('chat_id', chatId);
+        const existingIds = new Set((memberRows ?? []).map((r) => r.user_id));
+        if (!existingIds.has(addedByUserId)) {
+          return { message: 'You must be a member to add others', code: 'FORBIDDEN' };
+        }
+        const toAdd = memberUserIds.filter(
+          (id) => id && id !== addedByUserId && !existingIds.has(id)
+        );
+        if (toAdd.length === 0) return;
+        for (const mid of toAdd) {
+          const friends = await this.areFriends(addedByUserId, mid);
+          if (friends !== true) {
+            return {
+              message: 'You can only add friends to a chat',
+              code: 'VALIDATION_ERROR',
+            };
+          }
+        }
+        const inserts = toAdd.map((uid) => ({ chat_id: chatId, user_id: uid }));
+        const { error } = await getClient().from('chat_members').insert(inserts);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateChat(id: string, input: UpdateChatInput): Promise<Chat | ApiError> {
+      try {
+        const payload: Record<string, unknown> = {};
+        if (input.name !== undefined) payload.name = input.name?.trim() || null;
+        if (input.description !== undefined)
+          payload.description = input.description?.trim() || null;
+        if (input.imageUrl !== undefined) payload.image_url = input.imageUrl?.trim() || null;
+        if (Object.keys(payload).length === 0) {
+          return this.getChat(id);
+        }
+
+        const { error } = await getClient().from('chats').update(payload).eq('id', id);
+        if (error) return toApiError(error);
+        return this.getChat(id);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getChatMessages(
+      chatId: string,
+      options?: { userId?: string }
+    ): Promise<ChatMessage[] | ApiError> {
+      try {
+        const { data: rows, error } = await getClient()
+          .from('chat_messages')
+          .select(
+            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls'
+          )
+          .eq('chat_id', chatId)
+          .order('created_at', { ascending: true });
+        if (error) return toApiError(error);
+        const posts = rows ?? [];
+        if (posts.length === 0) return [];
+
+        const userIds = [...new Set(posts.map((r) => r.user_id))];
+        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+        for (const uid of userIds) {
+          const { data: p } = await getClient()
+            .from('profiles')
+            .select('display_name, first_name, last_name, avatar_url')
+            .eq('user_id', uid)
+            .maybeSingle();
+          if (p) {
+            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(uid, { displayName, avatarUrl });
+          }
+        }
+
+        const postIds = posts.map((r) => r.id);
+        const reactionCountMap = new Map<
+          string,
+          { prayer: number; laugh: number; thumbsUp: number }
+        >();
+        const userReactionMap = new Map<string, string[]>();
+        const { data: reactionRows } = await getClient()
+          .from('chat_message_reactions')
+          .select('message_id, user_id, reaction_type')
+          .in('message_id', postIds);
+        if (reactionRows && reactionRows.length > 0) {
+          const uid = options?.userId;
+          for (const row of reactionRows as {
+            message_id: string;
+            user_id: string;
+            reaction_type: string;
+          }[]) {
+            const key = row.message_id;
+            if (!reactionCountMap.has(key)) {
+              reactionCountMap.set(key, { prayer: 0, laugh: 0, thumbsUp: 0 });
+            }
+            const counts = reactionCountMap.get(key)!;
+            if (row.reaction_type === 'prayer') counts.prayer++;
+            else if (row.reaction_type === 'laugh') counts.laugh++;
+            else if (row.reaction_type === 'thumbs_up') counts.thumbsUp++;
+            if (uid && row.user_id === uid) {
+              const arr = userReactionMap.get(key) ?? [];
+              if (!arr.includes(row.reaction_type)) arr.push(row.reaction_type);
+              userReactionMap.set(key, arr);
+            }
+          }
+        }
+
+        return posts.map((r) => {
+          const profile = profileMap.get(r.user_id);
+          const imageUrls = (r as { image_urls?: string[] }).image_urls?.filter(
+            (u): u is string => typeof u === 'string' && u.length > 0
+          );
+          return {
+            id: r.id,
+            chatId: r.chat_id,
+            userId: r.user_id,
+            body: r.body,
+            createdAt: r.created_at,
+            updatedAt: (r as { updated_at?: string }).updated_at ?? undefined,
+            authorDisplayName: profile?.displayName,
+            authorAvatarUrl: profile?.avatarUrl,
+            parentMessageId: (r as { parent_message_id?: string }).parent_message_id ?? undefined,
+            imageUrls,
+            reactionCounts: reactionCountMap.get(r.id),
+            userReactionTypes: options?.userId
+              ? (userReactionMap.get(r.id) as PostReactionType[] | undefined)
+              : undefined,
+          };
+        });
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createChatMessage(
+      chatId: string,
+      userId: string,
+      input: CreateChatMessageInput
+    ): Promise<ChatMessage | ApiError> {
+      try {
+        const body = input.body?.trim() ?? '';
+        const imageUrls = input.imageUrls?.filter((u) => typeof u === 'string' && u.length > 0);
+        const hasImages = imageUrls && imageUrls.length > 0;
+        if (!body && !hasImages) {
+          return {
+            message: 'Message must have text or at least one image',
+            code: 'VALIDATION_ERROR',
+          };
+        }
+        const payload = {
+          chat_id: chatId,
+          user_id: userId,
+          body: body || '',
+          parent_message_id: input.parentMessageId?.trim() || null,
+          image_urls: imageUrls && imageUrls.length > 0 ? imageUrls : null,
+        };
+        const { data: row, error } = await getClient()
+          .from('chat_messages')
+          .insert(payload)
+          .select(
+            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls'
+          )
+          .single();
+        if (error) return toApiError(error);
+        if (!row) return { message: 'Failed to create message', code: 'NOT_FOUND' };
+
+        const { data: p } = await getClient()
+          .from('profiles')
+          .select('display_name, first_name, last_name, avatar_url')
+          .eq('user_id', userId)
+          .maybeSingle();
+        let profile: { displayName?: string; avatarUrl?: string } | null = null;
+        if (p) {
+          const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+          const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+          let avatarUrl = p.avatar_url ?? undefined;
+          if (avatarUrl) {
+            avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+          }
+          profile = { displayName, avatarUrl };
+        }
+        const r = row as {
+          id: string;
+          chat_id: string;
+          user_id: string;
+          body: string;
+          created_at: string;
+          updated_at?: string;
+          parent_message_id?: string;
+          image_urls?: string[];
+        };
+        const imageUrlsOut = r.image_urls?.filter(
+          (u): u is string => typeof u === 'string' && u.length > 0
+        );
+        return {
+          id: r.id,
+          chatId: r.chat_id,
+          userId: r.user_id,
+          body: r.body,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at ?? undefined,
+          authorDisplayName: profile?.displayName,
+          authorAvatarUrl: profile?.avatarUrl,
+          parentMessageId: r.parent_message_id ?? undefined,
+          imageUrls: imageUrlsOut,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateChatMessage(
+      messageId: string,
+      userId: string,
+      input: UpdateChatMessageInput
+    ): Promise<ChatMessage | ApiError> {
+      try {
+        const body = input.body !== undefined ? (input.body.trim() ?? '') : undefined;
+        const imageUrls =
+          input.imageUrls !== undefined
+            ? input.imageUrls.filter((u) => typeof u === 'string' && u.length > 0)
+            : undefined;
+        const payload: Record<string, unknown> = {};
+        if (body !== undefined) payload.body = body;
+        if (imageUrls !== undefined) payload.image_urls = imageUrls;
+        if (Object.keys(payload).length === 0) {
+          return { message: 'No updates provided', code: 'VALIDATION_ERROR' };
+        }
+        const { data: row, error } = await getClient()
+          .from('chat_messages')
+          .update(payload)
+          .eq('id', messageId)
+          .eq('user_id', userId)
+          .select(
+            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls'
+          )
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!row)
+          return { message: 'Message not found or not authorized to edit', code: 'NOT_FOUND' };
+        const r = row as {
+          id: string;
+          chat_id: string;
+          user_id: string;
+          body: string;
+          created_at: string;
+          updated_at?: string;
+          parent_message_id?: string;
+          image_urls?: string[];
+        };
+        const { data: p } = await getClient()
+          .from('profiles')
+          .select('display_name, first_name, last_name, avatar_url')
+          .eq('user_id', r.user_id)
+          .maybeSingle();
+        let profile: { displayName?: string; avatarUrl?: string } | null = null;
+        if (p) {
+          const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+          const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+          let avatarUrl = p.avatar_url ?? undefined;
+          if (avatarUrl) {
+            avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+          }
+          profile = { displayName, avatarUrl };
+        }
+        const imageUrlsOut = r.image_urls?.filter(
+          (u): u is string => typeof u === 'string' && u.length > 0
+        );
+        return {
+          id: r.id,
+          chatId: r.chat_id,
+          userId: r.user_id,
+          body: r.body,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at ?? undefined,
+          authorDisplayName: profile?.displayName,
+          authorAvatarUrl: profile?.avatarUrl,
+          parentMessageId: r.parent_message_id ?? undefined,
+          imageUrls: imageUrlsOut,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async reactToChatMessage(
+      messageId: string,
+      chatId: string,
+      userId: string,
+      reactionType: PostReactionType
+    ): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient().from('chat_message_reactions').upsert(
+          {
+            message_id: messageId,
+            user_id: userId,
+            reaction_type: reactionType,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'message_id,user_id' }
+        );
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async removeChatMessageReaction(
+      messageId: string,
+      chatId: string,
+      userId: string,
+      reactionType: PostReactionType
+    ): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('chat_message_reactions')
+          .delete()
+          .eq('message_id', messageId)
+          .eq('user_id', userId)
+          .eq('reaction_type', reactionType);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getChatMessageReactions(messageId: string): Promise<PostReactionDetail[] | ApiError> {
+      try {
+        const { data: rows, error } = await getClient()
+          .from('chat_message_reactions')
+          .select('user_id, reaction_type')
+          .eq('message_id', messageId);
+        if (error) return toApiError(error);
+        const reactions = rows ?? [];
+        if (reactions.length === 0) return [];
+        const userIds = [...new Set(reactions.map((r) => r.user_id))];
+        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+        for (const uid of userIds) {
+          const { data: p } = await getClient()
+            .from('profiles')
+            .select('display_name, first_name, last_name, avatar_url')
+            .eq('user_id', uid)
+            .maybeSingle();
+          if (p) {
+            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(uid, { displayName, avatarUrl });
+          }
+        }
+        return reactions.map((r) => {
+          const profile = profileMap.get(r.user_id);
+          return {
+            userId: r.user_id,
+            displayName: profile?.displayName,
+            avatarUrl: profile?.avatarUrl,
+            reactionType: r.reaction_type as PostReactionType,
+          };
+        });
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getChatFolders(userId: string): Promise<ChatFolder[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('chat_folders')
+          .select('id, user_id, name, created_at')
+          .eq('user_id', userId)
+          .order('name');
+        if (error) return toApiError(error);
+        return (data ?? []).map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          name: r.name,
+          createdAt: r.created_at,
+        }));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createChatFolder(userId: string, name: string): Promise<ChatFolder | ApiError> {
+      try {
+        const n = name?.trim();
+        if (!n) return { message: 'Folder name is required', code: 'VALIDATION_ERROR' };
+        const { data, error } = await getClient()
+          .from('chat_folders')
+          .insert({ user_id: userId, name: n })
+          .select('id, user_id, name, created_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Failed to create folder', code: 'NOT_FOUND' };
+        return { id: data.id, userId: data.user_id, name: data.name, createdAt: data.created_at };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateChatFolder(
+      folderId: string,
+      userId: string,
+      name: string
+    ): Promise<ChatFolder | ApiError> {
+      try {
+        const n = name?.trim();
+        if (!n) return { message: 'Folder name is required', code: 'VALIDATION_ERROR' };
+        const { data, error } = await getClient()
+          .from('chat_folders')
+          .update({ name: n })
+          .eq('id', folderId)
+          .eq('user_id', userId)
+          .select('id, user_id, name, created_at')
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Folder not found', code: 'NOT_FOUND' };
+        return { id: data.id, userId: data.user_id, name: data.name, createdAt: data.created_at };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async deleteChatFolder(folderId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('chat_folders')
+          .delete()
+          .eq('id', folderId)
+          .eq('user_id', userId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getChatFolderItems(folderId: string): Promise<ChatFolderItem[] | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('chat_folder_items')
+          .select('folder_id, chat_id, created_at')
+          .eq('folder_id', folderId);
+        if (error) return toApiError(error);
+        return (data ?? []).map((r) => ({
+          folderId: r.folder_id,
+          chatId: r.chat_id,
+          createdAt: r.created_at,
+        }));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async addChatToFolder(
+      folderId: string,
+      chatId: string,
+      userId: string
+    ): Promise<ChatFolderItem | ApiError> {
+      try {
+        const { data: memberRow } = await getClient()
+          .from('chat_members')
+          .select('chat_id')
+          .eq('chat_id', chatId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!memberRow) {
+          return {
+            message: 'You must be a member of the chat to add it to a folder',
+            code: 'FORBIDDEN',
+          };
+        }
+        const { data, error } = await getClient()
+          .from('chat_folder_items')
+          .insert({ folder_id: folderId, chat_id: chatId })
+          .select('folder_id, chat_id, created_at')
+          .single();
+        if (error) return toApiError(error);
+        if (!data) return { message: 'Failed to add chat to folder', code: 'NOT_FOUND' };
+        return { folderId: data.folder_id, chatId: data.chat_id, createdAt: data.created_at };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async removeChatFromFolder(
+      folderId: string,
+      chatId: string,
+      userId: string
+    ): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('chat_folder_items')
+          .delete()
+          .eq('folder_id', folderId)
+          .eq('chat_id', chatId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getProfiles(userIds: string[]): Promise<Profile[] | ApiError> {
+      try {
+        const unique = [...new Set(userIds.filter((id) => id && id.length > 0))];
+        if (unique.length === 0) return [];
+        const { data, error } = await getClient()
+          .from('profiles')
+          .select(
+            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+          )
+          .in('user_id', unique);
+        if (error) return toApiError(error);
+        const rows = data ?? [];
+        const result: Profile[] = [];
+        for (const r of rows) {
+          let avatarUrl = r.avatar_url ?? undefined;
+          if (avatarUrl) {
+            avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+          }
+          const derivedDisplayName = [r.first_name, r.last_name].filter(Boolean).join(' ').trim();
+          const displayName = r.display_name?.trim() || derivedDisplayName || undefined;
+          result.push({
+            userId: r.user_id,
+            displayName,
+            firstName: r.first_name ?? undefined,
+            lastName: r.last_name ?? undefined,
+            birthDate: r.birth_date ?? undefined,
+            country: r.country ?? undefined,
+            preferredLanguage: r.preferred_language ?? undefined,
+            avatarUrl,
+            bio: r.bio ?? undefined,
+            updatedAt: r.updated_at ?? undefined,
+          });
+        }
+        return result;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async searchProfiles(search: string, excludeUserId: string): Promise<Profile[] | ApiError> {
+      try {
+        const term = search.trim();
+        if (!term) return [];
+        const pattern = `%${term}%`;
+        let query = getClient()
+          .from('profiles')
+          .select(
+            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+          )
+          .neq('user_id', excludeUserId)
+          .or(
+            `display_name.ilike.${pattern},first_name.ilike.${pattern},last_name.ilike.${pattern}`
+          )
+          .limit(30);
+        const { data, error } = await query;
+        if (error) return toApiError(error);
+        const rows = data ?? [];
+        const result: Profile[] = [];
+        for (const r of rows) {
+          let avatarUrl = r.avatar_url ?? undefined;
+          if (avatarUrl) {
+            avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+          }
+          const derivedDisplayName = [r.first_name, r.last_name].filter(Boolean).join(' ').trim();
+          const displayName = r.display_name?.trim() || derivedDisplayName || undefined;
+          result.push({
+            userId: r.user_id,
+            displayName,
+            firstName: r.first_name ?? undefined,
+            lastName: r.last_name ?? undefined,
+            birthDate: r.birth_date ?? undefined,
+            country: r.country ?? undefined,
+            preferredLanguage: r.preferred_language ?? undefined,
+            avatarUrl,
+            bio: r.bio ?? undefined,
+            updatedAt: r.updated_at ?? undefined,
+          });
+        }
+        return result;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
     async isSuperAdmin(userId: string): Promise<boolean | ApiError> {
       try {
         const { data, error } = await getClient()
@@ -1702,6 +2658,45 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         }
 
         return requests.map((r) => mapFriendRequestRow(r, profileMap.get(r.sender_id) ?? null));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getSentFriendRequests(userId: string): Promise<FriendRequest[] | ApiError> {
+      try {
+        const { data: rows, error } = await getClient()
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at, updated_at')
+          .eq('sender_id', userId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+        if (error) return toApiError(error);
+        const requests = (rows ?? []) as FriendRequestRow[];
+        if (requests.length === 0) return [];
+
+        const receiverIds = [...new Set(requests.map((r) => r.receiver_id))];
+        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+        for (const uid of receiverIds) {
+          const { data: p } = await getClient()
+            .from('profiles')
+            .select('display_name, first_name, last_name, avatar_url')
+            .eq('user_id', uid)
+            .maybeSingle();
+          if (p) {
+            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(uid, { displayName, avatarUrl });
+          }
+        }
+
+        return requests.map((r) =>
+          mapFriendRequestRow(r, undefined, profileMap.get(r.receiver_id) ?? null)
+        );
       } catch (e) {
         return toApiError(e);
       }

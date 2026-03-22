@@ -90,6 +90,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   pressable: {
+    flex: 1,
     flexDirection: 'row',
     minHeight: minTouchTarget,
     minWidth: minTouchTarget,
@@ -108,11 +109,9 @@ const variantStyles = StyleSheet.create({
   primaryContainer: { backgroundColor: colors.primary },
   primaryLabel: { color: colors.onPrimary },
   secondaryContainer: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.primary,
+    backgroundColor: colors.secondaryContainer,
   },
-  secondaryLabel: { color: colors.primary },
+  secondaryLabel: { color: colors.onSecondaryContainer },
   textContainer: { backgroundColor: 'transparent' },
   textLabel: { color: colors.primary },
 });

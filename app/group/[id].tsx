@@ -1,9 +1,10 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useLayoutEffect, useState } from 'react';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Avatar } from '@/components/primitives';
+import { Avatar, StackedAvatars } from '@/components/primitives';
 import { EmptyState } from '@/components/patterns/EmptyState';
 import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,7 +19,7 @@ import {
 import { getUserFacingError } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/dates';
 import { t } from '@/lib/i18n';
-import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { colors, fontFamily, radius, shadow, spacing, typography } from '@/theme/tokens';
 
 function getLanguageName(code: string): string {
   const map: Record<string, string> = {
@@ -66,12 +67,12 @@ export default function GroupDetailScreen() {
         ? () => (
             <Pressable
               onPress={() => id && router.push(`/group/edit?groupId=${id}`)}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8, marginRight: 4 })}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
               accessibilityLabel={t('groups.editGroup')}
               accessibilityHint={t('groups.editGroupHint')}
               accessibilityRole="button"
             >
-              <Ionicons name="pencil-outline" size={24} color={colors.primary} />
+              <Ionicons name="ellipsis-horizontal" size={22} color="#ffffff" />
             </Pressable>
           )
         : undefined,
@@ -160,6 +161,7 @@ export default function GroupDetailScreen() {
 
   const typeLabel = group.type === 'forum' ? t('groups.forum') : t('groups.ministry');
   const languageName = getLanguageName(group.preferredLanguage);
+  const memberCountLabel = `${members.length} ${members.length === 1 ? t('groups.member') : t('groups.members')}`;
 
   return (
     <ScrollView
@@ -167,150 +169,136 @@ export default function GroupDetailScreen() {
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {group.bannerImageUrl ? (
-        <Image
-          source={{ uri: group.bannerImageUrl }}
-          style={styles.banner}
-          contentFit="cover"
-          accessibilityIgnoresInvertColors
+      {/* ── Hero: Editorial featured card ── */}
+      <View style={styles.heroWrap}>
+        {group.bannerImageUrl ? (
+          <Image
+            source={{ uri: group.bannerImageUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.heroPlaceholderBg]} />
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,32,70,0.18)', 'rgba(0,32,70,0.88)']}
+          locations={[0, 0.38, 1]}
+          style={StyleSheet.absoluteFill}
         />
-      ) : (
-        <View style={styles.bannerPlaceholder}>
-          <Ionicons name="people-outline" size={48} color={colors.ink300} />
-        </View>
-      )}
-
-      <View style={styles.content}>
-        <View style={styles.badgeRow}>
-          <Text style={styles.badge}>{typeLabel}</Text>
-          <View style={styles.badgeRowRight}>
-            {group.country && (
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                <Text style={styles.location}>{group.country}</Text>
+        <View style={styles.heroContent}>
+          <View style={styles.typeBadge}>
+            <Text style={styles.typeBadgeText}>{typeLabel.toUpperCase()}</Text>
+          </View>
+          <Text style={styles.heroTitle}>{group.name}</Text>
+          {group.description ? (
+            <Text style={styles.heroDescription} numberOfLines={3}>
+              {'\u201C'}
+              {group.description}
+              {'\u201D'}
+            </Text>
+          ) : null}
+          <View style={styles.heroMetaRow}>
+            {group.country ? (
+              <View style={styles.heroMetaItem}>
+                <Ionicons name="location-outline" size={14} color="rgba(255,255,255,0.75)" />
+                <Text style={styles.heroMetaText}>{group.country}</Text>
               </View>
+            ) : null}
+            <View style={styles.heroMetaItem}>
+              <Ionicons name="globe-outline" size={14} color="rgba(255,255,255,0.75)" />
+              <Text style={styles.heroMetaText}>{languageName}</Text>
+            </View>
+          </View>
+          <View style={styles.heroActions}>
+            {isMember ? (
+              <Pressable
+                onPress={handleOpenJoinedSheet}
+                style={({ pressed }) => [styles.heroJoinedPill, pressed && { opacity: 0.85 }]}
+                disabled={isJoining}
+                accessibilityLabel={t('groups.joined')}
+                accessibilityHint={t('groups.opensOptions')}
+              >
+                <Ionicons name="checkmark-circle" size={15} color={colors.onSecondaryContainer} />
+                <Text style={styles.heroJoinedPillText}>{t('groups.joined')}</Text>
+                <Ionicons name="chevron-down" size={14} color={colors.onSecondaryContainer} />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={handleJoin}
+                style={({ pressed }) => [
+                  styles.heroJoinPill,
+                  pressed && { opacity: 0.9 },
+                  isJoining && { opacity: 0.5 },
+                ]}
+                disabled={isJoining}
+                accessibilityLabel={t('groups.join')}
+                accessibilityHint={t('groups.joinsGroupHint')}
+                accessibilityRole="button"
+              >
+                {joinMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Text style={styles.heroJoinPillText}>{t('groups.join')}</Text>
+                )}
+              </Pressable>
             )}
-            <View
-              style={styles.languageMeta}
-              accessibilityLabel={t('groups.language')}
-              accessibilityHint={languageName}
-            >
-              <Ionicons name="language-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.languageText}>{languageName}</Text>
+            <View style={styles.heroMemberCount}>
+              <Ionicons name="people" size={14} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.heroMemberCountText}>{memberCountLabel}</Text>
             </View>
           </View>
         </View>
+      </View>
 
-        <Text style={styles.name}>{group.name}</Text>
-
-        {group.description ? (
-          <View style={styles.section}>
-            <Text style={styles.description}>{group.description}</Text>
-          </View>
-        ) : null}
-
+      {/* ── Content canvas ── */}
+      <View style={styles.contentCanvas}>
         {error && 'message' in error ? (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{getUserFacingError(error)}</Text>
           </View>
         ) : null}
 
-        <View style={styles.peopleSection}>
-          <View style={styles.peopleHeader}>
-            <Text style={styles.peopleSectionTitle}>{t('groups.people')}</Text>
+        {/* ── Community section ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t('groups.people')}</Text>
+            <Text style={styles.sectionCount}>{memberCountLabel}</Text>
+          </View>
+          <View style={styles.memberCard}>
             <Pressable
               onPress={handleSeeAllMembers}
-              style={({ pressed }) => [styles.seeAllLink, pressed && styles.seeAllLinkPressed]}
+              style={({ pressed }) => [styles.memberRow, pressed && { opacity: 0.8 }]}
               accessibilityLabel={t('groups.seeAll')}
               accessibilityHint={t('groups.viewAllMembersHint')}
             >
-              <Text style={styles.seeAllText}>{t('groups.seeAll')}</Text>
+              <StackedAvatars members={members} maxCount={4} size="md" ringed />
+              <View style={styles.memberRowRight}>
+                <Text style={styles.viewAllText}>{t('groups.seeAll')}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+              </View>
             </Pressable>
-          </View>
-          <View style={styles.peopleContent}>
-            <View style={styles.peopleAvatars}>
-              {members.slice(0, 3).map((m, idx) => (
-                <View
-                  key={m.userId}
-                  style={[styles.peopleAvatarWrap, { marginLeft: idx > 0 ? -12 : 0 }]}
-                >
-                  <Avatar
-                    source={m.avatarUrl ? { uri: m.avatarUrl } : null}
-                    fallbackText={m.displayName}
-                    size="md"
-                    ringed
-                    accessibilityLabel={
-                      m.displayName
-                        ? `${m.displayName} ${t('groups.profilePicture')}`
-                        : `${t('groups.groupMember')} ${idx + 1}`
-                    }
-                  />
-                </View>
-              ))}
-            </View>
-            <Text style={styles.memberCount}>
-              {members.length} {members.length === 1 ? t('groups.member') : t('groups.members')}
-            </Text>
           </View>
         </View>
 
-        <View style={styles.actions}>
-          {isMember ? (
-            <Pressable
-              onPress={handleOpenJoinedSheet}
-              style={({ pressed }) => [styles.joinedButton, pressed && styles.joinedButtonPressed]}
-              disabled={isJoining}
-              accessibilityLabel={t('groups.joined')}
-              accessibilityHint={t('groups.opensOptions')}
-            >
-              <Ionicons name="people-outline" size={18} color={colors.textPrimary} />
-              <Text style={styles.joinedButtonText}>{t('groups.joined')}</Text>
-              <Ionicons name="chevron-down" size={18} color={colors.textPrimary} />
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={handleJoin}
-              style={({ pressed }) => [
-                styles.joinButton,
-                pressed && styles.joinButtonPressed,
-                isJoining && styles.joinButtonDisabled,
-              ]}
-              disabled={isJoining}
-              accessibilityLabel={t('groups.join')}
-              accessibilityHint={t('groups.joinsGroupHint')}
-              accessibilityRole="button"
-            >
-              {joinMutation.isPending ? (
-                <ActivityIndicator size="small" color={colors.onPrimary} />
-              ) : (
-                <>
-                  <Ionicons name="person-add-outline" size={18} color={colors.onPrimary} />
-                  <Text style={styles.joinButtonText}>{t('groups.join')}</Text>
-                </>
-              )}
-            </Pressable>
-          )}
-        </View>
-
-        <View style={styles.discussionsSection}>
-          <View style={styles.discussionsHeader}>
-            <Text style={[styles.sectionTitle, styles.discussionsSectionTitle]}>
-              {t('groups.discussions')}
-            </Text>
+        {/* ── Discussions section ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t('groups.discussions')}</Text>
             {isMember ? (
               <Pressable
                 onPress={handleCreateDiscussion}
-                style={styles.createDiscussionButton}
+                style={styles.addTopicButton}
                 accessibilityLabel={t('discussions.addDiscussion')}
                 accessibilityHint={t('discussions.addDiscussionHint')}
               >
-                <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                <Text style={styles.createDiscussionText}>{t('discussions.addDiscussion')}</Text>
+                <Ionicons name="add-circle" size={16} color={colors.secondary} />
+                <Text style={styles.addTopicText}>{t('discussions.addDiscussion')}</Text>
               </Pressable>
             ) : null}
           </View>
           {discussionsLoading ? (
-            <View style={styles.discussionsLoading}>
+            <View style={styles.loadingWrap}>
               <ActivityIndicator size="small" color={colors.primary} />
             </View>
           ) : discussions.length === 0 ? (
@@ -325,48 +313,72 @@ export default function GroupDetailScreen() {
                 <Pressable
                   key={d.id}
                   onPress={() => router.push(`/group/discussion/${d.id}`)}
-                  style={styles.discussionCard}
+                  style={({ pressed }) => [
+                    styles.discussionCard,
+                    pressed && { opacity: 0.92 },
+                  ]}
                   accessibilityLabel={`${d.title}, ${d.postCount ?? 0}`}
                   accessibilityHint={t('groups.opensDiscussion')}
                 >
-                  <View style={styles.discussionTopRight}>
-                    <Ionicons
-                      name="chatbubble-outline"
-                      size={18}
-                      color={colors.textSecondary}
-                      style={styles.replyIcon}
+                  <View style={styles.discussionAuthorRow}>
+                    <Avatar
+                      source={d.authorAvatarUrl ? { uri: d.authorAvatarUrl } : null}
+                      fallbackText={d.authorDisplayName}
+                      size="sm"
+                      accessibilityLabel={
+                        d.authorDisplayName
+                          ? `${d.authorDisplayName} ${t('groups.profilePicture')}`
+                          : t('groups.originalPoster')
+                      }
                     />
-                    <Text style={styles.discussionReplies}>{d.postCount ?? 0}</Text>
+                    <Text style={styles.discussionMeta} numberOfLines={1}>
+                      {d.authorDisplayName ?? t('common.loading')}{' '}
+                      <Text style={styles.discussionMetaDot}>{'\u00B7'}</Text>{' '}
+                      {formatRelativeTime(d.createdAt)}
+                    </Text>
                   </View>
-                  <Text style={styles.discussionTitle} numberOfLines={2}>
-                    {d.title}
-                  </Text>
-                  <Text style={styles.discussionMeta} numberOfLines={2}>
+                  <Text style={styles.discussionBody} numberOfLines={2}>
                     {d.body}
                   </Text>
-                  <View style={styles.discussionBottom}>
-                    <View style={styles.discussionAuthorRow}>
-                      <Avatar
-                        source={d.authorAvatarUrl ? { uri: d.authorAvatarUrl } : null}
-                        fallbackText={d.authorDisplayName}
-                        size="sm"
-                        accessibilityLabel={
-                          d.authorDisplayName
-                            ? `${d.authorDisplayName} ${t('groups.profilePicture')}`
-                            : t('groups.originalPoster')
-                        }
-                      />
-                      <Text style={styles.discussionAuthor} numberOfLines={1}>
-                        {d.authorDisplayName ?? t('common.loading')}
-                      </Text>
+                  <View style={styles.discussionFooter}>
+                    <View style={styles.discussionStat}>
+                      <Ionicons name="chatbubble-outline" size={14} color={colors.primary} />
+                      <Text style={styles.discussionStatText}>{d.postCount ?? 0}</Text>
                     </View>
-                    <Text style={styles.discussionDate}>{formatRelativeTime(d.createdAt)}</Text>
                   </View>
                 </Pressable>
               ))}
             </View>
           )}
         </View>
+
+        {/* ── CTA for non-members ── */}
+        {!isMember ? (
+          <View style={styles.ctaCard}>
+            <Text style={styles.ctaHeading}>{t('groups.readyToJoin')}</Text>
+            <Text style={styles.ctaBody}>{t('groups.joinCta', { name: group.name })}</Text>
+            <Pressable
+              onPress={handleJoin}
+              style={({ pressed }) => [
+                styles.ctaButton,
+                pressed && { transform: [{ scale: 1.03 }] },
+                isJoining && { opacity: 0.5 },
+              ]}
+              disabled={isJoining}
+              accessibilityLabel={t('groups.join')}
+              accessibilityHint={t('groups.joinsGroupHint')}
+              accessibilityRole="button"
+            >
+              {joinMutation.isPending ? (
+                <ActivityIndicator size="small" color={colors.onSecondaryContainer} />
+              ) : (
+                <Text style={styles.ctaButtonText}>
+                  {t('groups.join').toUpperCase()}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <FadeActionSheet
@@ -392,13 +404,23 @@ export default function GroupDetailScreen() {
   );
 }
 
+const HERO_HEIGHT = 480;
+
+const editorialShadow = {
+  shadowColor: '#151c27',
+  shadowOpacity: 0.06,
+  shadowRadius: 30,
+  shadowOffset: { width: 0, height: 15 },
+  ...Platform.select({ android: { elevation: 3 } }),
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xxl + spacing.xl,
   },
   centered: {
     flex: 1,
@@ -406,247 +428,290 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  banner: {
+
+  /* ── Hero ── */
+  heroWrap: {
     width: '100%',
-    height: 160,
-    backgroundColor: colors.surface100,
+    height: HERO_HEIGHT,
+    overflow: 'hidden',
   },
-  bannerPlaceholder: {
-    width: '100%',
-    height: 160,
-    backgroundColor: colors.surface100,
+  heroPlaceholderBg: {
+    backgroundColor: colors.primaryContainer,
+  },
+  heroContent: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.secondaryContainer,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.chip,
+    marginBottom: spacing.sm,
+  },
+  typeBadgeText: {
+    fontFamily: fontFamily.sansSemiBold,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.onSecondaryContainer,
+    letterSpacing: 1.5,
+  },
+  heroTitle: {
+    fontFamily: fontFamily.serif,
+    fontSize: 34,
+    fontWeight: '400',
+    color: '#ffffff',
+    lineHeight: 40,
+    letterSpacing: -0.3,
+    marginBottom: spacing.sm,
+    maxWidth: '85%',
+  },
+  heroDescription: {
+    fontFamily: fontFamily.serifItalic,
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.82)',
+    lineHeight: 21,
+    marginBottom: spacing.sm,
+    maxWidth: '90%',
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  heroMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  heroMetaText: {
+    fontFamily: fontFamily.sansMedium,
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.7)',
+  },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  heroJoinPill: {
+    backgroundColor: '#ffffff',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.button,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 100,
+    minHeight: 36,
   },
-  content: {
-    padding: spacing.screenHorizontal,
-    paddingTop: spacing.lg,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  badgeRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginLeft: 'auto',
-  },
-  badge: {
-    ...typography.label,
+  heroJoinPillText: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 13,
+    fontWeight: '700',
     color: colors.primary,
-    textTransform: 'capitalize',
   },
-  locationRow: {
+  heroJoinedPill: {
+    backgroundColor: colors.secondaryContainer,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.button,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.xxs,
+    minHeight: 36,
   },
-  location: {
-    ...typography.caption,
-    color: colors.textSecondary,
+  heroJoinedPillText: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.onSecondaryContainer,
   },
-  name: {
-    ...typography.h2,
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  languageMeta: {
+  heroMemberCount: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    flexShrink: 0,
+    gap: spacing.xxs,
   },
-  languageText: {
-    ...typography.caption,
-    color: colors.textSecondary,
+  heroMemberCountText: {
+    fontFamily: fontFamily.sans,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
   },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.label,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  description: {
-    ...typography.body,
-    color: colors.textPrimary,
-    lineHeight: 24,
+
+  /* ── Content canvas ── */
+  contentCanvas: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
   },
   errorBanner: {
     backgroundColor: colors.amberSoft,
     padding: spacing.md,
-    borderRadius: 8,
+    borderRadius: radius.lg,
     marginBottom: spacing.md,
   },
   errorText: {
-    ...typography.body,
+    ...typography.bodyMd,
     color: colors.textPrimary,
   },
-  peopleSection: {
-    marginBottom: spacing.xl,
+
+  /* ── Section pattern ── */
+  section: {
+    marginBottom: spacing.sectionGap,
   },
-  peopleHeader: {
+  sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  peopleSectionTitle: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  peopleContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  peopleAvatars: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  peopleAvatarWrap: {
-    zIndex: 1,
-  },
-  seeAllLink: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  seeAllLinkPressed: {
-    opacity: 0.7,
-  },
-  seeAllText: {
-    ...typography.label,
-    color: colors.primary,
-  },
-  memberCount: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  actions: {
-    marginBottom: spacing.xl,
-  },
-  joinedButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surface100,
-    borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  joinedButtonPressed: {
-    opacity: 0.8,
-  },
-  joinButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.primary,
-    borderRadius: radius.button,
-  },
-  joinButtonPressed: {
-    opacity: 0.9,
-  },
-  joinButtonDisabled: {
-    opacity: 0.4,
-  },
-  joinButtonText: {
-    ...typography.buttonLabel,
-    color: colors.onPrimary,
-  },
-  joinedButtonText: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  discussionsSection: {
-    marginTop: spacing.lg,
-  },
-  discussionsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
-  discussionsSectionTitle: {
-    marginBottom: 0,
+  sectionTitle: {
+    fontFamily: fontFamily.serif,
+    fontSize: 24,
+    fontWeight: '400',
+    color: colors.primary,
+    letterSpacing: -0.1,
   },
-  createDiscussionButton: {
+  sectionCount: {
+    fontFamily: fontFamily.sansSemiBold,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.onSurfaceVariant,
+  },
+
+  /* ── Community / members ── */
+  memberCard: {
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+  },
+  memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    justifyContent: 'space-between',
   },
-  createDiscussionText: {
-    ...typography.label,
+  memberRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  viewAllText: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 13,
+    fontWeight: '700',
     color: colors.primary,
   },
-  discussionsLoading: {
-    paddingVertical: spacing.lg,
+
+  /* ── Discussions ── */
+  addTopicButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  addTopicText: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  loadingWrap: {
+    paddingVertical: spacing.xl,
     alignItems: 'center',
   },
   discussionList: {
     gap: spacing.md,
   },
   discussionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  discussionTopRight: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  replyIcon: {
-    marginRight: 0,
-  },
-  discussionReplies: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  discussionTitle: {
-    ...typography.title,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-    paddingRight: 80,
-  },
-  discussionMeta: {
-    ...typography.body,
-    fontSize: typography.body.fontSize,
-    color: colors.textSecondary,
-    lineHeight: 22,
-    marginBottom: spacing.sm,
-  },
-  discussionBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...editorialShadow,
   },
   discussionAuthorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  discussionAuthor: {
-    ...typography.caption,
-    color: colors.textPrimary,
+  discussionMeta: {
+    fontFamily: fontFamily.sansSemiBold,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.onSurfaceVariant,
+    flex: 1,
   },
-  discussionDate: {
-    ...typography.caption,
-    color: colors.textSecondary,
+  discussionMetaDot: {
+    color: colors.outlineVariant,
+  },
+  discussionBody: {
+    ...typography.bodyMd,
+    color: colors.onSurface,
+    lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+  discussionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  discussionStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  discussionStatText: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  /* ── CTA (non-member) ── */
+  ctaCard: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.card,
+    padding: spacing.xl,
+    paddingVertical: spacing.xxl,
+    alignItems: 'center',
+    overflow: 'hidden',
+    marginTop: spacing.md,
+  },
+  ctaHeading: {
+    fontFamily: fontFamily.serif,
+    fontSize: 22,
+    fontWeight: '400',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  ctaBody: {
+    ...typography.bodyMd,
+    color: 'rgba(174,199,247,0.85)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: spacing.xl,
+    maxWidth: 300,
+  },
+  ctaButton: {
+    backgroundColor: colors.secondaryContainer,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.xl + spacing.xs,
+    borderRadius: radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.floating,
+  },
+  ctaButtonText: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.onSecondaryContainer,
+    letterSpacing: 0.5,
   },
 });

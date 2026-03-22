@@ -1,13 +1,16 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, shadow } from '@/theme/tokens';
+import { colors, fontFamily, spacing } from '@/theme/tokens';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** Height of the tab bar content (excluding safe area). Export for screen padding. */
+export const TAB_BAR_HEIGHT = 52;
 
 const TAB_HIT_SLOP = { top: 12, bottom: 12, left: 8, right: 8 };
 
@@ -54,7 +57,7 @@ function TabItem({
           <Ionicons
             name={isFocused ? iconFocused : iconDefault}
             size={20}
-            color={isFocused ? colors.primary : colors.ink300}
+            color={isFocused ? colors.primary : colors.outlineVariant}
           />
           {badge != null && badge > 0 && (
             <View style={styles.badge}>
@@ -63,7 +66,7 @@ function TabItem({
           )}
         </View>
         <Text
-          style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.ink300 }]}
+          style={[styles.tabLabel, { color: isFocused ? colors.primary : colors.outlineVariant }]}
           numberOfLines={1}
         >
           {label}
@@ -86,16 +89,15 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
   return (
     <View
-      style={[styles.outer, { paddingBottom: Math.max(insets.bottom, 12) }]}
-      pointerEvents="box-none"
+      style={[
+        styles.outer,
+        {
+          paddingBottom: insets.bottom,
+        },
+      ]}
     >
-      <View style={styles.pill} collapsable={false}>
-        <BlurView
-          style={StyleSheet.absoluteFill}
-          blurType="light"
-          intensity={Platform.OS === 'ios' ? 70 : 80}
-        />
-        <View style={styles.pillContent}>
+      <BlurView intensity={20} tint="light" style={styles.bar}>
+        <View style={styles.barContent}>
           {state.routes.map((route, index) => {
             const { options } = descriptors[route.key];
             const label =
@@ -117,7 +119,10 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
                 target: route.key,
                 canPreventDefault: true,
               });
-              if (!isFocused && !event.defaultPrevented) {
+              if (event.defaultPrevented) return;
+              if (isFocused) {
+                navigation.navigate(route.name);
+              } else {
                 navigation.navigate(route.name, route.params);
               }
             };
@@ -143,40 +148,29 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             );
           })}
         </View>
-      </View>
+      </BlurView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   outer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    backgroundColor: colors.glass.surface,
   },
-  pill: {
-    overflow: 'hidden',
-    borderRadius: 999,
-    shadowColor: colors.shadow,
-    shadowOffset: shadow.floating.shadowOffset,
-    shadowOpacity: shadow.floating.shadowOpacity,
-    shadowRadius: shadow.floating.shadowRadius,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  pillContent: {
+  bar: {
     flexDirection: 'row',
     backgroundColor: colors.glass.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    overflow: 'hidden',
+  },
+  barContent: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: spacing.sm,
   },
   tabItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
   },
   tabPressable: {
     alignItems: 'center',
@@ -205,7 +199,8 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   tabLabel: {
-    fontSize: 11,
+    fontFamily: fontFamily.sansMedium,
+    fontSize: 9,
     fontWeight: '500',
     letterSpacing: 0.2,
   },

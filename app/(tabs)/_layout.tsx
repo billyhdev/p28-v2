@@ -9,7 +9,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingFriendRequestCountQuery } from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
-import { colors, typography } from '@/theme/tokens';
+import { colors, typography, fontFamily } from '@/theme/tokens';
 
 export default function TabLayout() {
   useLocale();
@@ -22,15 +22,18 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.ink300,
+        tabBarStyle: {},
         headerShown: useClientOnlyValue(false, true),
         headerStyle: {
-          backgroundColor: colors.background,
+          backgroundColor: colors.surface,
           elevation: 0,
           shadowOpacity: 0,
         },
         headerTitleStyle: {
-          ...typography.title,
-          color: colors.textPrimary,
+          fontFamily: fontFamily.serif,
+          fontSize: 18,
+          fontWeight: '400',
+          color: colors.onSurface,
         },
         headerShadowVisible: false,
       }}
@@ -50,7 +53,7 @@ export default function TabLayout() {
                   <Ionicons
                     name="information-circle-outline"
                     size={22}
-                    color={colors.ink700}
+                    color={colors.onSurfaceVariant}
                     style={{ marginRight: 16, opacity: pressed ? 0.5 : 1 }}
                   />
                 )}
@@ -71,6 +74,7 @@ export default function TabLayout() {
         options={{
           title: t('tabs.messages'),
           tabBarAccessibilityLabel: t('tabs.messages'),
+          lazy: false,
         }}
       />
       <Tabs.Screen

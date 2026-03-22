@@ -320,8 +320,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.cardPadding,
     minHeight: minTouchTarget,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.surface100,
   },
   optionRowPressed: { backgroundColor: colors.surface100 },
   optionRowSelected: { backgroundColor: colors.brandSoft },

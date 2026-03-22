@@ -1,6 +1,14 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -10,23 +18,20 @@ import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useAreFriendsQuery,
+  useCreateChatMutation,
   useProfileQuery,
   useRemoveFriendMutation,
 } from '@/hooks/useApiQueries';
-import { getUserFacingError } from '@/lib/api';
+import { api, getUserFacingError } from '@/lib/api';
+import type { ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { avatarSizes, colors, radius, shadow, spacing, typography } from '@/theme/tokens';
+import { avatarSizes, colors, radius, spacing, typography } from '@/theme/tokens';
 
 const cardStyle = {
-  backgroundColor: colors.surface,
+  backgroundColor: colors.surfaceContainerLow,
   borderRadius: radius.card,
   padding: spacing.cardPadding,
   marginBottom: spacing.cardGap,
-  shadowColor: colors.shadow,
-  shadowOffset: shadow.cardSoft.shadowOffset,
-  shadowOpacity: shadow.cardSoft.shadowOpacity,
-  shadowRadius: shadow.cardSoft.shadowRadius,
-  elevation: 2,
 };
 
 export default function UserProfileScreen() {
@@ -39,6 +44,7 @@ export default function UserProfileScreen() {
   const currentUserId = session?.user?.id ?? '';
   const { data: areFriends } = useAreFriendsQuery(currentUserId, userId);
   const removeFriendMutation = useRemoveFriendMutation();
+  const createChatMutation = useCreateChatMutation();
 
   const [friendsSheetVisible, setFriendsSheetVisible] = useState(false);
 
@@ -54,6 +60,34 @@ export default function UserProfileScreen() {
     if (!currentUserId || !userId) return;
     removeFriendMutation.mutate({ userId: currentUserId, friendId: userId });
   }, [currentUserId, userId, removeFriendMutation]);
+
+  const handleStartChat = useCallback(async () => {
+    if (!currentUserId || !userId) return;
+    const pushToChat = (chatId: string) => {
+      // withAnchor ensures the messages stack includes index so back button works
+      router.push(`/messages/chat/${chatId}`, { withAnchor: true } as object);
+    };
+    try {
+      const existing = await api.data.findExisting1on1Chat(currentUserId, userId);
+      if (existing && !('message' in existing)) {
+        pushToChat(existing.id);
+      } else {
+        createChatMutation.mutate(
+          { userId: currentUserId, input: { memberUserIds: [userId] } },
+          {
+            onSuccess: (chat) => pushToChat(chat.id),
+            onError: (err) => {
+              const msg = getUserFacingError(err);
+              Alert.alert(t('common.error'), msg);
+            },
+          }
+        );
+      }
+    } catch (err) {
+      const msg = getUserFacingError(err as ApiError);
+      Alert.alert(t('common.error'), msg);
+    }
+  }, [currentUserId, userId, router, createChatMutation]);
 
   useFocusEffect(
     useCallback(() => {
@@ -124,21 +158,37 @@ export default function UserProfileScreen() {
             <Text style={styles.title}>{profile?.displayName ?? t('profile.title')}</Text>
             {currentUserId && userId ? (
               areFriends ? (
-                <Pressable
-                  onPress={handleOpenFriendsSheet}
-                  style={({ pressed }) => [
-                    styles.friendsButton,
-                    pressed && styles.friendsButtonPressed,
-                  ]}
-                  disabled={removeFriendMutation.isPending}
-                  accessibilityLabel={t('friends.friends')}
-                  accessibilityHint={t('groups.opensOptions')}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="people-outline" size={18} color={colors.textPrimary} />
-                  <Text style={styles.friendsButtonText}>{t('friends.friends')}</Text>
-                  <Ionicons name="chevron-down" size={18} color={colors.textPrimary} />
-                </Pressable>
+                <View style={styles.friendActionsRow}>
+                  <Pressable
+                    onPress={handleOpenFriendsSheet}
+                    style={({ pressed }) => [
+                      styles.friendsButton,
+                      pressed && styles.friendsButtonPressed,
+                    ]}
+                    disabled={removeFriendMutation.isPending}
+                    accessibilityLabel={t('friends.friends')}
+                    accessibilityHint={t('groups.opensOptions')}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="people-outline" size={18} color={colors.textPrimary} />
+                    <Text style={styles.friendsButtonText}>{t('friends.friends')}</Text>
+                    <Ionicons name="chevron-down" size={18} color={colors.textPrimary} />
+                  </Pressable>
+                  <Pressable
+                    onPress={handleStartChat}
+                    style={({ pressed }) => [
+                      styles.messageButton,
+                      pressed && styles.messageButtonPressed,
+                    ]}
+                    disabled={createChatMutation.isPending}
+                    accessibilityLabel={t('friends.startChat')}
+                    accessibilityHint={t('friends.startChatHint')}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="chatbubble-outline" size={18} color={colors.onPrimary} />
+                    <Text style={styles.messageButtonText}>{t('friends.startChat')}</Text>
+                  </Pressable>
+                </View>
               ) : (
                 <AddFriendButton
                   currentUserId={currentUserId}
@@ -213,18 +263,21 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, height: avatarSizes.xl },
   title: { ...typography.h3, color: colors.textPrimary, marginBottom: spacing.xs },
+  friendActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
   friendsButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-start',
     gap: 6,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surface100,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   friendsButtonPressed: {
     opacity: 0.8,
@@ -232,6 +285,23 @@ const styles = StyleSheet.create({
   friendsButtonText: {
     ...typography.label,
     color: colors.textPrimary,
+  },
+  messageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.button,
+  },
+  messageButtonPressed: {
+    opacity: 0.8,
+  },
+  messageButtonText: {
+    ...typography.label,
+    color: colors.onPrimary,
   },
   card: { ...cardStyle },
   cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.sm },

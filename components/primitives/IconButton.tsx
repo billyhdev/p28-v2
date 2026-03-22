@@ -21,7 +21,7 @@ export function IconButton({
   name,
   onPress,
   size = 20,
-  color = colors.textPrimary,
+  color = colors.onSurface,
   style: styleProp,
   accessibilityLabel,
   accessibilityHint,

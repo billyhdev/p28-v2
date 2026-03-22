@@ -214,10 +214,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surface100,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   declineText: {
     ...typography.label,

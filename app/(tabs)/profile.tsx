@@ -1,17 +1,18 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfileQuery } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { Avatar, Button } from '@/components/primitives';
-import { colors, spacing, typography, radius, shadow } from '@/theme/tokens';
-
-// Pill height + outer padding; extra buffer so sign out button clears the floating tab bar
-const FLOATING_TAB_BAR_HEIGHT = 110;
+import { Avatar } from '@/components/primitives';
+import { TAB_BAR_HEIGHT } from '@/components/navigation/FloatingTabBar';
+import { colors, spacing, typography, radius, fontFamily } from '@/theme/tokens';
 
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
@@ -66,7 +67,7 @@ export default function ProfileScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingBottom: FLOATING_TAB_BAR_HEIGHT + insets.bottom },
+        { paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.lg },
       ]}
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
@@ -78,125 +79,119 @@ export default function ProfileScreen() {
           </View>
         ) : null}
 
+        {/* Centered avatar + name + handle */}
         <View style={styles.header}>
           <Avatar
             source={profile?.avatarUrl ? { uri: profile.avatarUrl } : null}
             fallbackText={displayName}
-            size="xl"
+            size="xxl"
             accessibilityLabel={t('profile.profilePhoto')}
           />
-          <View style={styles.headerText}>
-            <Text style={styles.title}>{fullName || t('profile.title')}</Text>
-            {session?.user?.email ? (
-              <Text style={styles.subtitle}>{session.user.email}</Text>
-            ) : null}
-          </View>
+          <Text style={styles.name}>{fullName || t('profile.title')}</Text>
+          {profile?.displayName ? (
+            <Text style={styles.handle}>@{profile.displayName.replace(/\s+/g, '_').toLowerCase()}</Text>
+          ) : null}
+        </View>
+
+        {/* Edit profile + settings gear */}
+        <View style={styles.actionRow}>
+          <Pressable
+            style={styles.editButton}
+            onPress={() => router.push('/profile/edit')}
+            accessibilityLabel={t('profile.editProfile')}
+          >
+            <Text style={styles.editButtonText}>{t('profile.editProfile')}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.gearButton}
+            onPress={() => router.push('/profile/settings')}
+            accessibilityLabel={t('profile.settings')}
+            accessibilityHint={t('profile.settingsHint')}
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.onSurfaceVariant} />
+          </Pressable>
         </View>
 
         {isLegacyProfile ? (
           <View style={styles.noticeCard}>
             <Text style={styles.noticeTitle}>{t('profile.completeProfile')}</Text>
             <Text style={styles.noticeText}>{t('profile.completeProfileHint')}</Text>
-            <Button
-              title={t('profile.completeOnboarding')}
+            <Pressable
+              style={styles.editButton}
               onPress={() => router.push('/auth/onboarding')}
-              variant="secondary"
-            />
+            >
+              <Text style={styles.editButtonText}>{t('profile.completeOnboarding')}</Text>
+            </Pressable>
           </View>
         ) : null}
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>{t('profile.about')}</Text>
-          <View style={styles.aboutFields}>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('profile.displayName')}</Text>
-              <Text style={styles.rowValue}>{profile?.displayName ?? '—'}</Text>
+        {/* Info fields with icons */}
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <MaterialIcons name="cake" size={18} color={colors.primary} />
             </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('profile.firstName')}</Text>
-              <Text style={styles.rowValue}>{profile?.firstName ?? '—'}</Text>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>{t('profile.birthDate').toUpperCase()}</Text>
+              <Text style={styles.infoValue}>{birthDateLabel ?? '—'}</Text>
             </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('profile.lastName')}</Text>
-              <Text style={styles.rowValue}>{profile?.lastName ?? '—'}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <Ionicons name="globe-outline" size={18} color={colors.primary} />
             </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('profile.birthDate')}</Text>
-              <Text style={styles.rowValue}>{birthDateLabel ?? '—'}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('profile.country')}</Text>
-              <Text style={styles.rowValue}>{profile?.country ?? '—'}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>{t('profile.preferredLanguage')}</Text>
-              <Text style={styles.rowValue}>
-                {profile?.preferredLanguage === 'en'
-                  ? t('language.english')
-                  : profile?.preferredLanguage === 'ko'
-                    ? t('language.korean')
-                    : profile?.preferredLanguage === 'km'
-                      ? t('language.khmer')
-                      : (profile?.preferredLanguage ?? '—')}
-              </Text>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>{t('profile.country').toUpperCase()}</Text>
+              <Text style={styles.infoValue}>{profile?.country ?? '—'}</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>{t('profile.bio')}</Text>
-          <Text style={styles.bio}>{profile?.bio ?? t('profile.bioPlaceholder')}</Text>
+        {/* Bio — Reflection Plate: white card with secondary left accent */}
+        <View style={styles.bioPlate}>
+          <View style={styles.bioAccent} />
+          <View style={styles.bioInner}>
+            <View style={styles.bioHeader}>
+              <Text style={styles.quoteIcon}>{'\u201C'}</Text>
+              <Text style={styles.bioTitle}>{t('profile.bio')}</Text>
+            </View>
+            <Text style={styles.bioText}>
+              {profile?.bio
+                ? `\u201C${profile.bio}\u201D`
+                : t('profile.bioPlaceholder')}
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.actions}>
-          <Button
-            title={t('profile.editProfile')}
-            onPress={() => router.push('/profile/edit')}
-            variant="primary"
-            style={styles.actionButton}
-            accessibilityLabel={t('profile.editProfile')}
-          />
-          <Button
-            title={t('profile.settings')}
-            onPress={() => router.push('/profile/settings')}
-            variant="secondary"
-            style={styles.actionButton}
-            accessibilityLabel={t('profile.settings')}
-            accessibilityHint={t('profile.settingsHint')}
-          />
-          <Button
-            title={t('conduct.title')}
+        {/* Account & Community section */}
+        <View style={styles.accountSection}>
+          <Text style={styles.sectionTitle}>{'ACCOUNT & COMMUNITY'}</Text>
+
+          <Pressable
+            style={styles.menuItem}
             onPress={() => router.push('/profile/conduct')}
-            variant="secondary"
-            style={styles.actionButton}
             accessibilityLabel={t('conduct.title')}
-            accessibilityHint={t('conduct.openHint')}
-          />
-          <Button
-            title={t('profile.signOut')}
+          >
+            <Ionicons name="shield-checkmark-outline" size={20} color={colors.onSurfaceVariant} />
+            <Text style={styles.menuItemText}>{t('conduct.title')}</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.outlineVariant} />
+          </Pressable>
+
+          <Pressable
+            style={styles.menuItem}
             onPress={handleSignOutPress}
-            variant="secondary"
-            style={styles.actionButton}
             accessibilityLabel={t('profile.signOut')}
             accessibilityHint={t('profile.signOutHint')}
-          />
+          >
+            <Ionicons name="log-out-outline" size={20} color={colors.error} />
+            <Text style={[styles.menuItemText, { color: colors.error }]}>{t('profile.signOut')}</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.outlineVariant} />
+          </Pressable>
         </View>
       </Animated.View>
     </ScrollView>
   );
 }
-
-const cardStyle = {
-  backgroundColor: colors.surface,
-  borderRadius: radius.card,
-  padding: spacing.cardPadding,
-  marginBottom: spacing.cardGap,
-  shadowColor: colors.shadow,
-  shadowOffset: shadow.cardSoft.shadowOffset,
-  shadowOpacity: shadow.cardSoft.shadowOpacity,
-  shadowRadius: shadow.cardSoft.shadowRadius,
-  elevation: 2,
-};
 
 const styles = StyleSheet.create({
   container: {
@@ -208,43 +203,181 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   animatedContent: { flex: 1 },
+  centered: { justifyContent: 'center', alignItems: 'center' },
+
+  /* Header — centered avatar, name, handle */
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  name: {
+    ...typography.headlineSm,
+    color: colors.onSurface,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  handle: {
+    ...typography.bodyMd,
+    color: colors.onSurfaceVariant,
+    marginTop: spacing.xxs,
+    textAlign: 'center',
+  },
+
+  /* Edit profile + gear row */
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  headerText: { flex: 1 },
-  title: { ...typography.h3, color: colors.textPrimary },
-  subtitle: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs },
-  card: { ...cardStyle },
-  cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.sm },
-  aboutFields: { gap: spacing.sm },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+  editButton: {
+    backgroundColor: colors.surfaceContainerHigh,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.button,
   },
-  rowLabel: { ...typography.caption, color: colors.textSecondary },
-  rowValue: {
-    ...typography.body,
-    color: colors.textPrimary,
-    textAlign: 'right' as const,
-    flexShrink: 1,
+  editButtonText: {
+    ...typography.labelLg,
+    color: colors.onSurface,
   },
-  bio: { ...typography.body, color: colors.textSecondary },
-  actions: {
-    marginTop: spacing.sm,
-    gap: spacing.sm,
+  gearButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceContainerHigh,
+    justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
   },
-  actionButton: { width: '100%', maxWidth: 400 },
-  noticeCard: { ...cardStyle, backgroundColor: colors.brandSoft },
-  noticeTitle: { ...typography.cardTitle, color: colors.primary, marginBottom: spacing.xs },
-  noticeText: { ...typography.body, color: colors.ink700, marginBottom: spacing.sm },
-  centered: { justifyContent: 'center', alignItems: 'center' },
+
+  /* Info fields with icons */
+  infoSection: {
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.card,
+    padding: spacing.cardPadding,
+    marginBottom: spacing.cardGap,
+    gap: spacing.md,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  infoIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainer,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontFamily: fontFamily.sansMedium,
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.8,
+    color: colors.onSurfaceVariant,
+    marginBottom: 2,
+  },
+  infoValue: {
+    ...typography.bodyMd,
+    color: colors.onSurface,
+  },
+
+  /* Bio — Reflection Plate */
+  bioPlate: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.card,
+    marginBottom: spacing.cardGap,
+    overflow: 'hidden',
+  },
+  bioAccent: {
+    width: 4,
+    backgroundColor: colors.secondary,
+  },
+  bioInner: {
+    flex: 1,
+    padding: spacing.cardPadding,
+  },
+  bioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  quoteIcon: {
+    fontFamily: fontFamily.serif,
+    fontSize: 28,
+    lineHeight: 28,
+    color: colors.primary,
+    marginTop: -2,
+  },
+  bioTitle: {
+    ...typography.cardTitle,
+    color: colors.onSurface,
+  },
+  bioText: {
+    fontFamily: fontFamily.serifItalic,
+    fontSize: 14,
+    fontWeight: '400' as const,
+    color: colors.onSurfaceVariant,
+    lineHeight: 22,
+  },
+
+  /* Account & Community section */
+  accountSection: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  sectionTitle: {
+    fontFamily: fontFamily.sansMedium,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.8,
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.sm,
+    marginLeft: spacing.xxs,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    marginBottom: spacing.xs,
+    gap: spacing.sm,
+  },
+  menuItemText: {
+    ...typography.bodyMd,
+    color: colors.onSurface,
+    flex: 1,
+  },
+
+  /* Notice card */
+  noticeCard: {
+    backgroundColor: colors.secondaryContainer,
+    borderRadius: radius.card,
+    padding: spacing.cardPadding,
+    marginBottom: spacing.cardGap,
+  },
+  noticeTitle: {
+    ...typography.cardTitle,
+    color: colors.onSecondaryContainer,
+    marginBottom: spacing.xs,
+  },
+  noticeText: {
+    ...typography.body,
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.sm,
+  },
+
+  /* Error banner */
   errorBanner: {
     backgroundColor: colors.accentSoft,
     padding: spacing.sm,

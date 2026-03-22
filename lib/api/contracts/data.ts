@@ -1,5 +1,12 @@
 import type { ApiError } from './errors';
 import type {
+  Chat,
+  ChatFolder,
+  ChatFolderItem,
+  ChatMember,
+  ChatMessage,
+  CreateChatInput,
+  CreateChatMessageInput,
   CreateDiscussionInput,
   CreateDiscussionPostInput,
   CreateGroupDiscussionInput,
@@ -18,6 +25,8 @@ import type {
   PostReactionType,
   Profile,
   ProfileUpdates,
+  UpdateChatInput,
+  UpdateChatMessageInput,
   UpdateDiscussionInput,
   UpdateDiscussionPostInput,
   UpdateGroupInput,
@@ -48,6 +57,13 @@ export interface DataContract {
     userId: string,
     imageUri: string,
     base64Data?: string | null
+  ): Promise<string | ApiError>;
+  /** Upload chat avatar or chat message image. Returns public URL. */
+  uploadChatImage(
+    userId: string,
+    imageUri: string,
+    base64Data?: string | null,
+    options?: { chatId?: string }
   ): Promise<string | ApiError>;
 
   getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError>;
@@ -81,6 +97,7 @@ export interface DataContract {
   acceptFriendRequest(requestId: string, receiverId: string): Promise<void | ApiError>;
   declineFriendRequest(requestId: string, receiverId: string): Promise<void | ApiError>;
   getReceivedFriendRequests(userId: string): Promise<FriendRequest[] | ApiError>;
+  getSentFriendRequests(userId: string): Promise<FriendRequest[] | ApiError>;
   getFriendRequestBetween(
     userId: string,
     targetUserId: string
@@ -136,6 +153,62 @@ export interface DataContract {
   ): Promise<void | ApiError>;
   /** Get who gave which reaction on a post. */
   getDiscussionPostReactions(postId: string): Promise<PostReactionDetail[] | ApiError>;
+
+  // Chats
+  getChatsForUser(userId: string, options?: { folderId?: string }): Promise<Chat[] | ApiError>;
+  getChat(id: string): Promise<Chat | ApiError>;
+  findExisting1on1Chat(userId: string, otherUserId: string): Promise<Chat | null | ApiError>;
+  /** Find a chat with exactly these members (current user + memberUserIds). Works for 1-on-1 and group chats. */
+  findExistingChatByMembers(
+    userId: string,
+    memberUserIds: string[]
+  ): Promise<Chat | null | ApiError>;
+  createChat(userId: string, input: CreateChatInput): Promise<Chat | ApiError>;
+  addChatMembers(
+    chatId: string,
+    addedByUserId: string,
+    memberUserIds: string[]
+  ): Promise<void | ApiError>;
+  updateChat(id: string, input: UpdateChatInput): Promise<Chat | ApiError>;
+  getChatMessages(chatId: string, options?: { userId?: string }): Promise<ChatMessage[] | ApiError>;
+  createChatMessage(
+    chatId: string,
+    userId: string,
+    input: CreateChatMessageInput
+  ): Promise<ChatMessage | ApiError>;
+  updateChatMessage(
+    messageId: string,
+    userId: string,
+    input: UpdateChatMessageInput
+  ): Promise<ChatMessage | ApiError>;
+  reactToChatMessage(
+    messageId: string,
+    chatId: string,
+    userId: string,
+    reactionType: PostReactionType
+  ): Promise<void | ApiError>;
+  removeChatMessageReaction(
+    messageId: string,
+    chatId: string,
+    userId: string,
+    reactionType: PostReactionType
+  ): Promise<void | ApiError>;
+  getChatMessageReactions(messageId: string): Promise<PostReactionDetail[] | ApiError>;
+  getChatFolders(userId: string): Promise<ChatFolder[] | ApiError>;
+  createChatFolder(userId: string, name: string): Promise<ChatFolder | ApiError>;
+  updateChatFolder(folderId: string, userId: string, name: string): Promise<ChatFolder | ApiError>;
+  deleteChatFolder(folderId: string, userId: string): Promise<void | ApiError>;
+  getChatFolderItems(folderId: string): Promise<ChatFolderItem[] | ApiError>;
+  addChatToFolder(
+    folderId: string,
+    chatId: string,
+    userId: string
+  ): Promise<ChatFolderItem | ApiError>;
+  removeChatFromFolder(folderId: string, chatId: string, userId: string): Promise<void | ApiError>;
+  /** Get profiles for multiple user IDs. Used for friend picker. */
+  getProfiles(userIds: string[]): Promise<Profile[] | ApiError>;
+  /** Search profiles by display name, first name, or last name. Excludes excludeUserId (typically current user). */
+  searchProfiles(search: string, excludeUserId: string): Promise<Profile[] | ApiError>;
 
   // App roles (Super Admin, Admin)
   isSuperAdmin(userId: string): Promise<boolean | ApiError>;

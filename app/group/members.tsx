@@ -157,10 +157,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   memberRowSelf: {
     opacity: 0.55,

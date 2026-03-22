@@ -66,11 +66,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   section: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.card,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   optionRow: {
     flexDirection: 'row',

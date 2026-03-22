@@ -33,11 +33,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
-    marginTop: spacing.lg,
+    marginTop: spacing.sectionGap,
   },
   title: {
-    ...typography.title,
-    color: colors.textPrimary,
+    ...typography.headlineSm,
+    color: colors.onSurface,
   },
   actionBtn: {
     paddingVertical: 4,

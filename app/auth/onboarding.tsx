@@ -1,20 +1,33 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated as RNAnimated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AuthFormLayout } from '@/components/auth/AuthFormLayout';
-import { authScreenStyles } from '@/components/auth/authScreenStyles';
 import { Button, Input } from '@/components/primitives';
+import { ReflectionPlate } from '@/components/patterns/ReflectionPlate';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useFadeSheetAnimation } from '@/hooks/useFadeSheetAnimation';
 import { usePendingSignUp } from '@/contexts/PendingSignUpContext';
 import { useCreateProfileMutation } from '@/hooks/useApiQueries';
 import { auth } from '@/lib/api';
 import { getUserFacingError } from '@/lib/errors';
 import type { ApiError } from '@/lib/api/contracts/errors';
 import { t } from '@/lib/i18n';
-import { authScreen, colors, radius, spacing, typography } from '@/theme/tokens';
+import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
 type Option = { value: string; label: string };
 
@@ -151,7 +164,10 @@ const COUNTRY_OPTIONS: Option[] = [
   { value: 'ZW', label: 'Zimbabwe' },
 ];
 
-const LANGUAGE_OPTION_KEYS: { value: string; labelKey: 'language.english' | 'language.korean' | 'language.khmer' }[] = [
+const LANGUAGE_OPTION_KEYS: {
+  value: string;
+  labelKey: 'language.english' | 'language.korean' | 'language.khmer';
+}[] = [
   { value: 'en', labelKey: 'language.english' },
   { value: 'km', labelKey: 'language.khmer' },
   { value: 'ko', labelKey: 'language.korean' },
@@ -201,8 +217,8 @@ function BirthDateField({
   };
 
   return (
-    <View style={authScreenStyles.inputSpacing}>
-      <Text style={styles.label}>{t('profile.birthDate')}</Text>
+    <View>
+      <Text style={styles.fieldLabel}>{t('profile.birthDate')}</Text>
       <Pressable
         onPress={handlePress}
         disabled={disabled}
@@ -214,6 +230,7 @@ function BirthDateField({
         <Text style={[styles.selectText, !value ? styles.placeholderText : null]}>
           {value ? formatDateForDisplay(value) : t('profile.selectDateOptional')}
         </Text>
+        <Ionicons name="calendar-outline" size={20} color={colors.onSurfaceVariant} />
       </Pressable>
       {showPicker && (
         <>
@@ -249,6 +266,7 @@ function SelectField({
   onChange,
   accessibilityHint,
   doneLabel,
+  icon,
 }: {
   label: string;
   value: string | null;
@@ -258,12 +276,14 @@ function SelectField({
   onChange: (next: string) => void;
   accessibilityHint?: string;
   doneLabel?: string;
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
 }) {
   const [open, setOpen] = useState(false);
+  const { sheetSlideAnim, sheetFadeAnim } = useFadeSheetAnimation(open);
   const selectedLabel = options.find((o) => o.value === value)?.label;
   return (
     <>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.fieldLabel}>{label}</Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
@@ -275,39 +295,69 @@ function SelectField({
         <Text style={[styles.selectText, !selectedLabel ? styles.placeholderText : null]}>
           {selectedLabel ?? placeholder}
         </Text>
+        <Ionicons
+          name={icon ?? 'chevron-expand-outline'}
+          size={20}
+          color={colors.onSurfaceVariant}
+        />
       </Pressable>
 
-      <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{label}</Text>
-            <Button
-              title={doneLabel ?? t('common.done')}
-              variant="text"
-              onPress={() => setOpen(false)}
-              accessibilityLabel={doneLabel ?? t('common.done')}
-            />
-          </View>
-          <ScrollView contentContainerStyle={styles.modalList}>
-            {options.map((opt) => {
-              const active = opt.value === value;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  style={[styles.modalItem, active ? styles.modalItemActive : null]}
-                >
-                  <Text style={[styles.modalItemText, active ? styles.modalItemTextActive : null]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
+      <Modal
+        visible={open}
+        transparent
+        animationType="none"
+        onRequestClose={() => setOpen(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.sheetOverlay} onPress={() => setOpen(false)}>
+          <RNAnimated.View
+            style={[StyleSheet.absoluteFill, styles.sheetBackdrop, { opacity: sheetFadeAnim }]}
+            pointerEvents="none"
+          />
+          <RNAnimated.View
+            style={[styles.sheetContainer, { transform: [{ translateY: sheetSlideAnim }] }]}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>{label}</Text>
+                <Button
+                  title={doneLabel ?? t('common.done')}
+                  variant="text"
+                  onPress={() => setOpen(false)}
+                  accessibilityLabel={doneLabel ?? t('common.done')}
+                />
+              </View>
+              <ScrollView
+                contentContainerStyle={styles.sheetList}
+                style={styles.sheetScroll}
+              >
+                {options.map((opt) => {
+                  const active = opt.value === value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => {
+                        onChange(opt.value);
+                        setOpen(false);
+                      }}
+                      style={[styles.sheetItem, active ? styles.sheetItemActive : null]}
+                    >
+                      <Text
+                        style={[
+                          styles.sheetItemText,
+                          active ? styles.sheetItemTextActive : null,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Pressable>
+          </RNAnimated.View>
+        </Pressable>
       </Modal>
     </>
   );
@@ -317,6 +367,7 @@ export default function OnboardingScreen() {
   const { session } = useAuth();
   const { setLocale, locale } = useLocale();
   const { pendingSignUp, clearPendingSignUp } = usePendingSignUp();
+  const insets = useSafeAreaInsets();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -329,7 +380,6 @@ export default function OnboardingScreen() {
   const createProfileMutation = useCreateProfileMutation();
   const isSubmitting = isSubmittingSignUp || createProfileMutation.isPending;
 
-  // User must have either pending sign-up (from sign-up screen) or existing session
   useEffect(() => {
     if (!pendingSignUp && !session?.user?.id) {
       router.replace('/auth/sign-in');
@@ -422,131 +472,268 @@ export default function OnboardingScreen() {
   );
 
   return (
-    <AuthFormLayout
-      title={t('onboarding.title')}
-      subtitle={t('onboarding.subtitle')}
-      contentContainerStyle={{ paddingBottom: spacing.xl * 2 }}
-      footer={
-        <Button
-          title={t('auth.backToSignIn')}
-          onPress={handleBackToSignIn}
-          variant="text"
-          disabled={isSubmitting}
-          style={authScreenStyles.secondaryCtaButton}
-          accessibilityLabel={t('auth.backToSignIn')}
-          accessibilityHint={t('onboarding.backToSignInHint')}
-        />
-      }
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Input
-        label={t('profile.firstName')}
-        value={firstName}
-        onChangeText={setFirstName}
-        placeholder={t('profile.firstName')}
-        editable={!isSubmitting}
-        containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
-      />
-      <Input
-        label={t('profile.lastName')}
-        value={lastName}
-        onChangeText={setLastName}
-        placeholder={t('profile.lastName')}
-        editable={!isSubmitting}
-        containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
-      />
-      <BirthDateField value={birthDate} onChange={setBirthDate} disabled={isSubmitting} />
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingTop: insets.top + spacing.lg,
+            paddingBottom: insets.bottom + spacing.xxl,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View entering={FadeIn.duration(250)} style={styles.content}>
+          {/* Back button */}
+          <Pressable
+            onPress={handleBackToSignIn}
+            style={styles.backButton}
+            disabled={isSubmitting}
+            accessibilityLabel={t('auth.backToSignIn')}
+            accessibilityHint={t('onboarding.backToSignInHint')}
+            accessibilityRole="button"
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+          </Pressable>
 
-      <View style={authScreenStyles.inputSpacing}>
-        <SelectField
-          label={t('profile.countryOfResidence')}
-          value={country}
-          placeholder={t('profile.selectCountryOptional')}
-          options={COUNTRY_OPTIONS}
-          disabled={isSubmitting}
-          onChange={setCountry}
-          accessibilityHint={t('profile.optionsListHint')}
-        />
-      </View>
-      <View style={authScreenStyles.inputSpacing}>
-        <SelectField
-          label={t('profile.preferredLanguage')}
-          value={preferredLanguage}
-          placeholder={t('language.selectLanguage')}
-          options={languageOptions}
-          disabled={isSubmitting}
-          onChange={setPreferredLanguage}
-          accessibilityHint={t('profile.optionsListHint')}
-        />
-      </View>
+          {/* Editorial header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>{t('onboarding.title')}</Text>
+            <Text style={styles.subtitle}>{t('onboarding.subtitle')}</Text>
+          </View>
 
-      <Text style={styles.conductHint}>{t('conduct.onboardingHint')}</Text>
+          {/* Form fields */}
+          <View style={styles.form}>
+            <Input
+              label={t('profile.firstName')}
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder={t('profile.firstName')}
+              editable={!isSubmitting}
+              containerStyle={styles.fieldSpacing}
+            />
+            <Input
+              label={t('profile.lastName')}
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder={t('profile.lastName')}
+              editable={!isSubmitting}
+              containerStyle={styles.fieldSpacing}
+            />
 
-      {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+            <View style={styles.fieldSpacing}>
+              <BirthDateField value={birthDate} onChange={setBirthDate} disabled={isSubmitting} />
+            </View>
 
-      <Button
-        title={isSubmitting ? t('profile.saving') : t('common.continue')}
-        onPress={handleSubmit}
-        disabled={isSubmitting || !canSubmit}
-        style={authScreenStyles.ctaButton}
-        accessibilityLabel={t('common.continue')}
-        accessibilityHint={t('onboarding.continueHint')}
-      />
-    </AuthFormLayout>
+            <View style={styles.fieldSpacing}>
+              <SelectField
+                label={t('profile.countryOfResidence')}
+                value={country}
+                placeholder={t('profile.selectCountryOptional')}
+                options={COUNTRY_OPTIONS}
+                disabled={isSubmitting}
+                onChange={setCountry}
+                accessibilityHint={t('profile.optionsListHint')}
+                icon="chevron-expand-outline"
+              />
+            </View>
+
+            <View style={styles.fieldSpacing}>
+              <SelectField
+                label={t('profile.preferredLanguage')}
+                value={preferredLanguage}
+                placeholder={t('language.selectLanguage')}
+                options={languageOptions}
+                disabled={isSubmitting}
+                onChange={setPreferredLanguage}
+                accessibilityHint={t('profile.optionsListHint')}
+                icon="language-outline"
+              />
+            </View>
+          </View>
+
+          {/* Scripture quote plate */}
+          <View style={styles.quotePlateWrapper}>
+            <ReflectionPlate
+              quote={t('onboarding.scriptureQuote')}
+              attribution={t('onboarding.scriptureAttribution')}
+            />
+          </View>
+
+          {/* Error banner */}
+          {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+
+          {/* CTA */}
+          <View style={styles.ctaSection}>
+            <Button
+              title={isSubmitting ? t('profile.saving') : t('onboarding.beginJourney')}
+              onPress={handleSubmit}
+              disabled={isSubmitting || !canSubmit}
+              fullWidth
+              style={styles.ctaButton}
+              accessibilityLabel={t('onboarding.beginJourney')}
+              accessibilityHint={t('onboarding.continueHint')}
+            />
+          </View>
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  errorBanner: { ...typography.caption, color: colors.error, marginBottom: spacing.sm },
-  label: { ...typography.label, color: colors.textPrimary, marginTop: spacing.xs },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.screenHorizontal,
+  },
+  content: {
+    maxWidth: 500,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: -spacing.xs,
+    marginBottom: spacing.md,
+  },
+
+  header: {
+    marginBottom: spacing.xxl,
+  },
+  title: {
+    fontFamily: fontFamily.serifBold,
+    fontSize: 36,
+    fontWeight: '700',
+    lineHeight: 42,
+    letterSpacing: -0.5,
+    color: colors.primary,
+    marginBottom: spacing.md,
+  },
+  subtitle: {
+    fontFamily: fontFamily.sans,
+    fontSize: 17,
+    fontWeight: '400',
+    lineHeight: 26,
+    color: colors.onSurfaceVariant,
+  },
+
+  form: {
+    gap: spacing.lg,
+  },
+  fieldSpacing: {
+    marginBottom: 0,
+  },
+  fieldLabel: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.xs,
+    paddingHorizontal: 2,
+  },
+
+  select: {
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: radius.lg,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectDisabled: { opacity: 0.7 },
+  selectText: {
+    fontFamily: fontFamily.sans,
+    fontSize: 15,
+    fontWeight: '400',
+    color: colors.onSurface,
+    flex: 1,
+  },
+  placeholderText: { color: 'rgba(116, 119, 127, 0.4)' },
+
   datePickerRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
-  select: {
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    backgroundColor: colors.surface,
-    borderRadius: radius.button,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    minHeight: 48,
+
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  selectDisabled: { opacity: 0.7 },
-  selectText: { ...typography.body, color: colors.textPrimary },
-  placeholderText: { color: colors.ink300 },
-  modalContainer: { flex: 1, backgroundColor: colors.background },
-  modalHeader: {
-    padding: spacing.lg,
-    paddingTop: spacing.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
+  sheetBackdrop: {
+    backgroundColor: 'rgba(28, 28, 28, 0.3)',
+  },
+  sheetContainer: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 40 : spacing.xl,
+    maxHeight: '65%',
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.outlineVariant,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  sheetHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  modalTitle: { ...typography.h2, color: colors.textPrimary },
-  modalList: { padding: spacing.lg, gap: spacing.sm },
-  modalItem: {
+  sheetTitle: { ...typography.titleLg, color: colors.onSurface },
+  sheetScroll: {
+    flexGrow: 0,
+  },
+  sheetList: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
+  sheetItem: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.button,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceContainerLow,
   },
-  modalItemActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.brandSoft,
+  sheetItemActive: {
+    backgroundColor: colors.secondaryContainer,
   },
-  modalItemText: { ...typography.body, color: colors.textPrimary },
-  modalItemTextActive: { color: colors.primary, fontWeight: '600' },
-  conductHint: {
+  sheetItemText: { ...typography.body, color: colors.onSurface },
+  sheetItemTextActive: { color: colors.onSecondaryContainer, fontWeight: '600' },
+
+  quotePlateWrapper: {
+    marginTop: spacing.xxl,
+  },
+
+  errorBanner: {
     ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.lg,
+    color: colors.error,
+    marginTop: spacing.md,
+  },
+
+  ctaSection: {
+    marginTop: spacing.xl,
+  },
+  ctaButton: {
+    alignSelf: 'stretch',
+    minHeight: 56,
   },
 });

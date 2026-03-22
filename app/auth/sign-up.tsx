@@ -6,7 +6,7 @@ import { authScreenStyles } from '@/components/auth/authScreenStyles';
 import { Button, Input } from '@/components/primitives';
 import { usePendingSignUp } from '@/contexts/PendingSignUpContext';
 import { t } from '@/lib/i18n';
-import { authScreen } from '@/theme/tokens';
+
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 
@@ -84,7 +84,6 @@ export default function SignUpScreen() {
         editable={!isSubmitting}
         error={emailError ?? undefined}
         containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
       />
       <Input
         label={t('auth.password')}
@@ -96,7 +95,6 @@ export default function SignUpScreen() {
         editable={!isSubmitting}
         error={passwordError ?? undefined}
         containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
       />
       <Input
         label={t('auth.confirmPassword')}
@@ -108,7 +106,6 @@ export default function SignUpScreen() {
         editable={!isSubmitting}
         error={confirmPasswordError ?? undefined}
         containerStyle={authScreenStyles.inputSpacing}
-        inputStyle={authScreen.inputStyle}
       />
       <Button
         title={isSubmitting ? t('auth.checking') : t('common.continue')}

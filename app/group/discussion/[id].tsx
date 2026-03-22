@@ -395,12 +395,12 @@ export default function DiscussionDetailScreen() {
         ? () => (
             <Pressable
               onPress={() => id && router.push(`/group/discussion/edit?discussionId=${id}`)}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8, marginRight: 4 })}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
               accessibilityLabel={t('discussions.editDiscussion')}
               accessibilityHint={t('discussions.editDiscussionHint')}
               accessibilityRole="button"
             >
-              <Ionicons name="pencil-outline" size={24} color={colors.primary} />
+              <Ionicons name="pencil-outline" size={22} color={colors.primary} />
             </Pressable>
           )
         : undefined,
@@ -1077,8 +1077,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.xl,
     paddingBottom: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.card,
+    padding: spacing.md,
   },
   originalPostContent: {
     flex: 1,
@@ -1149,7 +1150,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   replyCard: {
-    backgroundColor: colors.surface100,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.card,
     padding: spacing.md,
   },
@@ -1173,18 +1174,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 16,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: colors.surfaceContainerLowest,
   },
   reactionBadgeMine: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   reactionBadgePressed: {
     opacity: 0.8,
@@ -1227,7 +1220,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingLeft: spacing.sm,
     borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
+    borderLeftColor: colors.secondary,
     opacity: 0.85,
   },
   replyToAuthor: {
@@ -1254,13 +1247,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   replyImagePressable: {
-    borderRadius: radius.sm,
+    borderRadius: radius.card,
     overflow: 'hidden',
   },
   replyImage: {
     width: 120,
     height: 120,
-    borderRadius: radius.sm,
+    borderRadius: radius.card,
     backgroundColor: colors.surface100,
   },
   reactionSheetOverlay: {
@@ -1289,8 +1282,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerHigh,
   },
   reactionSheetTitle: {
     ...typography.title,
@@ -1353,8 +1345,7 @@ const styles = StyleSheet.create({
   reactionSheetFooter: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerHigh,
   },
   reactionSheetAddRow: {
     flexDirection: 'row',
@@ -1409,13 +1400,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface100,
-    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceContainerHighest,
+    borderRadius: radius.card,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     marginBottom: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
   },
   replyingToContent: {
     flex: 1,
@@ -1444,9 +1433,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.md,
     paddingBottom: spacing.lg + (Platform.OS === 'ios' ? 24 : spacing.md),
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerLow,
   },
   joinPrompt: {
     flexDirection: 'row',
@@ -1477,8 +1464,7 @@ const styles = StyleSheet.create({
     flex: 1,
     ...typography.body,
     color: colors.textPrimary,
-    backgroundColor: colors.surface100,
-    borderWidth: 0,
+    backgroundColor: colors.surfaceContainerHighest,
     borderRadius: radius.card,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

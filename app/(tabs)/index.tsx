@@ -8,7 +8,7 @@ export default function HomeScreen() {
   return (
     <TabPlaceholderScreen title="Home">
       <Card style={styles.card}>
-        <Text style={styles.cardText}>Pastel Productivity design system</Text>
+        <Text style={styles.cardText}>Sanctuary Editorial design system</Text>
         <Button title="Example button" onPress={() => {}} accessibilityLabel="Example button" />
       </Card>
       <EditScreenInfo path="app/(tabs)/index.tsx" />
@@ -22,6 +22,6 @@ const styles = StyleSheet.create({
   },
   cardText: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: colors.onSurface,
   },
 });

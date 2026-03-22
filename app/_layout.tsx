@@ -2,6 +2,17 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
+import {
+  NotoSerif_400Regular,
+  NotoSerif_400Regular_Italic,
+  NotoSerif_700Bold,
+} from '@expo-google-fonts/noto-serif';
+import {
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+} from '@expo-google-fonts/plus-jakarta-sans';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
@@ -13,6 +24,7 @@ import { PendingSignUpProvider } from '@/contexts/PendingSignUpContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfileQuery } from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
+import { colors, fontFamily } from '@/theme/tokens';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -35,6 +47,14 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
+    // Editorial fonts — Noto Serif (headlines) + Plus Jakarta Sans (body)
+    [fontFamily.serif]: NotoSerif_400Regular,
+    [fontFamily.serifItalic]: NotoSerif_400Regular_Italic,
+    [fontFamily.serifBold]: NotoSerif_700Bold,
+    [fontFamily.sans]: PlusJakartaSans_400Regular,
+    [fontFamily.sansMedium]: PlusJakartaSans_500Medium,
+    [fontFamily.sansSemiBold]: PlusJakartaSans_600SemiBold,
+    [fontFamily.sansBold]: PlusJakartaSans_700Bold,
   });
 
   useEffect(() => {
@@ -96,11 +116,11 @@ function RootLayoutNav() {
     ...DefaultTheme,
     colors: {
       ...DefaultTheme.colors,
-      background: '#F5F8FC',
-      card: '#FFFFFF',
-      primary: '#6E9AC0',
-      border: 'rgba(28, 28, 28, 0.06)',
-      text: '#1C1C1C',
+      background: colors.surface,
+      card: colors.surfaceContainerLowest,
+      primary: colors.primary,
+      border: colors.ghostBorder,
+      text: colors.onSurface,
     },
   };
 
@@ -116,7 +136,7 @@ function RootLayoutNav() {
             headerShown: true,
             title: t('profile.title'),
             headerBackButtonDisplayMode: 'minimal',
-            headerTitleStyle: { fontWeight: '500', color: '#1C1C1C' },
+            headerTitleStyle: { fontFamily: fontFamily.serif, fontWeight: '400', color: colors.onSurface },
           }}
         />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

@@ -79,14 +79,7 @@ const styles = StyleSheet.create({
   wrapper: {
     borderRadius: radius.card,
     marginBottom: spacing.sm,
-    backgroundColor: colors.surface,
-    shadowColor: colors.shadow,
-    shadowOffset: shadow.cardSoft.shadowOffset,
-    shadowOpacity: shadow.cardSoft.shadowOpacity,
-    shadowRadius: shadow.cardSoft.shadowRadius,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerLow,
     overflow: 'hidden',
   },
   row: {
@@ -103,7 +96,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
-    backgroundColor: colors.surfaceHighlight,
+    backgroundColor: colors.surfaceContainer,
   },
   textWrap: {
     flex: 1,

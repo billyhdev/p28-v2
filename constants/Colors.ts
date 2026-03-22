@@ -1,9 +1,9 @@
-const tintColor = '#6E9AC0'; // Pastel blue — bliss and calm, darkened for contrast
+const tintColor = '#002046'; // Deep blue — Spirit and Earth editorial palette
 
 export default {
-  text: '#1C1C1C',
-  background: '#F5F8FC',
+  text: '#151c27',
+  background: '#f9f9ff',
   tint: tintColor,
-  tabIconDefault: '#B5B3AD',
+  tabIconDefault: '#c4c6cf',
   tabIconSelected: tintColor,
 };

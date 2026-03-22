@@ -311,10 +311,8 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surface100,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   buttonPressed: {
     opacity: 0.8,
@@ -329,10 +327,8 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surface100,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   requestedButtonText: {
     ...typography.label,
@@ -353,7 +349,7 @@ const styles = StyleSheet.create({
   },
   acceptButtonText: {
     ...typography.label,
-    color: colors.surface,
+    color: colors.onPrimary,
   },
   declineButton: {
     flexDirection: 'row',
@@ -361,10 +357,8 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surface100,
+    backgroundColor: colors.surfaceContainer,
     borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   declineButtonText: {
     ...typography.label,

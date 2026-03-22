@@ -345,10 +345,8 @@ const styles = StyleSheet.create({
   languageRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerHighest,
     borderRadius: radius.button,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
     paddingVertical: 12,
     paddingHorizontal: 12,
     minHeight: 48,
@@ -396,8 +394,7 @@ const styles = StyleSheet.create({
   modalHeader: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerHigh,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

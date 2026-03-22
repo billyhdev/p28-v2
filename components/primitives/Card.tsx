@@ -1,7 +1,6 @@
 import React from 'react';
-import { Platform, View, StyleSheet, ViewStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { colors, spacing, radius, shadow } from '@/theme/tokens';
+import { View, StyleSheet, ViewStyle } from 'react-native';
+import { colors, spacing, radius } from '@/theme/tokens';
 
 export type CardVariant = 'solid' | 'glass';
 
@@ -21,21 +20,16 @@ export function Card({
 }: CardProps) {
   if (variant === 'glass') {
     return (
-      <View style={[styles.card, styles.cardGlass, style]} collapsable={false}>
-        <BlurView
-          style={StyleSheet.absoluteFill}
-          blurType="light"
-          intensity={Platform.OS === 'ios' ? 60 : 70}
-        />
-        <View
-          style={[
-            styles.cardGlassOverlay,
-            { padding: contentPadding },
-            contentPadding === 0 && styles.cardGlassOverlayFullBleed,
-          ]}
-        >
-          {children}
-        </View>
+      <View
+        style={[
+          styles.card,
+          styles.cardGlass,
+          { padding: contentPadding },
+          contentPadding === 0 && styles.cardGlassOverlayFullBleed,
+          style,
+        ]}
+      >
+        {children}
       </View>
     );
   }
@@ -45,31 +39,18 @@ export function Card({
 const styles = StyleSheet.create({
   card: {
     borderRadius: radius.card,
-    padding: spacing.cardPadding,
-    gap: spacing.sm,
-    shadowColor: colors.shadow,
-    shadowOffset: shadow.cardSoft.shadowOffset,
-    shadowOpacity: shadow.cardSoft.shadowOpacity,
-    shadowRadius: shadow.cardSoft.shadowRadius,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    paddingTop: spacing.cardPaddingTop,
+    paddingBottom: spacing.cardPaddingBottom,
+    paddingHorizontal: spacing.cardPadding,
+    gap: spacing.cardGap,
   },
   cardSolid: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLowest,
   },
   cardGlass: {
-    overflow: 'hidden',
-    borderColor: colors.glass.border,
-  },
-  cardGlassOverlay: {
     backgroundColor: colors.glass.surface,
-    borderRadius: radius.card,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
   },
   cardGlassOverlayFullBleed: {
-    borderWidth: 0,
+    padding: 0,
   },
 });

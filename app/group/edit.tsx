@@ -30,7 +30,7 @@ import {
 } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { colors, spacing, typography } from '@/theme/tokens';
+import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 const LANGUAGES = [
   { code: 'en', nameKey: 'language.english' as const },
@@ -469,14 +469,11 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderRadius: radius.chip,
+    backgroundColor: colors.surfaceContainerLow,
   },
   chipActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   chipText: {
     ...typography.label,
@@ -489,10 +486,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerHighest,
+    borderRadius: radius.input,
     paddingHorizontal: 14,
     paddingVertical: 12,
     minHeight: 48,
@@ -522,8 +517,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerHigh,
   },
   modalTitle: {
     ...typography.title,
@@ -572,8 +566,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
   },
   deleteButtonText: {
     ...typography.body,

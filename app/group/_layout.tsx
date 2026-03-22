@@ -26,15 +26,17 @@ export default function GroupLayout() {
         name="[id]"
         options={{
           title: '',
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
           headerLeft: () => (
             <Pressable
               onPress={() => router.back()}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8, marginLeft: 4 })}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
               accessibilityLabel={t('common.back')}
               accessibilityHint={t('groups.backToGroupsHint')}
               accessibilityRole="button"
             >
-              <Ionicons name="chevron-back" size={28} color={colors.primary} />
+              <Ionicons name="chevron-back" size={22} color="#ffffff" />
             </Pressable>
           ),
         }}
@@ -81,6 +83,23 @@ export default function GroupLayout() {
         name="members"
         options={{
           title: t('groups.people'),
+        }}
+      />
+      <Stack.Screen
+        name="manage"
+        options={{
+          title: t('groups.manageMyGroupsTitle'),
+          headerLeft: () => (
+            <Pressable
+              onPress={() => router.back()}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
+              accessibilityLabel={t('common.back')}
+              accessibilityHint={t('groups.backToGroupsHint')}
+              accessibilityRole="button"
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.primary} />
+            </Pressable>
+          ),
         }}
       />
     </Stack>

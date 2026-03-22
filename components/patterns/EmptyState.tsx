@@ -35,19 +35,17 @@ export function EmptyState({ iconName, title, subtitle, actionLabel, onAction }:
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.card,
     padding: spacing.xl,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
     marginVertical: spacing.sm,
   },
   iconWrap: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.surfaceHighlight,
+    backgroundColor: colors.surfaceContainer,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.md,

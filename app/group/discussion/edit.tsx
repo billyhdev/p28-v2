@@ -221,9 +221,7 @@ const styles = StyleSheet.create({
   input: {
     ...typography.body,
     color: colors.textPrimary,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerHighest,
     borderRadius: radius.button,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
@@ -252,8 +250,8 @@ const styles = StyleSheet.create({
   deleteSection: {
     marginTop: spacing.xxl,
     paddingTop: spacing.xl,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceContainerHigh,
+    borderRadius: radius.input,
   },
   deleteButton: {
     flexDirection: 'row',

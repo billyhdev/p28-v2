@@ -4,10 +4,15 @@ export type { RealtimeContract, RealtimeChannelId, RealtimeHandlers } from './re
 export type { ApiError } from './errors';
 export { isApiError } from './guards';
 export type {
+  Chat,
+  ChatFolder,
+  ChatFolderItem,
+  ChatMember,
+  ChatMessage,
+  CreateChatInput,
+  CreateChatMessageInput,
   CreateDiscussionInput,
   CreateDiscussionPostInput,
-  UpdateDiscussionInput,
-  UpdateDiscussionPostInput,
   CreateGroupDiscussionInput,
   CreateGroupInput,
   Discussion,
@@ -27,6 +32,10 @@ export type {
   OnboardingProfileData,
   Profile,
   ProfileUpdates,
+  UpdateChatInput,
+  UpdateChatMessageInput,
+  UpdateDiscussionInput,
+  UpdateDiscussionPostInput,
   UpdateGroupInput,
   User,
   Session,

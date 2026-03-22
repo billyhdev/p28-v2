@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  /* Step 3 Frame / Lunaris design tokens (dark mode) */
+  --color-background: #111111;
+  --color-foreground: #ffffff;
+  --color-muted: #2e2e2e;
+  --color-muted-foreground: #b8b9b6;
+  --color-card: #1a1a1a;
+  --color-card-foreground: #ffffff;
+  --color-border: #2e2e2e;
+  --color-input: #2e2e2e;
+  --color-primary: #ff8400;
+  --color-primary-foreground: #111111;
+  --color-secondary: #2e2e2e;
+  --color-secondary-foreground: #ffffff;
+  --color-success: #222924;
+  --color-success-foreground: #b6ffce;
+  --color-warning: #291c0f;
+  --color-warning-foreground: #ff8400;
+  --color-sidebar: #18181b;
+  --color-sidebar-accent: #2a2a30;
+  --color-sidebar-accent-foreground: #fafafa;
+  --color-sidebar-foreground: #fafafa;
+  --color-sidebar-border: rgba(255, 255, 255, 0.1);
+  --radius-m: 16px;
+  --radius-pill: 999px;
+  --font-primary: "JetBrains Mono", ui-monospace, monospace;
+  --font-secondary: "Geist", ui-sans-serif, system-ui, sans-serif;
+}
