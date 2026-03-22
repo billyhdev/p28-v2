@@ -19,6 +19,7 @@ export interface Session {
 
 export interface Profile {
   userId: string;
+  email?: string;
   displayName?: string;
   firstName?: string;
   lastName?: string;
@@ -256,6 +257,8 @@ export interface Chat {
   members?: ChatMember[];
   /** Comma-separated display names of other participants (for list view when no name). */
   participantDisplayNames?: string;
+  /** Number of unread messages for the current user. */
+  unreadCount?: number;
 }
 
 /** Chat member. */

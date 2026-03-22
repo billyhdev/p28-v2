@@ -52,6 +52,7 @@ export default function EditGroupScreen() {
   const [country, setCountry] = useState('Online');
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
   const [localBannerUri, setLocalBannerUri] = useState<string | null>(null);
@@ -354,11 +355,23 @@ export default function EditGroupScreen() {
             />
             <View style={[styles.modalContent, styles.deleteConfirmModal]}>
               <Text style={styles.modalTitle}>{t('groups.deleteGroupConfirm')}</Text>
+              <Text style={styles.deleteConfirmHint}>
+                {t('groups.deleteGroupTypeNamePrompt', { name: group.name })}
+              </Text>
+              <Input
+                value={deleteConfirmName}
+                onChangeText={setDeleteConfirmName}
+                placeholder={group.name}
+                accessibilityLabel={t('groups.deleteGroupTypeNamePrompt', { name: group.name })}
+              />
               <View style={styles.deleteConfirmActions}>
                 <Button
                   title={t('common.cancel')}
                   variant="secondary"
-                  onPress={() => setDeleteConfirmVisible(false)}
+                  onPress={() => {
+                    setDeleteConfirmName('');
+                    setDeleteConfirmVisible(false);
+                  }}
                   disabled={isDeleting}
                   accessibilityLabel={t('common.cancel')}
                 />
@@ -366,7 +379,7 @@ export default function EditGroupScreen() {
                   title={isDeleting ? t('common.loading') : t('groups.deleteGroup')}
                   variant="primary"
                   onPress={handleDeleteConfirm}
-                  disabled={isDeleting}
+                  disabled={isDeleting || deleteConfirmName.trim() !== group.name.trim()}
                   accessibilityLabel={t('groups.deleteGroup')}
                   accessibilityHint={t('groups.deleteGroupPermanentlyHint')}
                 />
@@ -377,30 +390,40 @@ export default function EditGroupScreen() {
 
         <View style={styles.actions}>
           <Button
+            title={isSubmitting ? t('common.loading') : t('common.save')}
+            onPress={handleSubmit}
+            disabled={!name.trim() || isSubmitting || isDeleting}
+            fullWidth
+            accessibilityLabel={t('common.save')}
+            accessibilityHint={t('groups.editGroupHint')}
+          />
+          <Button
             title={t('common.cancel')}
             variant="secondary"
             onPress={() => router.back()}
             disabled={isSubmitting || isDeleting}
+            fullWidth
             accessibilityLabel={t('common.cancel')}
-          />
-          <Button
-            title={isSubmitting ? t('common.loading') : t('common.save')}
-            onPress={handleSubmit}
-            disabled={!name.trim() || isSubmitting || isDeleting}
-            accessibilityLabel={t('common.save')}
-            accessibilityHint={t('groups.editGroupHint')}
           />
         </View>
 
         {canDeleteGroup ? (
           <Pressable
-            style={styles.deleteButton}
-            onPress={() => setDeleteConfirmVisible(true)}
+            style={({ pressed }) => [
+              styles.deleteButton,
+              pressed && { opacity: 0.85 },
+              (isSubmitting || isDeleting) && { opacity: 0.4 },
+            ]}
+            onPress={() => {
+              setDeleteConfirmName('');
+              setDeleteConfirmVisible(true);
+            }}
             disabled={isSubmitting || isDeleting}
             accessibilityLabel={t('groups.deleteGroup')}
             accessibilityHint={t('groups.deleteGroupConfirm')}
+            accessibilityRole="button"
           >
-            <Ionicons name="trash-outline" size={20} color={colors.error} />
+            <Ionicons name="trash-outline" size={18} color={colors.error} />
             <Text style={styles.deleteButtonText}>{t('groups.deleteGroup')}</Text>
           </Pressable>
         ) : null}
@@ -555,24 +578,32 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   actions: {
-    flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
+    backgroundColor: colors.brandSoft,
+    borderRadius: radius.button,
     paddingVertical: spacing.md,
-    marginTop: spacing.lg,
+    marginTop: spacing.xxl,
     marginBottom: spacing.sm,
   },
   deleteButtonText: {
-    ...typography.body,
+    ...typography.buttonLabel,
     color: colors.error,
   },
   deleteConfirmModal: {
     padding: spacing.lg,
+  },
+  deleteConfirmHint: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   deleteConfirmActions: {
     flexDirection: 'row',

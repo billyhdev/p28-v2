@@ -169,6 +169,8 @@ export interface DataContract {
     addedByUserId: string,
     memberUserIds: string[]
   ): Promise<void | ApiError>;
+  /** Mark a chat as read by updating last_read_at for the current user. */
+  markChatRead(chatId: string, userId: string): Promise<void | ApiError>;
   updateChat(id: string, input: UpdateChatInput): Promise<Chat | ApiError>;
   getChatMessages(chatId: string, options?: { userId?: string }): Promise<ChatMessage[] | ApiError>;
   createChatMessage(
@@ -207,7 +209,7 @@ export interface DataContract {
   removeChatFromFolder(folderId: string, chatId: string, userId: string): Promise<void | ApiError>;
   /** Get profiles for multiple user IDs. Used for friend picker. */
   getProfiles(userIds: string[]): Promise<Profile[] | ApiError>;
-  /** Search profiles by display name, first name, or last name. Excludes excludeUserId (typically current user). */
+  /** Search profiles by display name, first name, last name, or email. Excludes excludeUserId (typically current user). */
   searchProfiles(search: string, excludeUserId: string): Promise<Profile[] | ApiError>;
 
   // App roles (Super Admin, Admin)

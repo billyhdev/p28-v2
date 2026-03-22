@@ -9,12 +9,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Button } from '@/components/primitives';
+import { Input } from '@/components/primitives/Input';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useDeleteDiscussionMutation,
@@ -120,27 +120,24 @@ export default function EditDiscussionScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.label}>{t('discussions.topicPlaceholder')}</Text>
-        <TextInput
-          style={styles.input}
+        <Input
+          label={t('discussions.topicPlaceholder')}
           value={title}
           onChangeText={setTitle}
           placeholder={t('discussions.topicPlaceholder')}
-          placeholderTextColor={colors.ink300}
           autoCapitalize="sentences"
           editable={!isSubmitting}
           accessibilityLabel={t('discussions.topicPlaceholder')}
         />
 
-        <Text style={styles.label}>{t('discussions.bodyPlaceholder')}</Text>
-        <TextInput
-          style={[styles.input, styles.bodyInput]}
+        <Input
+          label={t('discussions.bodyPlaceholder')}
           value={body}
           onChangeText={setBody}
           placeholder={t('discussions.bodyPlaceholder')}
-          placeholderTextColor={colors.ink300}
           multiline
           numberOfLines={4}
+          inputStyle={{ minHeight: 100, textAlignVertical: 'top' }}
           editable={!isSubmitting}
           accessibilityLabel={t('discussions.bodyPlaceholder')}
         />
@@ -158,18 +155,20 @@ export default function EditDiscussionScreen() {
 
         <View style={styles.actions}>
           <Button
+            title={isSubmitting ? t('common.loading') : t('common.save')}
+            onPress={handleSave}
+            disabled={!title.trim() || isSubmitting}
+            fullWidth
+            accessibilityLabel={t('common.save')}
+            accessibilityHint={t('discussions.editDiscussionHint')}
+          />
+          <Button
             title={t('common.cancel')}
             variant="secondary"
             onPress={() => router.back()}
             disabled={isSubmitting}
+            fullWidth
             accessibilityLabel={t('common.cancel')}
-          />
-          <Button
-            title={isSubmitting ? t('common.loading') : t('common.save')}
-            onPress={handleSave}
-            disabled={!title.trim() || isSubmitting}
-            accessibilityLabel={t('common.save')}
-            accessibilityHint={t('discussions.editDiscussionHint')}
           />
         </View>
 
@@ -213,29 +212,10 @@ const styles = StyleSheet.create({
     padding: spacing.screenHorizontal,
     paddingBottom: spacing.xl,
   },
-  label: {
-    ...typography.label,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  input: {
-    ...typography.body,
-    color: colors.textPrimary,
-    backgroundColor: colors.surfaceContainerHighest,
-    borderRadius: radius.button,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: 48,
-    marginBottom: spacing.lg,
-  },
-  bodyInput: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
   errorBanner: {
     backgroundColor: colors.amberSoft,
     padding: spacing.md,
-    borderRadius: radius.button,
+    borderRadius: radius.md,
     marginBottom: spacing.md,
   },
   errorText: {
@@ -243,13 +223,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   actions: {
-    flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
   deleteSection: {
     marginTop: spacing.xxl,
-    paddingTop: spacing.xl,
     backgroundColor: colors.surfaceContainerHigh,
     borderRadius: radius.input,
   },

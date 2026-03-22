@@ -90,7 +90,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   pressable: {
-    flex: 1,
     flexDirection: 'row',
     minHeight: minTouchTarget,
     minWidth: minTouchTarget,

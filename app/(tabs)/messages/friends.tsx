@@ -1,5 +1,5 @@
 import { useNavigation, useRouter } from 'expo-router';
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -25,6 +25,8 @@ import { t } from '@/lib/i18n';
 import type { Profile } from '@/lib/api';
 import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
+const SEARCH_DEBOUNCE_MS = 350;
+
 function getDisplayName(profile: Profile | undefined): string {
   return (
     profile?.displayName ??
@@ -39,10 +41,21 @@ export default function FriendsListScreen() {
   const navigation = useNavigation();
   const userId = session?.user?.id;
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
+
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search]);
 
   const { data: friendIds = [], isLoading } = useFriendIdsQuery(userId);
   const { data: profiles = [] } = useProfilesQuery(friendIds.length > 0 ? friendIds : undefined);
@@ -52,9 +65,9 @@ export default function FriendsListScreen() {
 
   const trimmedSearch = search.trim();
   const { data: searchResults = [], isLoading: isSearching } = useSearchProfilesQuery(
-    trimmedSearch,
+    debouncedSearch,
     userId,
-    { enabled: trimmedSearch.length >= 2 }
+    { enabled: debouncedSearch.length >= 2 }
   );
 
   const friendIdSet = useMemo(() => new Set(friendIds), [friendIds]);
@@ -89,14 +102,20 @@ export default function FriendsListScreen() {
     });
   }, [receivedRequests, sentRequests]);
 
+  const searchResultIdSet = useMemo(
+    () => new Set(searchResults.map((p) => p.userId)),
+    [searchResults]
+  );
+
   const filteredPendingPeople = useMemo(() => {
     if (!trimmedSearch) return pendingPeople;
     const q = trimmedSearch.toLowerCase();
-    return pendingPeople.filter(({ profile }) => {
+    return pendingPeople.filter(({ userId: id, profile }) => {
       const name = (profile.displayName ?? '').toLowerCase();
-      return name.includes(q);
+      if (name.includes(q)) return true;
+      return searchResultIdSet.has(id);
     });
-  }, [pendingPeople, trimmedSearch]);
+  }, [pendingPeople, trimmedSearch, searchResultIdSet]);
 
   const pendingIdSet = useMemo(() => new Set(pendingPeople.map((p) => p.userId)), [pendingPeople]);
 
@@ -112,15 +131,18 @@ export default function FriendsListScreen() {
     if (!trimmedSearch) return sortedFriendIds;
     const q = trimmedSearch.toLowerCase();
     return sortedFriendIds.filter((id) => {
-      const name = getDisplayName(profileMap.get(id)).toLowerCase();
-      return name.includes(q);
+      const profile = profileMap.get(id);
+      const name = getDisplayName(profile).toLowerCase();
+      if (name.includes(q)) return true;
+      const email = (profile?.email ?? '').toLowerCase();
+      return email.includes(q);
     });
   }, [sortedFriendIds, profileMap, trimmedSearch]);
 
   const otherPeopleProfiles = useMemo(() => {
-    if (trimmedSearch.length < 2) return [];
+    if (debouncedSearch.length < 2) return [];
     return searchResults.filter((p) => !friendIdSet.has(p.userId) && !pendingIdSet.has(p.userId));
-  }, [searchResults, friendIdSet, pendingIdSet, trimmedSearch]);
+  }, [searchResults, friendIdSet, pendingIdSet, debouncedSearch]);
 
   const sections = useMemo(() => {
     const result: { title: string; data: { userId: string; profile: Profile }[] }[] = [];
@@ -156,62 +178,26 @@ export default function FriendsListScreen() {
     return null;
   }
 
-  const showSearchResults = trimmedSearch.length >= 2;
+  const showSearchResults = debouncedSearch.length >= 2;
   const hasAnyResults =
     filteredPendingPeople.length > 0 ||
     filteredFriendIds.length > 0 ||
     otherPeopleProfiles.length > 0;
-  const showEmptyState =
+  const emptyState =
     !isLoading &&
     (!showSearchResults && sortedFriendIds.length === 0 && pendingPeople.length === 0
       ? {
-          empty: true,
           title: t('messages.friendsListEmpty'),
           subtitle: t('messages.friendsListEmptySubtitle'),
         }
       : showSearchResults && !hasAnyResults
         ? {
-            empty: true,
             title: t('messages.noSearchResults'),
             subtitle: t('messages.noSearchResultsSubtitle'),
           }
         : null);
 
-  const renderListHeader = () => (
-    <View style={styles.listHeader}>
-      <View style={styles.titleRow}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityLabel={t('common.back')}
-          accessibilityRole="button"
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.primary} />
-        </Pressable>
-        <Text style={styles.heading}>{t('messages.friendsList')}</Text>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={20}
-          color={colors.onSurfaceVariant}
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t('messages.searchFriendsAndPeople')}
-          placeholderTextColor={`${colors.onSurfaceVariant}99`}
-          value={search}
-          onChangeText={setSearch}
-          returnKeyType="search"
-          accessibilityLabel={t('messages.searchFriendsAndPeople')}
-          accessibilityHint={t('messages.searchFriendsAndPeopleHint')}
-        />
-      </View>
-    </View>
-  );
+  const showLoading = isLoading || (showSearchResults && isSearching && sections.length === 0);
 
   const renderPersonRow = ({ item }: { item: { userId: string; profile: Profile } }) => {
     const displayName = getDisplayName(item.profile);
@@ -237,37 +223,58 @@ export default function FriendsListScreen() {
 
   return (
     <View style={styles.container}>
-      {isLoading ? (
-        <>
-          {renderListHeader()}
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        </>
-      ) : showEmptyState ? (
-        <>
-          {renderListHeader()}
-          <View style={styles.emptyWrap}>
-            <EmptyState
-              iconName="people-outline"
-              title={showEmptyState.title}
-              subtitle={showEmptyState.subtitle}
-            />
-          </View>
-        </>
-      ) : showSearchResults && isSearching && sections.length === 0 ? (
-        <>
-          {renderListHeader()}
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        </>
+      <View style={styles.listHeader}>
+        <View style={styles.titleRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backButton}
+            accessibilityLabel={t('common.back')}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.primary} />
+          </Pressable>
+          <Text style={styles.heading}>{t('messages.friendsList')}</Text>
+        </View>
+
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search"
+            size={20}
+            color={colors.onSurfaceVariant}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t('messages.searchFriendsAndPeople')}
+            placeholderTextColor={`${colors.onSurfaceVariant}99`}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel={t('messages.searchFriendsAndPeople')}
+            accessibilityHint={t('messages.searchFriendsAndPeopleHint')}
+          />
+        </View>
+      </View>
+
+      {showLoading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : emptyState ? (
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            iconName="people-outline"
+            title={emptyState.title}
+            subtitle={emptyState.subtitle}
+          />
+        </View>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.userId}
           stickySectionHeadersEnabled={false}
-          ListHeaderComponent={renderListHeader}
           renderSectionHeader={({ section: { title } }) => (
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{title}</Text>

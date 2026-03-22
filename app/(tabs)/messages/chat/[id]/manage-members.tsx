@@ -16,12 +16,12 @@ import { Avatar } from '@/components/primitives';
 
 import { useAuth } from '@/hooks/useAuth';
 import {
-  useAddChatMembersMutation,
   useChatQuery,
+  useCreateChatMutation,
   useFriendIdsQuery,
   useProfilesQuery,
 } from '@/hooks/useApiQueries';
-import { getUserFacingError } from '@/lib/api';
+import { api, getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -39,7 +39,7 @@ export default function ManageChatMembersScreen() {
   const { data: profiles = [] } = useProfilesQuery(friendIds.length > 0 ? friendIds : undefined, {
     enabled: friendIds.length > 0,
   });
-  const addMembersMutation = useAddChatMembersMutation();
+  const createChatMutation = useCreateChatMutation();
 
   const memberUserIds = useMemo(
     () => new Set((chat?.members ?? []).map((m) => m.userId).filter(Boolean)),
@@ -70,7 +70,7 @@ export default function ManageChatMembersScreen() {
 
   const insets = useSafeAreaInsets();
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     const toAdd = [...selectedUserIds];
     if (!id || !userId) return;
     if (toAdd.length === 0) {
@@ -78,20 +78,33 @@ export default function ManageChatMembersScreen() {
       return;
     }
 
-    addMembersMutation.mutate(
-      { chatId: id, addedByUserId: userId, memberUserIds: toAdd },
+    const existingOtherIds = [...memberUserIds].filter((uid) => uid !== userId);
+    const newMemberIds = [...existingOtherIds, ...toAdd];
+
+    try {
+      const existing = await api.data.findExistingChatByMembers(userId, newMemberIds);
+      if (existing && !('message' in existing)) {
+        router.replace(`/messages/chat/${existing.id}`);
+        return;
+      }
+    } catch {
+      // proceed to create if lookup fails
+    }
+
+    createChatMutation.mutate(
+      { userId, input: { memberUserIds: newMemberIds } },
       {
-        onSuccess: () => router.back(),
+        onSuccess: (newChat) => router.replace(`/messages/chat/${newChat.id}`),
         onError: (err) => {
           Alert.alert(t('common.error'), getUserFacingError(err));
         },
       }
     );
-  }, [id, userId, selectedUserIds, addMembersMutation, router]);
+  }, [id, userId, selectedUserIds, memberUserIds, createChatMutation, router]);
 
   if (!userId || !id) return null;
 
-  const isSaving = addMembersMutation.isPending;
+  const isSaving = createChatMutation.isPending;
   const bottomPadding = insets.bottom + spacing.xl;
 
   if (loadingChat && !chat) {

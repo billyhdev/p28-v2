@@ -61,10 +61,15 @@ export default function GroupsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setFilter('all');
+      const p = params?.filter as FilterType | undefined;
+      if (p && ['all', 'joined', 'forum', 'ministry'].includes(p)) {
+        setFilter(p);
+      } else {
+        setFilter('all');
+      }
       refetchGroups();
       refetchMemberGroups();
-    }, [refetchGroups, refetchMemberGroups])
+    }, [params?.filter, refetchGroups, refetchMemberGroups])
   );
 
   const displayed = filter === 'joined' ? groups.filter((g) => memberGroupIds.has(g.id)) : groups;

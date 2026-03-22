@@ -1,7 +1,5 @@
 import React from 'react';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Tabs } from 'expo-router';
 
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { FloatingTabBar } from '@/components/navigation/FloatingTabBar';
@@ -9,7 +7,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingFriendRequestCountQuery } from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
-import { colors, typography, fontFamily } from '@/theme/tokens';
+import { colors, fontFamily } from '@/theme/tokens';
 
 export default function TabLayout() {
   useLocale();
@@ -43,23 +41,6 @@ export default function TabLayout() {
         options={{
           title: t('tabs.home'),
           tabBarAccessibilityLabel: t('tabs.home'),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable
-                accessibilityLabel={t('tabs.appInfo')}
-                accessibilityHint={t('tabs.appInfoHint')}
-              >
-                {({ pressed }) => (
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={22}
-                    color={colors.onSurfaceVariant}
-                    style={{ marginRight: 16, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
         }}
       />
       <Tabs.Screen

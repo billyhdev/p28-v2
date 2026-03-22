@@ -195,6 +195,7 @@ export function MessageRow({
               </View>
             ) : null}
 
+            <View>
             {/* Message bubble */}
             <Pressable
               onLongPress={canReact ? handleLongPress : undefined}
@@ -258,9 +259,8 @@ export function MessageRow({
               ) : null}
             </Pressable>
 
-            {/* Reaction badges */}
             {hasReactions ? (
-              <View style={[styles.reactionBadges, isOwnMessage && styles.reactionBadgesOwn]}>
+              <View style={styles.reactionBadges}>
                 {(['prayer', 'laugh', 'thumbs_up'] as PostReactionType[]).map((type) => {
                   const countKey = type === 'thumbs_up' ? 'thumbsUp' : type;
                   if ((counts as unknown as Record<string, number>)[countKey] <= 0) return null;
@@ -276,6 +276,9 @@ export function MessageRow({
                       onPress={onPress}
                       style={({ pressed }) => [
                         styles.reactionBadge,
+                        isOwnMessage
+                          ? styles.reactionBadgeOwnBubble
+                          : styles.reactionBadgeOtherBubble,
                         isMine && styles.reactionBadgeMine,
                         pressed && canReact && styles.reactionBadgePressed,
                       ]}
@@ -302,6 +305,8 @@ export function MessageRow({
                 })}
               </View>
             ) : null}
+            </View>
+
           </View>
 
           {/* Own message avatar on the right — only on last in group */}
@@ -485,20 +490,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xxs,
-    marginTop: -4,
-    paddingHorizontal: spacing.xs,
-  },
-  reactionBadgesOwn: {
-    justifyContent: 'flex-end',
+    marginTop: -8,
+    alignSelf: 'flex-end',
+    paddingRight: spacing.xs,
   },
   reactionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 12,
-    backgroundColor: colors.surfaceContainerLow,
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  reactionBadgeOtherBubble: {
+    backgroundColor: colors.surfaceContainerLowest,
+  },
+  reactionBadgeOwnBubble: {
+    backgroundColor: colors.primaryContainer,
   },
   reactionBadgeMine: {
     backgroundColor: colors.primary,

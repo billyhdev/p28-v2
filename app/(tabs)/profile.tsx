@@ -129,6 +129,15 @@ export default function ProfileScreen() {
         <View style={styles.infoSection}>
           <View style={styles.infoRow}>
             <View style={styles.infoIconContainer}>
+              <Ionicons name="mail-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>{t('profile.email').toUpperCase()}</Text>
+              <Text style={styles.infoValue}>{profile?.email ?? session?.user?.email ?? '—'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
               <MaterialIcons name="cake" size={18} color={colors.primary} />
             </View>
             <View style={styles.infoContent}>

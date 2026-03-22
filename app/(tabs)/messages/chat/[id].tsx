@@ -7,7 +7,6 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Dimensions,
   KeyboardAvoidingView,
   Modal,
@@ -16,7 +15,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -24,21 +22,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/primitives';
-import {
-  FriendPickerSheet,
-  MessageRow,
-  REACTION_EMOJI,
-  REACTION_OPTIONS,
-} from '@/components/messages';
+import { FriendPickerSheet, MessageRow } from '@/components/messages';
+import { ComposeBar } from '@/components/patterns/ComposeBar';
 import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
+import { ReactionSheet } from '@/components/patterns/ReactionSheet';
 import { useAuth } from '@/hooks/useAuth';
-import { useFadeSheetAnimation } from '@/hooks/useFadeSheetAnimation';
 import {
-  useAddChatMembersMutation,
   useChatMessageReactionsQuery,
   useChatMessagesQuery,
   useChatQuery,
   useCreateChatMessageMutation,
+  useCreateChatMutation,
+  useMarkChatReadMutation,
   useReactToChatMessageMutation,
   useRemoveChatMessageReactionMutation,
   useUpdateChatMessageMutation,
@@ -71,29 +66,32 @@ export default function ChatDetailScreen() {
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [addFriendsVisible, setAddFriendsVisible] = useState(false);
   const [chatMenuVisible, setChatMenuVisible] = useState(false);
-  const reactionSheetVisible = !!reactionMessage;
-  const { sheetSlideAnim, sheetFadeAnim } = useFadeSheetAnimation(reactionSheetVisible);
 
   const { data: chat, isLoading, isError, error, refetch } = useChatQuery(id);
   const { data: messages = [], refetch: refetchMessages } = useChatMessagesQuery(id, {
     userId,
   });
-  const { data: reactionDetails = [] } = useChatMessageReactionsQuery(reactionMessage?.id, {
-    enabled: !!reactionMessage,
-  });
+  const { data: reactionDetails = [], isLoading: reactionsLoading } =
+    useChatMessageReactionsQuery(reactionMessage?.id, {
+      enabled: !!reactionMessage,
+    });
 
   const createMessageMutation = useCreateChatMessageMutation();
   const updateMessageMutation = useUpdateChatMessageMutation();
-  const addMembersMutation = useAddChatMembersMutation();
+  const createChatMutation = useCreateChatMutation();
   const uploadImageMutation = useUploadChatImageMutation();
   const reactMutation = useReactToChatMessageMutation();
   const removeReactionMutation = useRemoveChatMessageReactionMutation();
+  const markReadMutation = useMarkChatReadMutation();
 
   useFocusEffect(
     useCallback(() => {
       refetch();
       refetchMessages();
-    }, [refetch, refetchMessages])
+      if (id && userId) {
+        markReadMutation.mutate({ chatId: id, userId });
+      }
+    }, [refetch, refetchMessages, id, userId])
   );
 
   useFocusEffect(
@@ -165,23 +163,36 @@ export default function ChatDetailScreen() {
   );
 
   const handleAddFriend = useCallback(
-    (friendId: string) => {
+    async (friendId: string) => {
       if (!userId || !id) return;
-      addMembersMutation.mutate(
-        { chatId: id, addedByUserId: userId, memberUserIds: [friendId] },
+      const otherMemberIds = memberUserIds.filter((uid) => uid !== userId);
+      const newMemberIds = [...otherMemberIds, friendId];
+
+      try {
+        const existing = await api.data.findExistingChatByMembers(userId, newMemberIds);
+        if (existing && !('message' in existing)) {
+          setAddFriendsVisible(false);
+          router.push(`/messages/chat/${existing.id}`);
+          return;
+        }
+      } catch {
+        // proceed to create if lookup fails
+      }
+
+      createChatMutation.mutate(
+        { userId, input: { memberUserIds: newMemberIds } },
         {
-          onSuccess: () => {
+          onSuccess: (newChat) => {
             setAddFriendsVisible(false);
-            refetch();
+            router.push(`/messages/chat/${newChat.id}`);
           },
           onError: (err) => {
-            const msg = getUserFacingError(err);
-            Alert.alert(t('common.error'), msg);
+            Alert.alert(t('common.error'), getUserFacingError(err));
           },
         }
       );
     },
-    [userId, id, addMembersMutation, refetch]
+    [userId, id, memberUserIds, createChatMutation, router]
   );
 
   const canPost = composeText.trim().length > 0 || attachedImageUrls.length > 0;
@@ -385,7 +396,13 @@ export default function ChatDetailScreen() {
 
         <Pressable
           style={styles.chatHeaderInfo}
-          onPress={() => router.push(`/messages/chat/${id}/edit`)}
+          onPress={() => {
+            if (otherMembers.length === 1 && firstOtherMember?.userId) {
+              router.push(`/profile/${firstOtherMember.userId}`);
+            } else {
+              router.push(`/messages/chat/${id}/edit`);
+            }
+          }}
           accessibilityLabel={headerTitle}
           accessibilityRole="button"
         >
@@ -500,141 +517,33 @@ export default function ChatDetailScreen() {
 
       {/* Compose area */}
       <View style={[styles.composeArea, { paddingBottom: spacing.xxs + insets.bottom }]}>
-        {/* Editing / replying banner */}
-        {editingMessage ? (
-          <View style={styles.contextBanner}>
-            <View style={styles.contextBannerContent}>
-              <Text style={styles.contextBannerLabel}>{t('discussions.editingReply')}</Text>
-              <Text style={styles.contextBannerPreview} numberOfLines={2}>
-                {editingMessage.body ?? ''}
-              </Text>
-            </View>
-            <Pressable
-              onPress={handleCancelEdit}
-              style={styles.contextBannerClose}
-              accessibilityLabel={t('discussions.cancelEdit')}
-              accessibilityRole="button"
-            >
-              <Ionicons name="close" size={18} color={colors.onSurfaceVariant} />
-            </Pressable>
-          </View>
-        ) : replyingTo ? (
-          <View style={styles.contextBanner}>
-            <View style={styles.contextBannerContent}>
-              <Text style={styles.contextBannerLabel}>
-                {t('discussions.replyingTo')}{' '}
-                <Text style={styles.contextBannerAuthor}>
-                  {replyingTo.authorDisplayName ?? t('common.loading')}
-                </Text>
-              </Text>
-              <Text style={styles.contextBannerPreview} numberOfLines={2}>
-                {replyingTo.body ?? ''}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => setReplyingTo(null)}
-              style={styles.contextBannerClose}
-              accessibilityLabel={t('discussions.cancelReply')}
-              accessibilityRole="button"
-            >
-              <Ionicons name="close" size={18} color={colors.onSurfaceVariant} />
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* Attached images preview */}
-        {attachedImageUrls.length > 0 ? (
-          <View style={styles.attachedImagesRow}>
-            {attachedImageUrls.map((url) => (
-              <View key={url} style={styles.attachedImageWrap}>
-                <Image
-                  source={{ uri: url }}
-                  style={styles.attachedImage}
-                  contentFit="cover"
-                  accessibilityLabel={t('discussions.attachImage')}
-                />
-                <Pressable
-                  style={styles.removeAttachedButton}
-                  onPress={() => removeAttachedImage(url)}
-                  accessibilityLabel={t('discussions.removeImage')}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="close-circle" size={22} color={colors.onSurfaceVariant} />
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* Input row */}
-        <View style={styles.inputRow}>
-          <Pressable
-            onPress={pickImage}
-            style={styles.addButton}
-            disabled={
-              createMessageMutation.isPending ||
-              uploadImageMutation.isPending ||
-              attachedImageUrls.length >= 5
-            }
-            accessibilityLabel={t('discussions.attachImage')}
-            accessibilityRole="button"
-          >
-            {uploadImageMutation.isPending ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Ionicons
-                name="image-outline"
-                size={24}
-                color={
-                  attachedImageUrls.length >= 5 ? colors.outlineVariant : colors.onSurfaceVariant
+        <ComposeBar
+          text={composeText}
+          onChangeText={setComposeText}
+          onSend={handlePost}
+          canSend={canPost}
+          isSending={createMessageMutation.isPending || updateMessageMutation.isPending}
+          sendLabel={editingMessage ? t('discussions.updateReply') : t('discussions.postReply')}
+          attachedImageUrls={attachedImageUrls}
+          onRemoveImage={removeAttachedImage}
+          onPickImage={pickImage}
+          isUploadingImage={uploadImageMutation.isPending}
+          editingContext={
+            editingMessage
+              ? { preview: editingMessage.body ?? '', onCancel: handleCancelEdit }
+              : null
+          }
+          replyingToContext={
+            replyingTo
+              ? {
+                  authorName: replyingTo.authorDisplayName ?? t('common.loading'),
+                  preview: replyingTo.body ?? '',
+                  onCancel: () => setReplyingTo(null),
                 }
-              />
-            )}
-          </Pressable>
-
-          <TextInput
-            style={styles.composeInput}
-            placeholder={t('discussions.replyPlaceholder')}
-            placeholderTextColor={colors.outlineVariant}
-            value={composeText}
-            onChangeText={setComposeText}
-            multiline
-            maxLength={2000}
-            editable={!createMessageMutation.isPending}
-            accessibilityLabel={t('discussions.replyPlaceholder')}
-          />
-
-          <Pressable
-            style={[
-              styles.sendButton,
-              canPost &&
-                !createMessageMutation.isPending &&
-                !updateMessageMutation.isPending &&
-                styles.sendButtonActive,
-            ]}
-            onPress={handlePost}
-            disabled={
-              !canPost ||
-              createMessageMutation.isPending ||
-              updateMessageMutation.isPending ||
-              uploadImageMutation.isPending
-            }
-            accessibilityLabel={
-              editingMessage ? t('discussions.updateReply') : t('discussions.postReply')
-            }
-          >
-            <Ionicons
-              name="send"
-              size={18}
-              color={
-                canPost && !createMessageMutation.isPending && !updateMessageMutation.isPending
-                  ? colors.onPrimary
-                  : colors.outlineVariant
-              }
-            />
-          </Pressable>
-        </View>
-
+              : null
+          }
+          variant="chat"
+        />
       </View>
 
       {/* Sheets and modals */}
@@ -652,119 +561,17 @@ export default function ChatDetailScreen() {
         options={chatMenuOptions}
       />
 
-      {/* Reaction sheet modal */}
-      <Modal
-        visible={reactionSheetVisible}
-        transparent
-        animationType="none"
-        onRequestClose={() => setReactionMessage(null)}
-        statusBarTranslucent
-      >
-        <Pressable
-          style={styles.reactionSheetOverlay}
-          onPress={() => setReactionMessage(null)}
-          accessibilityLabel={t('common.cancel')}
-          accessibilityRole="button"
-        >
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.reactionSheetBackdrop,
-              { opacity: sheetFadeAnim },
-            ]}
-            pointerEvents="none"
-          />
-          <Animated.View
-            style={[styles.reactionSheetAnimated, { transform: [{ translateY: sheetSlideAnim }] }]}
-          >
-            <Pressable
-              style={[styles.reactionSheet, { paddingBottom: spacing.lg + insets.bottom }]}
-              onPress={(e) => e.stopPropagation()}
-              accessibilityRole="none"
-            >
-              <View style={styles.reactionSheetHeader}>
-                <Text style={styles.reactionSheetTitle}>{t('discussions.reactions')}</Text>
-                <Pressable
-                  onPress={() => setReactionMessage(null)}
-                  style={styles.reactionSheetClose}
-                  accessibilityLabel={t('common.back')}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="close" size={24} color={colors.onSurface} />
-                </Pressable>
-              </View>
-              <View style={styles.reactionSheetListWrapper}>
-                {reactionDetails.length === 0 ? (
-                  <View style={styles.reactionSheetEmpty}>
-                    <Text style={styles.reactionSheetEmptyText}>No reactions yet</Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    style={styles.reactionSheetList}
-                    contentContainerStyle={styles.reactionSheetListContent}
-                  >
-                    {reactionDetails.map((r, idx) => {
-                      const isCurrentUser = r.userId === userId;
-                      return (
-                        <Pressable
-                          key={`${r.userId}-${r.reactionType}-${idx}`}
-                          onPress={
-                            isCurrentUser ? () => handleRemoveReaction(r.reactionType) : undefined
-                          }
-                          style={({ pressed }) => [
-                            styles.reactionSheetRow,
-                            pressed && isCurrentUser && styles.reactionSheetRowPressed,
-                          ]}
-                          accessibilityLabel={`${r.displayName ?? 'User'}, ${REACTION_EMOJI[r.reactionType]}`}
-                        >
-                          <Avatar
-                            source={r.avatarUrl ? { uri: r.avatarUrl } : null}
-                            fallbackText={r.displayName}
-                            size="sm"
-                          />
-                          <View style={styles.reactionSheetRowContent}>
-                            <Text style={styles.reactionSheetRowName}>
-                              {r.displayName ?? t('common.loading')}
-                            </Text>
-                          </View>
-                          <Text style={styles.reactionSheetRowEmoji}>
-                            {REACTION_EMOJI[r.reactionType]}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </View>
-              {reactionMessage ? (
-                <View style={styles.reactionSheetFooter}>
-                  <View style={styles.reactionSheetAddRow}>
-                    {REACTION_OPTIONS.map(({ type, emoji }) => {
-                      const isSelected = (reactionMessage.userReactionTypes ?? []).includes(type);
-                      const onPress = () =>
-                        isSelected ? handleRemoveReaction(type) : handleReact(type);
-                      return (
-                        <Pressable
-                          key={type}
-                          onPress={onPress}
-                          style={({ pressed }) => [
-                            styles.reactionSheetAddOption,
-                            isSelected && styles.reactionSheetAddOptionSelected,
-                            pressed && styles.reactionSheetAddOptionPressed,
-                          ]}
-                          accessibilityLabel={isSelected ? `Remove ${type}` : `Add ${type}`}
-                        >
-                          <Text style={styles.reactionSheetAddEmoji}>{emoji}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-            </Pressable>
-          </Animated.View>
-        </Pressable>
-      </Modal>
+      <ReactionSheet
+        visible={!!reactionMessage}
+        onClose={() => setReactionMessage(null)}
+        reactionsLoading={reactionsLoading}
+        reactionDetails={reactionDetails}
+        selectedReactionTypes={reactionMessage?.userReactionTypes ?? []}
+        currentUserId={userId}
+        isMutating={reactMutation.isPending || removeReactionMutation.isPending}
+        onAddReaction={handleReact}
+        onRemoveReaction={handleRemoveReaction}
+      />
 
       {/* Image preview modal */}
       <Modal
@@ -931,181 +738,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     backgroundColor: colors.surfaceContainerLow,
   },
-
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surfaceContainerHigh,
-    borderRadius: radius.input,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  contextBannerContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  contextBannerLabel: {
-    ...typography.caption,
-    color: colors.onSurfaceVariant,
-    marginBottom: 2,
-  },
-  contextBannerAuthor: {
-    fontFamily: fontFamily.sansSemiBold,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  contextBannerPreview: {
-    fontFamily: fontFamily.sans,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.onSurfaceVariant,
-  },
-  contextBannerClose: {
-    padding: spacing.xxs,
-    marginLeft: spacing.sm,
-  },
-
-  attachedImagesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  attachedImageWrap: {
-    position: 'relative',
-  },
-  attachedImage: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceContainer,
-  },
-  removeAttachedButton: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-  },
-
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  composeInput: {
-    flex: 1,
-    fontFamily: fontFamily.sans,
-    fontSize: 15,
-    color: colors.onSurface,
-    backgroundColor: colors.surfaceContainerHighest,
-    borderRadius: 22,
-    borderCurve: 'continuous',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    paddingTop: 10,
-    minHeight: 40,
-    maxHeight: 120,
-  },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonActive: {
-    backgroundColor: colors.primary,
-  },
-
-  /* ── Reaction sheet ─────────────────────────────────── */
-  reactionSheetOverlay: { flex: 1 },
-  reactionSheetBackdrop: { backgroundColor: 'rgba(21, 28, 39, 0.3)' },
-  reactionSheetAnimated: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-  },
-  reactionSheet: {
-    flexDirection: 'column',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderTopLeftRadius: radius.card,
-    borderTopRightRadius: radius.card,
-    height: Math.min(400, Dimensions.get('window').height * 0.7),
-  },
-  reactionSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surfaceContainerHigh,
-    borderTopLeftRadius: radius.card,
-    borderTopRightRadius: radius.card,
-  },
-  reactionSheetTitle: {
-    ...typography.title,
-    color: colors.onSurface,
-  },
-  reactionSheetClose: { padding: spacing.xs },
-  reactionSheetListWrapper: { flex: 1, minHeight: 120 },
-  reactionSheetList: { flex: 1, maxHeight: 280 },
-  reactionSheetListContent: { paddingVertical: spacing.sm },
-  reactionSheetEmpty: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  reactionSheetEmptyText: {
-    ...typography.body,
-    color: colors.onSurfaceVariant,
-    textAlign: 'center',
-  },
-  reactionSheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.md,
-  },
-  reactionSheetRowPressed: {
-    backgroundColor: colors.surfaceContainerLow,
-  },
-  reactionSheetRowContent: { flex: 1 },
-  reactionSheetRowName: {
-    ...typography.body,
-    color: colors.onSurface,
-  },
-  reactionSheetRowEmoji: { fontSize: 24 },
-  reactionSheetFooter: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: colors.surfaceContainerHigh,
-  },
-  reactionSheetAddRow: { flexDirection: 'row', gap: spacing.md },
-  reactionSheetAddOption: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surfaceContainerLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reactionSheetAddOptionSelected: {
-    backgroundColor: colors.primary,
-  },
-  reactionSheetAddOptionPressed: { opacity: 0.8 },
-  reactionSheetAddEmoji: { fontSize: 24 },
 
   /* ── Image preview ──────────────────────────────────── */
   imagePreviewOverlay: {

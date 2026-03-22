@@ -208,6 +208,10 @@ export default function UserProfileScreen() {
               <Text style={styles.rowValue}>{profile?.displayName ?? '—'}</Text>
             </View>
             <View style={styles.row}>
+              <Text style={styles.rowLabel}>{t('profile.email')}</Text>
+              <Text style={styles.rowValue}>{profile?.email ?? '—'}</Text>
+            </View>
+            <View style={styles.row}>
               <Text style={styles.rowLabel}>{t('profile.country')}</Text>
               <Text style={styles.rowValue}>{profile?.country ?? '—'}</Text>
             </View>

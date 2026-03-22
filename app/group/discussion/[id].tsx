@@ -17,16 +17,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQueryClient } from '@tanstack/react-query';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/primitives';
+import { ComposeBar } from '@/components/patterns/ComposeBar';
+import { ReactionSheet } from '@/components/patterns/ReactionSheet';
 import { useAuth } from '@/hooks/useAuth';
-import { useFadeSheetAnimation } from '@/hooks/useFadeSheetAnimation';
 import {
   useCreateDiscussionPostMutation,
   useDiscussionPostReactionsQuery,
@@ -366,10 +365,6 @@ export default function DiscussionDetailScreen() {
   const [reactionPost, setReactionPost] = useState<DiscussionPost | null>(null);
   const [replyingToPost, setReplyingToPost] = useState<DiscussionPost | null>(null);
   const [editingPost, setEditingPost] = useState<DiscussionPost | null>(null);
-  const reactionSheetVisible = !!reactionPost;
-  const { sheetSlideAnim, sheetFadeAnim } = useFadeSheetAnimation(reactionSheetVisible);
-  const insets = useSafeAreaInsets();
-
   const navigation = useNavigation();
   const {
     data: discussion,
@@ -400,7 +395,7 @@ export default function DiscussionDetailScreen() {
               accessibilityHint={t('discussions.editDiscussionHint')}
               accessibilityRole="button"
             >
-              <Ionicons name="pencil-outline" size={22} color={colors.primary} />
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
             </Pressable>
           )
         : undefined,
@@ -730,276 +725,47 @@ export default function DiscussionDetailScreen() {
         </View>
       ) : (
         <View style={styles.bottomBar}>
-          {editingPost ? (
-            <View style={styles.replyingToBar}>
-              <View style={styles.replyingToContent}>
-                <Text style={styles.replyingToLabel}>{t('discussions.editingReply')}</Text>
-                <Text style={styles.replyingToPreview} numberOfLines={2}>
-                  {editingPost.body ?? ''}
-                </Text>
-              </View>
-              <Pressable
-                onPress={handleCancelEdit}
-                style={styles.replyingToClose}
-                accessibilityLabel={t('discussions.cancelEdit')}
-                accessibilityHint={t('discussions.cancelEdit')}
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-          ) : replyingToPost ? (
-            <View style={styles.replyingToBar}>
-              <View style={styles.replyingToContent}>
-                <Text style={styles.replyingToLabel}>
-                  {t('discussions.replyingTo')}{' '}
-                  <Text style={styles.replyingToAuthor}>
-                    {replyingToPost.authorDisplayName ?? t('common.loading')}
-                  </Text>
-                </Text>
-                <Text style={styles.replyingToPreview} numberOfLines={2}>
-                  {replyingToPost.body ?? ''}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setReplyingToPost(null)}
-                style={styles.replyingToClose}
-                accessibilityLabel={t('discussions.cancelReply')}
-                accessibilityHint={t('discussions.cancelReply')}
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-          ) : null}
-          {attachedImageUrls.length > 0 ? (
-            <View style={styles.attachedImagesRow}>
-              {attachedImageUrls.map((url) => (
-                <View key={url} style={styles.attachedImageWrap}>
-                  <Image
-                    source={{ uri: url }}
-                    style={styles.attachedImage}
-                    contentFit="cover"
-                    accessibilityLabel={t('discussions.attachImage')}
-                  />
-                  <Pressable
-                    style={styles.removeAttachedButton}
-                    onPress={() => removeAttachedImage(url)}
-                    accessibilityLabel={t('discussions.removeImage')}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="close-circle" size={24} color={colors.textSecondary} />
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <View style={styles.composeSection}>
-            <Pressable
-              style={styles.attachButton}
-              onPress={pickImage}
-              disabled={
-                createPostMutation.isPending ||
-                uploadImageMutation.isPending ||
-                attachedImageUrls.length >= 5
-              }
-              accessibilityLabel={t('discussions.attachImage')}
-              accessibilityHint={
-                uploadImageMutation.isPending
-                  ? t('discussions.uploadingImages')
-                  : t('discussions.attachImageHint')
-              }
-              accessibilityRole="button"
-            >
-              {uploadImageMutation.isPending ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons
-                  name="image-outline"
-                  size={22}
-                  color={attachedImageUrls.length >= 5 ? colors.ink300 : colors.primary}
-                />
-              )}
-            </Pressable>
-            <TextInput
-              style={styles.composeInput}
-              placeholder={t('discussions.replyPlaceholder')}
-              placeholderTextColor={colors.ink300}
-              value={composeText}
-              onChangeText={setComposeText}
-              multiline
-              maxLength={2000}
-              editable={!createPostMutation.isPending}
-              accessibilityLabel={t('discussions.replyPlaceholder')}
-              accessibilityHint={t('discussions.postReply')}
-            />
-            <Pressable
-              style={[
-                styles.postButton,
-                (!canPost || createPostMutation.isPending || updatePostMutation.isPending) &&
-                  styles.postButtonDisabled,
-              ]}
-              onPress={handlePostReply}
-              disabled={
-                !canPost ||
-                createPostMutation.isPending ||
-                updatePostMutation.isPending ||
-                uploadImageMutation.isPending
-              }
-              accessibilityLabel={
-                isEditing ? t('discussions.updateReply') : t('discussions.postReply')
-              }
-              accessibilityHint={isEditing ? 'Updates your reply' : 'Posts your reply'}
-            >
-              <Ionicons
-                name="send"
-                size={20}
-                color={
-                  !canPost || createPostMutation.isPending || updatePostMutation.isPending
-                    ? colors.ink300
-                    : colors.primary
-                }
-              />
-            </Pressable>
-          </View>
+          <ComposeBar
+            text={composeText}
+            onChangeText={setComposeText}
+            onSend={handlePostReply}
+            canSend={canPost}
+            isSending={createPostMutation.isPending || updatePostMutation.isPending}
+            sendLabel={isEditing ? t('discussions.updateReply') : t('discussions.postReply')}
+            attachedImageUrls={attachedImageUrls}
+            onRemoveImage={removeAttachedImage}
+            onPickImage={pickImage}
+            isUploadingImage={uploadImageMutation.isPending}
+            editingContext={
+              editingPost
+                ? { preview: editingPost.body ?? '', onCancel: handleCancelEdit }
+                : null
+            }
+            replyingToContext={
+              replyingToPost
+                ? {
+                    authorName: replyingToPost.authorDisplayName ?? t('common.loading'),
+                    preview: replyingToPost.body ?? '',
+                    onCancel: () => setReplyingToPost(null),
+                  }
+                : null
+            }
+            variant="discussion"
+          />
         </View>
       )}
-      <Modal
-        visible={reactionSheetVisible}
-        transparent
-        animationType="none"
-        onRequestClose={() => setReactionPost(null)}
-        statusBarTranslucent
-      >
-        <Pressable
-          style={styles.reactionSheetOverlay}
-          onPress={() => setReactionPost(null)}
-          accessibilityLabel={t('common.cancel')}
-          accessibilityRole="button"
-        >
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.reactionSheetBackdrop,
-              { opacity: sheetFadeAnim },
-            ]}
-            pointerEvents="none"
-          />
-          <Animated.View
-            style={[styles.reactionSheetAnimated, { transform: [{ translateY: sheetSlideAnim }] }]}
-          >
-            <Pressable
-              style={[styles.reactionSheet, { paddingBottom: spacing.lg + insets.bottom }]}
-              onPress={(e) => e.stopPropagation()}
-              accessibilityLabel={t('discussions.reactions')}
-              accessibilityRole="none"
-            >
-              <View style={styles.reactionSheetHeader}>
-                <Text style={styles.reactionSheetTitle}>{t('discussions.reactions')}</Text>
-                <Pressable
-                  onPress={() => setReactionPost(null)}
-                  style={styles.reactionSheetClose}
-                  accessibilityLabel={t('common.back')}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="close" size={24} color={colors.textPrimary} />
-                </Pressable>
-              </View>
-              <View style={styles.reactionSheetListWrapper}>
-                {reactionsLoading ? (
-                  <View style={styles.reactionSheetLoading}>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  </View>
-                ) : reactionDetails.length === 0 ? (
-                  <View style={styles.reactionSheetEmpty}>
-                    <Text style={styles.reactionSheetEmptyText}>
-                      No reactions so far...be the first one!
-                    </Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    style={styles.reactionSheetList}
-                    contentContainerStyle={styles.reactionSheetListContent}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {reactionDetails.map((r, idx) => {
-                      const isCurrentUser = r.userId === userId;
-                      return (
-                        <Pressable
-                          key={`${r.userId}-${r.reactionType}-${idx}`}
-                          onPress={
-                            isCurrentUser && canReact
-                              ? () => handleRemoveReactionFromSheet(r.reactionType)
-                              : undefined
-                          }
-                          style={({ pressed }) => [
-                            styles.reactionSheetRow,
-                            pressed && isCurrentUser && canReact && styles.reactionSheetRowPressed,
-                          ]}
-                          disabled={!isCurrentUser || !canReact}
-                          accessibilityLabel={
-                            isCurrentUser
-                              ? `${r.displayName ?? 'You'}, ${REACTION_EMOJI[r.reactionType]}, ${t('discussions.tapToRemove')}`
-                              : `${r.displayName ?? t('common.loading')}, ${REACTION_EMOJI[r.reactionType]}`
-                          }
-                          accessibilityRole={isCurrentUser && canReact ? 'button' : 'text'}
-                        >
-                          <Avatar
-                            source={r.avatarUrl ? { uri: r.avatarUrl } : null}
-                            fallbackText={r.displayName}
-                            size="sm"
-                            accessibilityLabel={r.displayName ? `${r.displayName} profile` : ''}
-                          />
-                          <View style={styles.reactionSheetRowContent}>
-                            <Text style={styles.reactionSheetRowName}>
-                              {r.displayName ?? t('common.loading')}
-                            </Text>
-                            {isCurrentUser && canReact ? (
-                              <Text style={styles.reactionSheetRowHint}>
-                                {t('discussions.tapToRemove')}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <Text style={styles.reactionSheetRowEmoji}>
-                            {REACTION_EMOJI[r.reactionType]}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </View>
-              {reactionPost && (
-                <View style={styles.reactionSheetFooter}>
-                  <View style={styles.reactionSheetAddRow}>
-                    {REACTION_OPTIONS.map(({ type, emoji, label }) => {
-                      const isSelected = (reactionPost.userReactionTypes ?? []).includes(type);
-                      const onPress = () =>
-                        isSelected ? handleRemoveReactionFromSheet(type) : handleReact(type);
-                      return (
-                        <Pressable
-                          key={type}
-                          onPress={onPress}
-                          style={({ pressed }) => [
-                            styles.reactionSheetAddOption,
-                            isSelected && styles.reactionSheetAddOptionSelected,
-                            pressed && styles.reactionSheetAddOptionPressed,
-                          ]}
-                          disabled={reactMutation.isPending || removeReactionMutation.isPending}
-                          accessibilityLabel={isSelected ? `Remove ${label}` : `Add ${label}`}
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.reactionSheetAddEmoji}>{emoji}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-            </Pressable>
-          </Animated.View>
-        </Pressable>
-      </Modal>
+      <ReactionSheet
+        visible={!!reactionPost}
+        onClose={() => setReactionPost(null)}
+        reactionsLoading={reactionsLoading}
+        reactionDetails={reactionDetails}
+        selectedReactionTypes={reactionPost?.userReactionTypes ?? []}
+        currentUserId={userId}
+        canReact={canReact}
+        isMutating={reactMutation.isPending || removeReactionMutation.isPending}
+        onAddReaction={handleReact}
+        onRemoveReaction={handleRemoveReactionFromSheet}
+      />
       <Modal
         visible={!!previewImageUrl}
         transparent
@@ -1171,10 +937,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 5,
     paddingVertical: 2,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.background,
+    backgroundColor: colors.surfaceContainerLow,
   },
   reactionBadgeMine: {
     backgroundColor: colors.primary,
@@ -1183,7 +951,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   reactionBadgeEmoji: {
-    fontSize: 16,
+    fontSize: 14,
   },
   reactionBadgeCount: {
     ...typography.caption,
@@ -1256,179 +1024,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     backgroundColor: colors.surface100,
   },
-  reactionSheetOverlay: {
-    flex: 1,
-  },
-  reactionSheetBackdrop: {
-    backgroundColor: 'rgba(28, 28, 28, 0.3)',
-  },
-  reactionSheetAnimated: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-  },
-  reactionSheet: {
-    flexDirection: 'column',
-    backgroundColor: colors.surface100,
-    borderTopLeftRadius: radius.card,
-    borderTopRightRadius: radius.card,
-    height: Math.min(400, Dimensions.get('window').height * 0.7),
-  },
-  reactionSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surfaceContainerHigh,
-  },
-  reactionSheetTitle: {
-    ...typography.title,
-    color: colors.textPrimary,
-  },
-  reactionSheetClose: {
-    padding: spacing.xs,
-  },
-  reactionSheetLoading: {
-    padding: spacing.xl,
-    alignItems: 'center',
-  },
-  reactionSheetEmpty: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  reactionSheetEmptyText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  reactionSheetListWrapper: {
-    flex: 1,
-    minHeight: 120,
-  },
-  reactionSheetList: {
-    flex: 1,
-    maxHeight: 280,
-  },
-  reactionSheetListContent: {
-    paddingVertical: spacing.sm,
-  },
-  reactionSheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.md,
-  },
-  reactionSheetRowPressed: {
-    backgroundColor: colors.borderSubtle,
-  },
-  reactionSheetRowContent: {
-    flex: 1,
-  },
-  reactionSheetRowName: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  reactionSheetRowHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  reactionSheetRowEmoji: {
-    fontSize: 24,
-  },
-  reactionSheetFooter: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: colors.surfaceContainerHigh,
-  },
-  reactionSheetAddRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  reactionSheetAddOption: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reactionSheetAddOptionSelected: {
-    backgroundColor: colors.primary,
-  },
-  reactionSheetAddOptionPressed: {
-    opacity: 0.8,
-  },
-  reactionSheetAddEmoji: {
-    fontSize: 24,
-  },
-  attachedImagesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  attachedImageWrap: {
-    position: 'relative',
-  },
-  attachedImage: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surface100,
-  },
-  removeAttachedButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-  },
-  attachButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface100,
-    borderRadius: radius.sm,
-  },
-  replyingToBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surfaceContainerHighest,
-    borderRadius: radius.card,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  replyingToContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  replyingToLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  replyingToAuthor: {
-    ...typography.label,
-    color: colors.primary,
-  },
-  replyingToPreview: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  replyingToClose: {
-    padding: spacing.xs,
-    marginLeft: spacing.sm,
-  },
   bottomBar: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.md,
@@ -1454,41 +1049,6 @@ const styles = StyleSheet.create({
   joinPromptText: {
     ...typography.body,
     color: colors.textSecondary,
-  },
-  composeSection: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-  },
-  composeInput: {
-    flex: 1,
-    ...typography.body,
-    color: colors.textPrimary,
-    backgroundColor: colors.surfaceContainerHighest,
-    borderRadius: radius.card,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingTop: spacing.sm,
-    minHeight: 44,
-    maxHeight: 120,
-  },
-  postButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface100,
-    borderRadius: radius.sm,
-  },
-  postButtonDisabled: {
-    opacity: 0.6,
-  },
-  postButtonText: {
-    ...typography.bodyStrong,
-    color: colors.onPrimary,
-  },
-  postButtonTextDisabled: {
-    color: colors.surface,
   },
   imagePreviewOverlay: {
     flex: 1,

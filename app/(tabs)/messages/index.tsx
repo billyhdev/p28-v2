@@ -36,11 +36,9 @@ const CHAT_AVATAR_SIZE = 56;
 function ChatAvatar({
   imageUrl,
   fallbackText,
-  isFirstChat,
 }: {
   imageUrl?: string | null;
   fallbackText: string;
-  isFirstChat?: boolean;
 }) {
   const initial = fallbackText ? fallbackText.trim().charAt(0).toUpperCase() : '?';
 
@@ -58,7 +56,6 @@ function ChatAvatar({
           <Text style={avatarStyles.fallbackText}>{initial}</Text>
         </View>
       )}
-      {isFirstChat && <View style={avatarStyles.onlineIndicator} />}
     </View>
   );
 }
@@ -85,33 +82,21 @@ const avatarStyles = StyleSheet.create({
     fontSize: CHAT_AVATAR_SIZE * 0.36,
     color: colors.primary,
   },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.secondaryContainer,
-    borderWidth: 2,
-    borderColor: colors.surfaceContainerLowest,
-  },
 });
 
 function ChatRow({
   chat,
   currentUserId,
   onPress,
-  isFirst,
 }: {
   chat: Chat;
   currentUserId: string;
   onPress: () => void;
-  isFirst: boolean;
 }) {
   const otherMembers = (chat.members ?? []).filter((m) => m.userId && m.userId !== currentUserId);
   const hasOtherMembers = otherMembers.length > 0;
   const isGroupChat = otherMembers.length > 1;
+  const unread = (chat.unreadCount ?? 0) > 0;
 
   const displayName =
     chat.name?.trim() ||
@@ -129,7 +114,7 @@ function ChatRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.chatRow,
-        isFirst && styles.chatRowFirst,
+        unread && styles.chatRowUnread,
         pressed && styles.chatRowPressed,
       ]}
       accessibilityLabel={displayName}
@@ -145,20 +130,31 @@ function ChatRow({
           ringed
         />
       ) : (
-        <ChatAvatar imageUrl={avatarUrl} fallbackText={fallbackText} isFirstChat={isFirst} />
+        <ChatAvatar imageUrl={avatarUrl} fallbackText={fallbackText} />
       )}
 
       <View style={styles.chatRowContent}>
         <View style={styles.chatRowHeader}>
-          <Text style={[styles.chatName, !isFirst && styles.chatNameSecondary]} numberOfLines={1}>
+          <Text style={[styles.chatName, !unread && styles.chatNameSecondary]} numberOfLines={1}>
             {displayName}
           </Text>
-          {chat.lastMessageAt && (
-            <Text style={styles.chatTime}>{formatRelativeTime(chat.lastMessageAt)}</Text>
-          )}
+          <View style={styles.chatRowMeta}>
+            {chat.lastMessageAt && (
+              <Text style={[styles.chatTime, unread && styles.chatTimeUnread]}>
+                {formatRelativeTime(chat.lastMessageAt)}
+              </Text>
+            )}
+            {unread && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>
+                  {chat.unreadCount! > 99 ? '99+' : chat.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         {chat.lastMessagePreview ? (
-          <Text style={[styles.chatPreview, isFirst && styles.chatPreviewFirst]} numberOfLines={1}>
+          <Text style={[styles.chatPreview, unread && styles.chatPreviewUnread]} numberOfLines={1}>
             {chat.lastMessagePreview}
           </Text>
         ) : null}
@@ -372,12 +368,11 @@ export default function MessagesIndexScreen() {
           data={filteredChats}
           keyExtractor={(c) => c.id}
           ListHeaderComponent={renderHeader}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <ChatRow
               chat={item}
               currentUserId={userId}
               onPress={() => router.push(`/messages/chat/${item.id}`)}
-              isFirst={index === 0}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -561,7 +556,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     marginHorizontal: spacing.xs,
   },
-  chatRowFirst: {
+  chatRowUnread: {
     backgroundColor: colors.surfaceContainerLowest,
     borderRadius: radius.lg,
     ...shadow.cardSoft,
@@ -577,8 +572,13 @@ const styles = StyleSheet.create({
   chatRowHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'center',
     marginBottom: 3,
+  },
+  chatRowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   chatName: {
     fontFamily: fontFamily.sansSemiBold,
@@ -595,14 +595,33 @@ const styles = StyleSheet.create({
     ...typography.labelSm,
     color: colors.onSurfaceVariant,
   },
+  chatTimeUnread: {
+    color: colors.primary,
+    fontFamily: fontFamily.sansSemiBold,
+  },
   chatPreview: {
     ...typography.bodyMd,
     color: `${colors.onSurfaceVariant}B3`,
   },
-  chatPreviewFirst: {
+  chatPreviewUnread: {
     fontFamily: fontFamily.sansMedium,
     fontWeight: '500',
     color: colors.onSurfaceVariant,
+  },
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  unreadBadgeText: {
+    fontFamily: fontFamily.sansSemiBold,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
 
   // ── Empty / loading ──

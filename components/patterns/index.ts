@@ -10,3 +10,7 @@ export { FadeActionSheet } from './FadeActionSheet';
 export type { FadeActionSheetProps, FadeActionSheetOption } from './FadeActionSheet';
 export { ReflectionPlate } from './ReflectionPlate';
 export type { ReflectionPlateProps } from './ReflectionPlate';
+export { ReactionSheet } from './ReactionSheet';
+export type { ReactionSheetProps } from './ReactionSheet';
+export { ComposeBar } from './ComposeBar';
+export type { ComposeBarProps } from './ComposeBar';

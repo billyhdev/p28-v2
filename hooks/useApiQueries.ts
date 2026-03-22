@@ -806,6 +806,17 @@ export function useChatMessagesQuery(
   });
 }
 
+export function useMarkChatReadMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ chatId, userId }: { chatId: string; userId: string }) =>
+      queryFn(api.data.markChatRead(chatId, userId)) as Promise<void>,
+    onSuccess: (_data, { userId }) => {
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+    },
+  });
+}
+
 export function useCreateChatMutation() {
   const qc = useQueryClient();
   return useMutation({

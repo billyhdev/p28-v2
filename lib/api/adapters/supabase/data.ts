@@ -366,6 +366,7 @@ function mapFriendRequestRow(
 
 function mapRow(row: {
   user_id: string;
+  email?: string | null;
   display_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -380,6 +381,7 @@ function mapRow(row: {
   const displayName = row.display_name?.trim() || derivedDisplayName || undefined;
   return {
     userId: row.user_id,
+    email: row.email ?? undefined,
     displayName: displayName ?? undefined,
     firstName: row.first_name ?? undefined,
     lastName: row.last_name ?? undefined,
@@ -403,7 +405,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { data, error } = await getClient()
           .from('profiles')
           .select(
-            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
           )
           .eq('user_id', userId)
           .maybeSingle();
@@ -437,7 +439,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .from('profiles')
           .upsert(payload, { onConflict: 'user_id' })
           .select(
-            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
           )
           .single();
         if (error) return toApiError(error);
@@ -473,7 +475,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .from('profiles')
           .upsert(payload, { onConflict: 'user_id' })
           .select(
-            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
           )
           .single();
         if (error) return toApiError(error);
@@ -1552,7 +1554,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
         const { data: lastMsg } = await getClient()
           .from('chat_messages')
-          .select('chat_id, body, created_at')
+          .select('chat_id, user_id, body, created_at')
           .in('chat_id', cids)
           .order('created_at', { ascending: false });
         const lastByChat = new Map<string, { body: string; created_at: string }>();
@@ -1566,17 +1568,32 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
         const { data: memberRows } = await getClient()
           .from('chat_members')
-          .select('chat_id, user_id')
+          .select('chat_id, user_id, last_read_at')
           .in('chat_id', cids);
 
+        const lastReadByChat = new Map<string, string>();
         const countMap = new Map<string, number>();
         const otherUserIdsByChat = new Map<string, string[]>();
         for (const r of memberRows ?? []) {
           countMap.set(r.chat_id, (countMap.get(r.chat_id) ?? 0) + 1);
+          if (r.user_id === userId && r.last_read_at) {
+            lastReadByChat.set(r.chat_id, r.last_read_at);
+          }
           if (r.user_id !== userId) {
             const arr = otherUserIdsByChat.get(r.chat_id) ?? [];
             arr.push(r.user_id);
             otherUserIdsByChat.set(r.chat_id, arr);
+          }
+        }
+
+        const unreadCountMap = new Map<string, number>();
+        if (lastMsg) {
+          for (const m of lastMsg) {
+            if (m.user_id === userId) continue;
+            const lastRead = lastReadByChat.get(m.chat_id);
+            if (lastRead && new Date(m.created_at) > new Date(lastRead)) {
+              unreadCountMap.set(m.chat_id, (unreadCountMap.get(m.chat_id) ?? 0) + 1);
+            }
           }
         }
 
@@ -1629,8 +1646,22 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
             memberCount: countMap.get(r.id) ?? 0,
             participantDisplayNames,
             members,
+            unreadCount: unreadCountMap.get(r.id) ?? 0,
           };
         });
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async markChatRead(chatId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('chat_members')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('chat_id', chatId)
+          .eq('user_id', userId);
+        if (error) return toApiError(error);
       } catch (e) {
         return toApiError(e);
       }
@@ -1713,8 +1744,28 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           set.add(r.user_id);
           byChat.set(r.chat_id, set);
         }
+        // Collect candidate chat IDs where both users appear
+        const candidateChatIds: string[] = [];
         for (const [chatId, members] of byChat) {
-          if (members.size === 2 && members.has(userId) && members.has(otherUserId)) {
+          if (members.has(userId) && members.has(otherUserId)) {
+            candidateChatIds.push(chatId);
+          }
+        }
+        if (candidateChatIds.length === 0) return null;
+
+        // Fetch ALL members for candidate chats to verify total member count is exactly 2
+        const { data: allMemberRows, error: allErr } = await getClient()
+          .from('chat_members')
+          .select('chat_id, user_id')
+          .in('chat_id', candidateChatIds);
+        if (allErr) return toApiError(allErr);
+
+        const totalByChat = new Map<string, number>();
+        for (const r of allMemberRows ?? []) {
+          totalByChat.set(r.chat_id, (totalByChat.get(r.chat_id) ?? 0) + 1);
+        }
+        for (const chatId of candidateChatIds) {
+          if (totalByChat.get(chatId) === 2) {
             const chat = await this.getChat(chatId);
             return chat && !('message' in chat) ? chat : null;
           }
@@ -2341,7 +2392,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { data, error } = await getClient()
           .from('profiles')
           .select(
-            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
           )
           .in('user_id', unique);
         if (error) return toApiError(error);
@@ -2356,6 +2407,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           const displayName = r.display_name?.trim() || derivedDisplayName || undefined;
           result.push({
             userId: r.user_id,
+            email: r.email ?? undefined,
             displayName,
             firstName: r.first_name ?? undefined,
             lastName: r.last_name ?? undefined,
@@ -2381,11 +2433,11 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         let query = getClient()
           .from('profiles')
           .select(
-            'user_id, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
           )
           .neq('user_id', excludeUserId)
           .or(
-            `display_name.ilike.${pattern},first_name.ilike.${pattern},last_name.ilike.${pattern}`
+            `display_name.ilike.${pattern},first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`
           )
           .limit(30);
         const { data, error } = await query;
@@ -2401,6 +2453,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           const displayName = r.display_name?.trim() || derivedDisplayName || undefined;
           result.push({
             userId: r.user_id,
+            email: r.email ?? undefined,
             displayName,
             firstName: r.first_name ?? undefined,
             lastName: r.last_name ?? undefined,
