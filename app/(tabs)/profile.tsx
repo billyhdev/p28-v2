@@ -1,6 +1,14 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,7 +97,9 @@ export default function ProfileScreen() {
           />
           <Text style={styles.name}>{fullName || t('profile.title')}</Text>
           {profile?.displayName ? (
-            <Text style={styles.handle}>@{profile.displayName.replace(/\s+/g, '_').toLowerCase()}</Text>
+            <Text style={styles.handle}>
+              @{profile.displayName.replace(/\s+/g, '_').toLowerCase()}
+            </Text>
           ) : null}
         </View>
 
@@ -116,10 +126,7 @@ export default function ProfileScreen() {
           <View style={styles.noticeCard}>
             <Text style={styles.noticeTitle}>{t('profile.completeProfile')}</Text>
             <Text style={styles.noticeText}>{t('profile.completeProfileHint')}</Text>
-            <Pressable
-              style={styles.editButton}
-              onPress={() => router.push('/auth/onboarding')}
-            >
+            <Pressable style={styles.editButton} onPress={() => router.push('/auth/onboarding')}>
               <Text style={styles.editButtonText}>{t('profile.completeOnboarding')}</Text>
             </Pressable>
           </View>
@@ -165,9 +172,7 @@ export default function ProfileScreen() {
               <Text style={styles.bioTitle}>{t('profile.bio')}</Text>
             </View>
             <Text style={styles.bioText}>
-              {profile?.bio
-                ? `\u201C${profile.bio}\u201D`
-                : t('profile.bioPlaceholder')}
+              {profile?.bio ? `\u201C${profile.bio}\u201D` : t('profile.bioPlaceholder')}
             </Text>
           </View>
         </View>
@@ -193,7 +198,9 @@ export default function ProfileScreen() {
             accessibilityHint={t('profile.signOutHint')}
           >
             <Ionicons name="log-out-outline" size={20} color={colors.error} />
-            <Text style={[styles.menuItemText, { color: colors.error }]}>{t('profile.signOut')}</Text>
+            <Text style={[styles.menuItemText, { color: colors.error }]}>
+              {t('profile.signOut')}
+            </Text>
             <Ionicons name="chevron-forward" size={18} color={colors.outlineVariant} />
           </Pressable>
         </View>

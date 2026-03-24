@@ -9,16 +9,24 @@ import type {
   CreateChatMessageInput,
   CreateDiscussionInput,
   CreateDiscussionPostInput,
+  Announcement,
+  CreateAnnouncementInput,
   CreateGroupDiscussionInput,
+  CreateGroupEventInput,
   CreateGroupInput,
   Discussion,
   DiscussionPost,
+  EventRsvpAttendee,
+  EventRsvpResponse,
   FriendRequest,
   Group,
   PostReactionDetail,
   GroupAdmin,
   GroupDiscussion,
+  GroupEvent,
   GroupMember,
+  GroupMemberSettings,
+  GroupMemberSettingsUpdates,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
@@ -29,7 +37,11 @@ import type {
   UpdateChatMessageInput,
   UpdateDiscussionInput,
   UpdateDiscussionPostInput,
+  UpdateGroupEventInput,
   UpdateGroupInput,
+  PushToken,
+  InAppNotification,
+  MarkInAppNotificationsReadInput,
 } from './dto';
 
 /**
@@ -104,8 +116,72 @@ export interface DataContract {
   ): Promise<FriendRequest | null | ApiError>;
   getPendingFriendRequestCount(userId: string): Promise<number | ApiError>;
 
+  /** In-app group activity (announcements + events), newest first. */
+  listInAppNotifications(
+    userId: string,
+    options?: { limit?: number }
+  ): Promise<InAppNotification[] | ApiError>;
+  getUnreadInAppNotificationCount(
+    userId: string,
+    options?: { createdAfter?: string }
+  ): Promise<number | ApiError>;
+  markInAppNotificationsRead(input: MarkInAppNotificationsReadInput): Promise<void | ApiError>;
+
   // Group admins
   getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError>;
+  /** Group creator or super admin (RLS). Adds user as a group admin. */
+  addGroupAdmin(groupId: string, userId: string): Promise<void | ApiError>;
+
+  // Group announcements
+  getAnnouncements(groupId: string): Promise<Announcement[] | ApiError>;
+  getAnnouncement(id: string): Promise<Announcement | ApiError>;
+  createAnnouncement(
+    groupId: string,
+    userId: string,
+    input: CreateAnnouncementInput
+  ): Promise<Announcement | ApiError>;
+  /** Invokes Edge Function to send push notifications for a published announcement (idempotent). */
+  publishAnnouncement(announcementId: string): Promise<void | ApiError>;
+
+  // Group events
+  getGroupEvents(groupId: string): Promise<GroupEvent[] | ApiError>;
+  getGroupEvent(id: string): Promise<GroupEvent | ApiError>;
+  createGroupEvent(
+    groupId: string,
+    userId: string,
+    input: CreateGroupEventInput
+  ): Promise<GroupEvent | ApiError>;
+  updateGroupEvent(
+    eventId: string,
+    userId: string,
+    input: UpdateGroupEventInput
+  ): Promise<GroupEvent | ApiError>;
+  cancelGroupEvent(eventId: string): Promise<void | ApiError>;
+  getEventRsvps(eventId: string): Promise<EventRsvpAttendee[] | ApiError>;
+  getMyEventRsvp(
+    eventId: string,
+    userId: string
+  ): Promise<{ response: EventRsvpResponse; updatedAt: string } | null | ApiError>;
+  upsertEventRsvp(
+    eventId: string,
+    userId: string,
+    response: EventRsvpResponse
+  ): Promise<void | ApiError>;
+  removeEventRsvp(eventId: string, userId: string): Promise<void | ApiError>;
+
+  getGroupMemberSettings(groupId: string, userId: string): Promise<GroupMemberSettings | ApiError>;
+  updateGroupMemberSettings(
+    groupId: string,
+    userId: string,
+    updates: GroupMemberSettingsUpdates
+  ): Promise<GroupMemberSettings | ApiError>;
+
+  registerPushToken(
+    userId: string,
+    token: string,
+    platform: 'ios' | 'android'
+  ): Promise<PushToken | ApiError>;
+  removePushToken(userId: string, token: string): Promise<void | ApiError>;
 
   // Group discussions
   getGroupDiscussions(groupId: string): Promise<GroupDiscussion[] | ApiError>;

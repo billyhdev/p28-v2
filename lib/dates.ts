@@ -55,3 +55,30 @@ export function isSameDay(a: string, b: string): boolean {
     da.getDate() === db.getDate()
   );
 }
+
+const eventDateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+/** Localized date + time for group events (RSVP, detail screens). */
+export function formatGroupEventDateTime(isoDate: string): string {
+  return eventDateTimeFormatter.format(new Date(isoDate));
+}
+
+/** True when the event start time is on or before now (events have no separate end time in the model). */
+export function isGroupEventPast(startsAt: string): boolean {
+  return new Date(startsAt).getTime() <= Date.now();
+}
+
+/** True when the event's linked discussion should be read-only (cancelled events only; past events stay open). */
+export function isGroupEventDiscussionReadOnly(event: {
+  status: 'active' | 'cancelled';
+  startsAt?: string;
+}): boolean {
+  return event.status === 'cancelled';
+}

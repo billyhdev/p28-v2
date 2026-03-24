@@ -70,12 +70,7 @@ export function GroupCard({
 
   if (variant === 'compact') {
     return (
-      <CompactCard
-        group={group}
-        isMember={isMember}
-        typeLabel={typeLabel}
-        onPress={handlePress}
-      />
+      <CompactCard group={group} isMember={isMember} typeLabel={typeLabel} onPress={handlePress} />
     );
   }
 
@@ -141,10 +136,7 @@ function FeaturedCard({ group, isMember, typeLabel, onPress, onJoin }: InnerCard
                     e.stopPropagation();
                     onJoin(group.id);
                   }}
-                  style={({ pressed }) => [
-                    featuredStyles.joinButton,
-                    pressed && { opacity: 0.8 },
-                  ]}
+                  style={({ pressed }) => [featuredStyles.joinButton, pressed && { opacity: 0.8 }]}
                   accessibilityLabel={t('groups.joinGroup')}
                   accessibilityHint={t('groups.joinsGroupHint')}
                 >
@@ -254,9 +246,7 @@ function CompactCard({ group, isMember, typeLabel, onPress }: Omit<InnerCardProp
             {group.memberCount != null ? (
               <View style={compactStyles.metaItem}>
                 <Ionicons name="people-outline" size={14} color={colors.onSurfaceVariant} />
-                <Text style={compactStyles.metaText}>
-                  {formatMemberCount(group.memberCount)}
-                </Text>
+                <Text style={compactStyles.metaText}>{formatMemberCount(group.memberCount)}</Text>
               </View>
             ) : null}
             <View style={compactStyles.metaItem}>

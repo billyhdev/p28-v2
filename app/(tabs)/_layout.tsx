@@ -1,11 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Tabs } from 'expo-router';
 
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { FloatingTabBar } from '@/components/navigation/FloatingTabBar';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/hooks/useAuth';
-import { usePendingFriendRequestCountQuery } from '@/hooks/useApiQueries';
+import { useInAppBadgeClearTimestamp } from '@/hooks/useInAppBadgeClearTimestamp';
+import {
+  useChatsForUserQuery,
+  useInAppUnreadNotificationCountQuery,
+  usePendingFriendRequestCountQuery,
+} from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
 import { colors, fontFamily } from '@/theme/tokens';
 
@@ -14,6 +19,20 @@ export default function TabLayout() {
   const { session } = useAuth();
   const userId = session?.user?.id;
   const { data: pendingCount } = usePendingFriendRequestCountQuery(userId);
+  const { badgeClearedAt, recordNotificationsTabVisited, hydrated } =
+    useInAppBadgeClearTimestamp(userId);
+  const { data: inAppUnread = 0 } = useInAppUnreadNotificationCountQuery(userId, badgeClearedAt, {
+    enabled: !!userId && hydrated,
+  });
+  const { data: chats = [] } = useChatsForUserQuery(userId);
+  const unreadConversationCount = useMemo(
+    () => chats.filter((c) => (c.unreadCount ?? 0) > 0).length,
+    [chats]
+  );
+  const messagesTabBadge = unreadConversationCount > 0 ? unreadConversationCount : undefined;
+  const notificationsTabBadgeTotal = (pendingCount ?? 0) + inAppUnread;
+  const notificationsBadge =
+    notificationsTabBadgeTotal > 0 ? notificationsTabBadgeTotal : undefined;
   return (
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
@@ -55,15 +74,21 @@ export default function TabLayout() {
         options={{
           title: t('tabs.messages'),
           tabBarAccessibilityLabel: t('tabs.messages'),
+          tabBarBadge: messagesTabBadge,
           lazy: false,
         }}
       />
       <Tabs.Screen
         name="notifications"
+        listeners={{
+          focus: () => {
+            void recordNotificationsTabVisited();
+          },
+        }}
         options={{
           title: t('tabs.notifications'),
           tabBarAccessibilityLabel: t('tabs.notifications'),
-          tabBarBadge: pendingCount && pendingCount > 0 ? pendingCount : undefined,
+          tabBarBadge: notificationsBadge,
         }}
       />
       <Tabs.Screen

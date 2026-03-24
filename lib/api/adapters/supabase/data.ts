@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { parseMeetingLinkInput } from '@/lib/meetingLink';
 import type { DataContract } from '../../contracts';
 import type { ApiError } from '../../contracts/errors';
 import { isApiError } from '../../contracts/guards';
@@ -12,26 +14,38 @@ import type {
   CreateChatMessageInput,
   CreateDiscussionInput,
   CreateDiscussionPostInput,
+  Announcement,
+  CreateAnnouncementInput,
   CreateGroupDiscussionInput,
+  CreateGroupEventInput,
   CreateGroupInput,
   Discussion,
   DiscussionPost,
+  EventRsvpAttendee,
+  EventRsvpResponse,
   FriendRequest,
   Group,
+  GroupEvent,
   PostReactionDetail,
   GroupAdmin,
   GroupDiscussion,
   GroupMember,
+  GroupMemberSettings,
+  GroupMemberSettingsUpdates,
+  InAppNotification,
+  MarkInAppNotificationsReadInput,
   NotificationPreferences,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
   PostReactionType,
   Profile,
   ProfileUpdates,
+  PushToken,
   UpdateChatInput,
   UpdateChatMessageInput,
   UpdateDiscussionInput,
   UpdateDiscussionPostInput,
+  UpdateGroupEventInput,
   UpdateGroupInput,
 } from '../../contracts/dto';
 
@@ -242,6 +256,155 @@ function mapGroupAdminRow(row: {
   };
 }
 
+type AnnouncementRow = {
+  id: string;
+  group_id: string;
+  created_by_user_id: string;
+  title: string;
+  body: string;
+  meeting_link?: string | null;
+  status: string;
+  published_at?: string | null;
+  cancelled_at?: string | null;
+  created_at: string;
+};
+
+function mapAnnouncementRow(
+  row: AnnouncementRow,
+  profile?: { displayName?: string; avatarUrl?: string } | null
+): Announcement {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    createdByUserId: row.created_by_user_id,
+    title: row.title,
+    body: row.body,
+    meetingLink: row.meeting_link ?? '',
+    status: row.status as Announcement['status'],
+    publishedAt: row.published_at ?? undefined,
+    cancelledAt: row.cancelled_at ?? undefined,
+    createdAt: row.created_at,
+    authorDisplayName: profile?.displayName,
+    authorAvatarUrl: profile?.avatarUrl,
+  };
+}
+
+type InAppNotificationRow = {
+  id: string;
+  user_id: string;
+  group_id: string;
+  group_name: string;
+  kind: 'announcement' | 'group_event';
+  announcement_id: string | null;
+  group_event_id: string | null;
+  title: string;
+  summary: string;
+  created_at: string;
+  read_at: string | null;
+};
+
+function mapInAppNotificationRow(row: InAppNotificationRow): InAppNotification {
+  return {
+    id: row.id,
+    kind: row.kind,
+    groupId: row.group_id,
+    groupName: row.group_name ?? '',
+    announcementId: row.announcement_id ?? undefined,
+    groupEventId: row.group_event_id ?? undefined,
+    title: row.title,
+    summary: row.summary,
+    createdAt: row.created_at,
+    readAt: row.read_at ?? undefined,
+  };
+}
+
+type GroupEventRow = {
+  id: string;
+  group_id: string;
+  created_by_user_id: string;
+  title: string;
+  description: string;
+  starts_at: string;
+  requires_rsvp: boolean;
+  status: string;
+  cancelled_at?: string | null;
+  discussion_id: string;
+  created_at: string;
+  location?: string | null;
+  meeting_link?: string | null;
+};
+
+function mapGroupEventRow(
+  row: GroupEventRow,
+  profile?: { displayName?: string; avatarUrl?: string } | null,
+  counts?: { going: number; maybe: number }
+): GroupEvent {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    createdByUserId: row.created_by_user_id,
+    title: row.title,
+    description: row.description ?? '',
+    startsAt: row.starts_at,
+    requiresRsvp: row.requires_rsvp,
+    status: row.status as GroupEvent['status'],
+    cancelledAt: row.cancelled_at ?? undefined,
+    discussionId: row.discussion_id,
+    createdAt: row.created_at,
+    location: row.location ?? '',
+    meetingLink: row.meeting_link ?? '',
+    authorDisplayName: profile?.displayName,
+    authorAvatarUrl: profile?.avatarUrl,
+    goingCount: counts?.going,
+    maybeCount: counts?.maybe,
+  };
+}
+
+async function loadProfileMapForUserIds(
+  getClient: () => SupabaseClient,
+  userIds: string[]
+): Promise<Map<string, { displayName?: string; avatarUrl?: string }>> {
+  const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+  const client = getClient();
+  for (const uid of userIds) {
+    const { data: p } = await client
+      .from('profiles')
+      .select('display_name, first_name, last_name, avatar_url')
+      .eq('user_id', uid)
+      .maybeSingle();
+    if (p) {
+      const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+      const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+      let avatarUrl = p.avatar_url ?? undefined;
+      if (avatarUrl) {
+        avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+      }
+      profileMap.set(uid, { displayName, avatarUrl });
+    }
+  }
+  return profileMap;
+}
+
+async function loadEventRsvpCounts(
+  client: SupabaseClient,
+  eventIds: string[]
+): Promise<Map<string, { going: number; maybe: number }>> {
+  const map = new Map<string, { going: number; maybe: number }>();
+  if (eventIds.length === 0) return map;
+  const { data: rows, error } = await client
+    .from('event_rsvps')
+    .select('event_id, response')
+    .in('event_id', eventIds);
+  if (error || !rows) return map;
+  for (const r of rows as { event_id: string; response: string }[]) {
+    const cur = map.get(r.event_id) ?? { going: 0, maybe: 0 };
+    if (r.response === 'going') cur.going += 1;
+    if (r.response === 'maybe') cur.maybe += 1;
+    map.set(r.event_id, cur);
+  }
+  return map;
+}
+
 type GroupDiscussionRow = {
   id: string;
   group_id: string;
@@ -279,7 +442,8 @@ function mapDiscussionRow(
   row: DiscussionRow,
   profile?: { displayName?: string; avatarUrl?: string } | null,
   groupName?: string | null,
-  postCount?: number
+  postCount?: number,
+  linkedGroupEvent?: Discussion['linkedGroupEvent']
 ): Discussion {
   return {
     id: row.id,
@@ -293,7 +457,12 @@ function mapDiscussionRow(
     authorDisplayName: profile?.displayName,
     authorAvatarUrl: profile?.avatarUrl,
     groupName: groupName ?? undefined,
+    ...(linkedGroupEvent ? { linkedGroupEvent } : {}),
   };
+}
+
+function isGroupEventDiscussionLockedRow(ge: { status: string }): boolean {
+  return ge.status === 'cancelled';
 }
 
 type DiscussionPostRow = {
@@ -967,6 +1136,572 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
+    async addGroupAdmin(groupId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient().from('group_admins').insert({
+          group_id: groupId,
+          user_id: userId,
+        });
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getAnnouncements(groupId: string): Promise<Announcement[] | ApiError> {
+      try {
+        const client = getClient();
+        const { data: rows, error } = await client
+          .from('announcements')
+          .select(
+            'id, group_id, created_by_user_id, title, body, meeting_link, status, published_at, cancelled_at, created_at'
+          )
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: false });
+        if (error) return toApiError(error);
+        const list = (rows ?? []) as AnnouncementRow[];
+        if (list.length === 0) return [];
+        const userIds = [...new Set(list.map((r) => r.created_by_user_id))];
+        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+        for (const uid of userIds) {
+          const { data: p } = await client
+            .from('profiles')
+            .select('display_name, first_name, last_name, avatar_url')
+            .eq('user_id', uid)
+            .maybeSingle();
+          if (p) {
+            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+            let avatarUrl = p.avatar_url ?? undefined;
+            if (avatarUrl) {
+              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+            }
+            profileMap.set(uid, { displayName, avatarUrl });
+          }
+        }
+        return list.map((r) => mapAnnouncementRow(r, profileMap.get(r.created_by_user_id)));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getAnnouncement(id: string): Promise<Announcement | ApiError> {
+      try {
+        const client = getClient();
+        const { data: row, error } = await client
+          .from('announcements')
+          .select(
+            'id, group_id, created_by_user_id, title, body, meeting_link, status, published_at, cancelled_at, created_at'
+          )
+          .eq('id', id)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!row) return { message: 'Announcement not found', code: 'NOT_FOUND' };
+        const r = row as AnnouncementRow;
+        const { data: p } = await client
+          .from('profiles')
+          .select('display_name, first_name, last_name, avatar_url')
+          .eq('user_id', r.created_by_user_id)
+          .maybeSingle();
+        let profile: { displayName?: string; avatarUrl?: string } | null = null;
+        if (p) {
+          const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+          const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
+          let avatarUrl = p.avatar_url ?? undefined;
+          if (avatarUrl) {
+            avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+          }
+          profile = { displayName, avatarUrl };
+        }
+        return mapAnnouncementRow(r, profile);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createAnnouncement(
+      groupId: string,
+      userId: string,
+      input: CreateAnnouncementInput
+    ): Promise<Announcement | ApiError> {
+      try {
+        const client = getClient();
+        const title = input.title.trim();
+        const body = input.body.trim();
+        if (!title || !body) {
+          return { message: 'Title and message are required', code: 'VALIDATION_ERROR' };
+        }
+        const meetingLinkParsed = parseMeetingLinkInput(input.meetingLink ?? '');
+        if (!meetingLinkParsed.ok) {
+          return {
+            message:
+              meetingLinkParsed.reason === 'too_long'
+                ? 'Meeting link is too long'
+                : 'Enter a valid meeting link (http or https)',
+            code: 'VALIDATION_ERROR',
+          };
+        }
+        const now = new Date().toISOString();
+        const { data: row, error } = await client
+          .from('announcements')
+          .insert({
+            group_id: groupId,
+            created_by_user_id: userId,
+            title,
+            body,
+            meeting_link: meetingLinkParsed.value,
+            status: 'published',
+            published_at: now,
+          })
+          .select(
+            'id, group_id, created_by_user_id, title, body, meeting_link, status, published_at, cancelled_at, created_at'
+          )
+          .single();
+        if (error) return toApiError(error);
+        return mapAnnouncementRow(row as AnnouncementRow, null);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async publishAnnouncement(announcementId: string): Promise<void | ApiError> {
+      try {
+        const client = getClient();
+        // Best-effort refresh so the access token passes Edge verify_jwt (stale cache causes 401).
+        await client.auth.refreshSession();
+        const { data: sessionData, error: sessionError } = await client.auth.getSession();
+        if (sessionError || !sessionData.session?.access_token) {
+          return { message: 'Not signed in', code: 'UNAUTHORIZED' };
+        }
+        // Let the client attach Authorization via fetchWithAuth (uses session after refresh).
+        const { data, error } = await client.functions.invoke('send-announcement', {
+          body: { announcementId },
+        });
+        if (error) {
+          return toApiError(error);
+        }
+        const payload = data as { error?: string } | null;
+        if (payload && typeof payload.error === 'string' && payload.error.length > 0) {
+          return { message: payload.error, code: 'REMOTE_ERROR' };
+        }
+        return;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupEvents(groupId: string): Promise<GroupEvent[] | ApiError> {
+      try {
+        const client = getClient();
+        const { data: rows, error } = await client
+          .from('group_events')
+          .select(
+            'id, group_id, created_by_user_id, title, description, starts_at, requires_rsvp, status, cancelled_at, discussion_id, created_at, location, meeting_link'
+          )
+          .eq('group_id', groupId)
+          .order('starts_at', { ascending: true })
+          .order('created_at', { ascending: false });
+        if (error) return toApiError(error);
+        const list = (rows ?? []) as GroupEventRow[];
+        if (list.length === 0) return [];
+        const userIds = [...new Set(list.map((r) => r.created_by_user_id))];
+        const profileMap = await loadProfileMapForUserIds(getClient, userIds);
+        const countsMap = await loadEventRsvpCounts(
+          client,
+          list.map((r) => r.id)
+        );
+        return list.map((r) =>
+          mapGroupEventRow(r, profileMap.get(r.created_by_user_id), countsMap.get(r.id))
+        );
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupEvent(id: string): Promise<GroupEvent | ApiError> {
+      try {
+        const client = getClient();
+        const { data: row, error } = await client
+          .from('group_events')
+          .select(
+            'id, group_id, created_by_user_id, title, description, starts_at, requires_rsvp, status, cancelled_at, discussion_id, created_at, location, meeting_link'
+          )
+          .eq('id', id)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!row) return { message: 'Event not found', code: 'NOT_FOUND' };
+        const r = row as GroupEventRow;
+        const profileMap = await loadProfileMapForUserIds(getClient, [r.created_by_user_id]);
+        const countsMap = await loadEventRsvpCounts(client, [r.id]);
+        return mapGroupEventRow(r, profileMap.get(r.created_by_user_id), countsMap.get(r.id));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createGroupEvent(
+      groupId: string,
+      _userId: string,
+      input: CreateGroupEventInput
+    ): Promise<GroupEvent | ApiError> {
+      try {
+        const title = input.title.trim();
+        if (!title) {
+          return { message: 'Title is required', code: 'VALIDATION_ERROR' };
+        }
+        const startsAt = input.startsAt;
+        if (!startsAt) {
+          return { message: 'Date and time are required', code: 'VALIDATION_ERROR' };
+        }
+        const meetingLinkParsed = parseMeetingLinkInput(input.meetingLink ?? '');
+        if (!meetingLinkParsed.ok) {
+          return {
+            message:
+              meetingLinkParsed.reason === 'too_long'
+                ? 'Meeting link is too long'
+                : 'Enter a valid meeting link (http or https)',
+            code: 'VALIDATION_ERROR',
+          };
+        }
+        const { data: eventId, error } = await getClient().rpc(
+          'create_group_event_with_discussion',
+          {
+            p_group_id: groupId,
+            p_title: title,
+            p_description: input.description?.trim() ?? '',
+            p_starts_at: startsAt,
+            p_requires_rsvp: input.requiresRsvp,
+            p_location: input.location?.trim() ?? '',
+            p_meeting_link: meetingLinkParsed.value,
+          }
+        );
+        if (error) return toApiError(error);
+        if (!eventId || typeof eventId !== 'string') {
+          return { message: 'Failed to create event', code: 'NOT_FOUND' };
+        }
+        const created = await this.getGroupEvent(eventId);
+        if (isApiError(created)) return created;
+
+        try {
+          const client = getClient();
+          await client.auth.refreshSession();
+          const { data: sessionData, error: sessionError } = await client.auth.getSession();
+          if (!sessionError && sessionData.session?.access_token) {
+            const { data, error: fnError } = await client.functions.invoke(
+              'send-group-event-created',
+              { body: { eventId } }
+            );
+            if (fnError && typeof __DEV__ !== 'undefined' && __DEV__) {
+              console.warn('[createGroupEvent] send-group-event-created invoke failed', fnError);
+            }
+            const payload = data as {
+              error?: string;
+              ok?: boolean;
+              eligibleMembers?: number;
+              messagesQueued?: number;
+              ticketsOk?: number;
+              ticketErrors?: string[];
+            } | null;
+            if (payload?.error && typeof __DEV__ !== 'undefined' && __DEV__) {
+              console.warn('[createGroupEvent] send-group-event-created', payload.error);
+            }
+            if (
+              typeof __DEV__ !== 'undefined' &&
+              __DEV__ &&
+              payload?.ok &&
+              (payload.ticketsOk ?? 0) === 0 &&
+              (payload.messagesQueued ?? 0) > 0
+            ) {
+              console.warn(
+                '[createGroupEvent] Expo returned no ok tickets (check device / credentials)',
+                payload.ticketErrors,
+                payload
+              );
+            }
+            if (
+              typeof __DEV__ !== 'undefined' &&
+              __DEV__ &&
+              payload?.ok &&
+              (payload.messagesQueued ?? 0) === 0 &&
+              (payload.eligibleMembers ?? 0) > 0
+            ) {
+              console.warn(
+                '[createGroupEvent] No push tokens for eligible members; open app on device to register',
+                payload
+              );
+            }
+          }
+        } catch (e) {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.warn('[createGroupEvent] push notify skipped', e);
+          }
+        }
+
+        return created;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateGroupEvent(
+      eventId: string,
+      _userId: string,
+      input: UpdateGroupEventInput
+    ): Promise<GroupEvent | ApiError> {
+      try {
+        const title = input.title.trim();
+        if (!title) {
+          return { message: 'Title is required', code: 'VALIDATION_ERROR' };
+        }
+        const startsAt = input.startsAt;
+        if (!startsAt) {
+          return { message: 'Date and time are required', code: 'VALIDATION_ERROR' };
+        }
+        const meetingLinkParsed = parseMeetingLinkInput(input.meetingLink ?? '');
+        if (!meetingLinkParsed.ok) {
+          return {
+            message:
+              meetingLinkParsed.reason === 'too_long'
+                ? 'Meeting link is too long'
+                : 'Enter a valid meeting link (http or https)',
+            code: 'VALIDATION_ERROR',
+          };
+        }
+        const { error } = await getClient().rpc('update_group_event', {
+          p_event_id: eventId,
+          p_title: title,
+          p_description: input.description?.trim() ?? '',
+          p_starts_at: startsAt,
+          p_requires_rsvp: input.requiresRsvp,
+          p_location: input.location?.trim() ?? '',
+          p_meeting_link: meetingLinkParsed.value,
+        });
+        if (error) return toApiError(error);
+        const updated = await this.getGroupEvent(eventId);
+        if (isApiError(updated)) return updated;
+        return updated;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async cancelGroupEvent(eventId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient().rpc('cancel_group_event', {
+          p_event_id: eventId,
+        });
+        if (error) return toApiError(error);
+        return;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getEventRsvps(eventId: string): Promise<EventRsvpAttendee[] | ApiError> {
+      try {
+        const client = getClient();
+        const { data: rows, error } = await client
+          .from('event_rsvps')
+          .select('event_id, user_id, response, updated_at')
+          .eq('event_id', eventId)
+          .order('updated_at', { ascending: false });
+        if (error) return toApiError(error);
+        const list = (rows ?? []) as {
+          user_id: string;
+          response: string;
+          updated_at: string;
+        }[];
+        if (list.length === 0) return [];
+        const userIds = [...new Set(list.map((r) => r.user_id))];
+        const profileMap = await loadProfileMapForUserIds(getClient, userIds);
+        return list.map((r) => {
+          const prof = profileMap.get(r.user_id);
+          return {
+            userId: r.user_id,
+            response: r.response as EventRsvpResponse,
+            displayName: prof?.displayName,
+            avatarUrl: prof?.avatarUrl,
+            updatedAt: r.updated_at,
+          };
+        });
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getMyEventRsvp(
+      eventId: string,
+      userId: string
+    ): Promise<{ response: EventRsvpResponse; updatedAt: string } | null | ApiError> {
+      try {
+        const { data: row, error } = await getClient()
+          .from('event_rsvps')
+          .select('response, updated_at')
+          .eq('event_id', eventId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!row) return null;
+        return {
+          response: row.response as EventRsvpResponse,
+          updatedAt: row.updated_at,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async upsertEventRsvp(
+      eventId: string,
+      userId: string,
+      response: EventRsvpResponse
+    ): Promise<void | ApiError> {
+      try {
+        if (response !== 'going' && response !== 'maybe' && response !== 'not_going') {
+          return { message: 'Invalid RSVP response', code: 'VALIDATION_ERROR' };
+        }
+        const { error } = await getClient().from('event_rsvps').upsert(
+          {
+            event_id: eventId,
+            user_id: userId,
+            response,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'event_id,user_id' }
+        );
+        if (error) return toApiError(error);
+        return;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async removeEventRsvp(eventId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('event_rsvps')
+          .delete()
+          .eq('event_id', eventId)
+          .eq('user_id', userId);
+        if (error) return toApiError(error);
+        return;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupMemberSettings(
+      groupId: string,
+      userId: string
+    ): Promise<GroupMemberSettings | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('group_member_settings')
+          .select('user_id, group_id, announcements_enabled, updated_at')
+          .eq('group_id', groupId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (!data) {
+          return {
+            userId,
+            groupId,
+            announcementsEnabled: true,
+          };
+        }
+        return {
+          userId: data.user_id,
+          groupId: data.group_id,
+          announcementsEnabled: data.announcements_enabled,
+          updatedAt: data.updated_at ?? undefined,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateGroupMemberSettings(
+      groupId: string,
+      userId: string,
+      updates: GroupMemberSettingsUpdates
+    ): Promise<GroupMemberSettings | ApiError> {
+      try {
+        if (updates.announcementsEnabled === undefined) {
+          return { message: 'No settings to update', code: 'VALIDATION_ERROR' };
+        }
+        const now = new Date().toISOString();
+        const { data, error } = await getClient()
+          .from('group_member_settings')
+          .upsert(
+            {
+              user_id: userId,
+              group_id: groupId,
+              announcements_enabled: updates.announcementsEnabled,
+              updated_at: now,
+            },
+            { onConflict: 'user_id,group_id' }
+          )
+          .select('user_id, group_id, announcements_enabled, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        return {
+          userId: data.user_id,
+          groupId: data.group_id,
+          announcementsEnabled: data.announcements_enabled,
+          updatedAt: data.updated_at ?? undefined,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async registerPushToken(
+      userId: string,
+      token: string,
+      platform: 'ios' | 'android'
+    ): Promise<PushToken | ApiError> {
+      try {
+        const now = new Date().toISOString();
+        const { data, error } = await getClient()
+          .from('push_tokens')
+          .upsert(
+            {
+              user_id: userId,
+              token,
+              platform,
+              updated_at: now,
+            },
+            { onConflict: 'token' }
+          )
+          .select('id, user_id, token, platform, created_at, updated_at')
+          .single();
+        if (error) return toApiError(error);
+        return {
+          id: data.id,
+          userId: data.user_id,
+          token: data.token,
+          platform: data.platform as 'ios' | 'android',
+          createdAt: data.created_at ?? undefined,
+          updatedAt: data.updated_at ?? undefined,
+        };
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async removePushToken(userId: string, token: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('push_tokens')
+          .delete()
+          .eq('user_id', userId)
+          .eq('token', token);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
     async getGroupDiscussions(groupId: string): Promise<GroupDiscussion[] | ApiError> {
       try {
         const { data: rows, error } = await getClient()
@@ -1046,6 +1781,17 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
     async getDiscussions(params?: { groupId?: string }): Promise<Discussion[] | ApiError> {
       try {
+        const excludeIds = new Set<string>();
+        if (params?.groupId) {
+          const { data: evRows, error: evErr } = await getClient()
+            .from('group_events')
+            .select('discussion_id')
+            .eq('group_id', params.groupId);
+          if (evErr) return toApiError(evErr);
+          for (const er of (evRows ?? []) as { discussion_id: string }[]) {
+            if (er.discussion_id) excludeIds.add(er.discussion_id);
+          }
+        }
         let query = getClient()
           .from('discussions')
           .select(
@@ -1057,7 +1803,8 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         }
         const { data: rows, error } = await query;
         if (error) return toApiError(error);
-        const discussions = rows ?? [];
+        const raw = rows ?? [];
+        const discussions = raw.filter((r: { id: string }) => !excludeIds.has(r.id));
         if (discussions.length === 0) return [];
         const userIds = [...new Set(discussions.map((r: { user_id: string }) => r.user_id))];
         const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
@@ -1130,7 +1877,21 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           profile = { displayName, avatarUrl };
         }
         const g = Array.isArray(r.groups) ? r.groups[0] : r.groups;
-        return mapDiscussionRow(r, profile, g?.name ?? null);
+        let linkedGroupEvent: Discussion['linkedGroupEvent'] | undefined;
+        const { data: geRow, error: geErr } = await getClient()
+          .from('group_events')
+          .select('id, status, starts_at')
+          .eq('discussion_id', id)
+          .maybeSingle();
+        if (!geErr && geRow) {
+          const ge = geRow as { id: string; status: string; starts_at: string };
+          linkedGroupEvent = {
+            id: ge.id,
+            status: ge.status as GroupEvent['status'],
+            startsAt: ge.starts_at,
+          };
+        }
+        return mapDiscussionRow(r, profile, g?.name ?? null, undefined, linkedGroupEvent);
       } catch (e) {
         return toApiError(e);
       }
@@ -1200,6 +1961,18 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         }
         if (params.body !== undefined) updates.body = params.body?.trim() ?? '';
         if (Object.keys(updates).length === 0) return this.getDiscussion(id);
+
+        const { data: geLock } = await getClient()
+          .from('group_events')
+          .select('status, starts_at')
+          .eq('discussion_id', id)
+          .maybeSingle();
+        if (geLock && isGroupEventDiscussionLockedRow(geLock as { status: string })) {
+          return {
+            message: 'This event discussion is closed',
+            code: 'FORBIDDEN',
+          };
+        }
 
         const { data: row, error } = await getClient()
           .from('discussions')
@@ -1341,6 +2114,17 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
             code: 'VALIDATION_ERROR',
           };
         }
+        const { data: geLock } = await getClient()
+          .from('group_events')
+          .select('status, starts_at')
+          .eq('discussion_id', discussionId)
+          .maybeSingle();
+        if (geLock && isGroupEventDiscussionLockedRow(geLock as { status: string })) {
+          return {
+            message: 'This event discussion is closed',
+            code: 'FORBIDDEN',
+          };
+        }
         const payload = {
           discussion_id: discussionId,
           user_id: userId,
@@ -1395,6 +2179,27 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         if (imageUrls !== undefined) payload.image_urls = imageUrls;
         if (Object.keys(payload).length === 0) {
           return { message: 'No updates provided', code: 'VALIDATION_ERROR' };
+        }
+        const { data: postMeta, error: metaErr } = await getClient()
+          .from('discussion_posts')
+          .select('discussion_id')
+          .eq('id', postId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (metaErr) return toApiError(metaErr);
+        if (!postMeta) {
+          return { message: 'Post not found or not authorized to edit', code: 'NOT_FOUND' };
+        }
+        const { data: geLock } = await getClient()
+          .from('group_events')
+          .select('status, starts_at')
+          .eq('discussion_id', postMeta.discussion_id)
+          .maybeSingle();
+        if (geLock && isGroupEventDiscussionLockedRow(geLock as { status: string })) {
+          return {
+            message: 'This event discussion is closed',
+            code: 'FORBIDDEN',
+          };
         }
         const { data: row, error } = await getClient()
           .from('discussion_posts')
@@ -2786,6 +3591,73 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .eq('status', 'pending');
         if (error) return toApiError(error);
         return count ?? 0;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async listInAppNotifications(
+      userId: string,
+      options?: { limit?: number }
+    ): Promise<InAppNotification[] | ApiError> {
+      try {
+        const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
+        const { data: rows, error } = await getClient()
+          .from('in_app_notifications')
+          .select(
+            'id, user_id, group_id, group_name, kind, announcement_id, group_event_id, title, summary, created_at, read_at'
+          )
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        if (error) return toApiError(error);
+        return (rows ?? []).map((r) => mapInAppNotificationRow(r as InAppNotificationRow));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getUnreadInAppNotificationCount(
+      userId: string,
+      options?: { createdAfter?: string }
+    ): Promise<number | ApiError> {
+      try {
+        let q = getClient()
+          .from('in_app_notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .is('read_at', null);
+        const after = options?.createdAfter?.trim();
+        if (after) {
+          q = q.gt('created_at', after);
+        }
+        const { count, error } = await q;
+        if (error) return toApiError(error);
+        return count ?? 0;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async markInAppNotificationsRead(
+      input: MarkInAppNotificationsReadInput
+    ): Promise<void | ApiError> {
+      try {
+        const { notificationIds, announcementId, groupEventId } = input;
+        const hasIds = notificationIds != null && notificationIds.length > 0;
+        const hasAnn = announcementId != null && announcementId.length > 0;
+        const hasEv = groupEventId != null && groupEventId.length > 0;
+        const targets = (hasIds ? 1 : 0) + (hasAnn ? 1 : 0) + (hasEv ? 1 : 0);
+        if (targets > 1) {
+          return { message: 'Invalid mark notification request', code: 'VALIDATION_ERROR' };
+        }
+        const { error } = await getClient().rpc('mark_in_app_notifications_read', {
+          p_notification_ids: hasIds ? notificationIds : null,
+          p_announcement_id: hasAnn ? announcementId : null,
+          p_group_event_id: hasEv ? groupEventId : null,
+        });
+        if (error) return toApiError(error);
+        return;
       } catch (e) {
         return toApiError(e);
       }

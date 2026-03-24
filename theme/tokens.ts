@@ -28,18 +28,21 @@ export const fontFamily = {
 
 export const colors = {
   // Surface hierarchy (nested sheets of heavy-stock paper)
-  background: '#f9f9ff',            // base surface
-  surface: '#f9f9ff',               // alias for background
+  background: '#f9f9ff', // base surface
+  surface: '#f9f9ff', // alias for background
   surfaceContainerLowest: '#ffffff', // floating elements
-  surfaceContainerLow: '#f0f3ff',   // cards on surface
-  surfaceContainer: '#e7eefe',      // card backgrounds
-  surfaceContainerHigh: '#e2e8f8',  // recessed sections
+  surfaceContainerLow: '#f0f3ff', // cards on surface
+  surfaceContainer: '#e7eefe', // card backgrounds
+  surfaceContainerHigh: '#e2e8f8', // recessed sections
   surfaceContainerHighest: '#dce3f2', // input backgrounds
+
+  /** Native splash + app icon background (keep in sync with app.json splash / adaptiveIcon) */
+  brandSplashBackground: '#327db6',
 
   // Primary — deep authoritative blue
   primary: '#002046',
   primaryContainer: '#1b365d',
-  primaryFixed: '#d6e3ff',          // input focus background
+  primaryFixed: '#d6e3ff', // input focus background
   onPrimary: '#ffffff',
 
   // Secondary — warm illuminating gold
@@ -118,8 +121,8 @@ export const spacing = {
   cardPaddingTop: 16,
   cardPaddingBottom: 24,
   cardGap: 16,
-  sectionGap: 44,           // scale 8 = 2.75rem between feed items
-  majorSectionGap: 88,      // 5.5rem between major sections
+  sectionGap: 44, // scale 8 = 2.75rem between feed items
+  majorSectionGap: 88, // 5.5rem between major sections
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -129,12 +132,12 @@ export const spacing = {
 export const radius = {
   sm: 4,
   md: 8,
-  button: 9999,   // pill shape — "Soft-Touch CTA"
-  card: 24,       // xl = 1.5rem
-  chip: 9999,     // pill
+  button: 9999, // pill shape — "Soft-Touch CTA"
+  card: 24, // xl = 1.5rem
+  chip: 9999, // pill
   lg: 16,
   xl: 24,
-  input: 12,      // md = 0.75rem
+  input: 12, // md = 0.75rem
 } as const;
 
 // ---------------------------------------------------------------------------

@@ -136,9 +136,7 @@ export function ReactionSheet({
                           accessibilityLabel={r.displayName ? `${r.displayName} profile` : ''}
                         />
                         <View style={styles.rowContent}>
-                          <Text style={styles.rowName}>
-                            {r.displayName ?? t('common.loading')}
-                          </Text>
+                          <Text style={styles.rowName}>{r.displayName ?? t('common.loading')}</Text>
                           {isCurrentUser && canReact ? (
                             <Text style={styles.rowHint}>{t('discussions.tapToRemove')}</Text>
                           ) : null}

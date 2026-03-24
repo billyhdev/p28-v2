@@ -7,12 +7,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, isApiError } from '@/lib/api';
 import { queryKeys } from '@/lib/api/queryKeys';
 import type {
+  ChatMessage,
+  CreateChatMessageInput,
+  CreateDiscussionPostInput,
   CreateGroupInput,
   DiscussionPost,
   GroupType,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
   PostReactionType,
+  Profile,
   ProfileUpdates,
   UpdateGroupInput,
 } from '@/lib/api';
@@ -25,6 +29,24 @@ async function queryFn<T>(promise: Promise<T | import('@/lib/api').ApiError>): P
   }
   return result;
 }
+
+function newOptimisticMessageId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') {
+    return `opt-${c.randomUUID()}`;
+  }
+  return `opt-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+type DiscussionPostWithOutbound = DiscussionPost & {
+  outboundStatus?: 'sending' | 'failed';
+  outboundRetryPayload?: CreateDiscussionPostInput;
+};
+
+type ChatMessageWithOutbound = ChatMessage & {
+  outboundStatus?: 'sending' | 'failed';
+  outboundRetryPayload?: CreateChatMessageInput;
+};
 
 // --- Profile ---
 
@@ -249,6 +271,56 @@ export function usePendingFriendRequestCountQuery(
   });
 }
 
+export function useInAppNotificationsQuery(
+  userId: string | undefined,
+  options?: { enabled?: boolean; limit?: number }
+) {
+  const limit = options?.limit ?? 50;
+  return useQuery({
+    queryKey: [...queryKeys.inAppNotifications(userId ?? ''), limit] as const,
+    queryFn: () =>
+      queryFn(api.data.listInAppNotifications(userId!, { limit })) as Promise<
+        import('@/lib/api').InAppNotification[]
+      >,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useInAppUnreadNotificationCountQuery(
+  userId: string | undefined,
+  badgeClearedAt: string | null,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.inAppUnreadNotificationCount(userId ?? '', badgeClearedAt),
+    queryFn: () =>
+      queryFn(
+        api.data.getUnreadInAppNotificationCount(
+          userId!,
+          badgeClearedAt ? { createdAfter: badgeClearedAt } : undefined
+        )
+      ) as Promise<number>,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useMarkInAppNotificationsReadMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: import('@/lib/api').MarkInAppNotificationsReadInput) =>
+      queryFn(api.data.markInAppNotificationsRead(input)),
+    onSuccess: (_, { userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.inAppNotifications(userId) });
+      qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'inAppUnreadNotificationCount' &&
+          q.queryKey[1] === userId,
+      });
+    },
+  });
+}
+
 export function useSendFriendRequestMutation() {
   const qc = useQueryClient();
   return useMutation({
@@ -335,6 +407,251 @@ export function useGroupAdminsQuery(groupId: string | undefined, options?: { ena
     queryFn: () =>
       queryFn(api.data.getGroupAdmins(groupId!)) as Promise<import('@/lib/api').GroupAdmin[]>,
     enabled: !!groupId && (options?.enabled ?? true),
+  });
+}
+
+export function useAddGroupAdminMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, userId }: { groupId: string; userId: string }) =>
+      queryFn(api.data.addGroupAdmin(groupId, userId)),
+    onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groupAdmins(groupId) });
+    },
+  });
+}
+
+export function useAnnouncementsQuery(
+  groupId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.announcements(groupId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getAnnouncements(groupId!)) as Promise<import('@/lib/api').Announcement[]>,
+    enabled: !!groupId && (options?.enabled ?? true),
+  });
+}
+
+export function useAnnouncementQuery(
+  announcementId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.announcement(announcementId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getAnnouncement(announcementId!)) as Promise<
+        import('@/lib/api').Announcement
+      >,
+    enabled: !!announcementId && (options?.enabled ?? true),
+  });
+}
+
+export function useCreateAnnouncementMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      groupId,
+      userId,
+      input,
+    }: {
+      groupId: string;
+      userId: string;
+      input: import('@/lib/api').CreateAnnouncementInput;
+    }) => {
+      const created = await queryFn(api.data.createAnnouncement(groupId, userId, input));
+      const publishResult = await api.data.publishAnnouncement(created.id);
+      if (isApiError(publishResult) && __DEV__) {
+        console.warn('[announcements] publishAnnouncement after create', publishResult.message);
+      }
+      return created;
+    },
+    onSuccess: (_data, { groupId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.announcements(groupId) });
+    },
+  });
+}
+
+export function useGroupEventsQuery(groupId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.groupEvents(groupId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getGroupEvents(groupId!)) as Promise<import('@/lib/api').GroupEvent[]>,
+    enabled: !!groupId && (options?.enabled ?? true),
+  });
+}
+
+export function useGroupEventQuery(eventId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.groupEvent(eventId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getGroupEvent(eventId!)) as Promise<import('@/lib/api').GroupEvent>,
+    enabled: !!eventId && (options?.enabled ?? true),
+  });
+}
+
+export function useEventRsvpsQuery(eventId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.eventRsvps(eventId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getEventRsvps(eventId!)) as Promise<import('@/lib/api').EventRsvpAttendee[]>,
+    enabled: !!eventId && (options?.enabled ?? true),
+  });
+}
+
+export function useMyEventRsvpQuery(
+  eventId: string | undefined,
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.myEventRsvp(eventId ?? '', userId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getMyEventRsvp(eventId!, userId!)) as Promise<{
+        response: import('@/lib/api').EventRsvpResponse;
+        updatedAt: string;
+      } | null>,
+    enabled: !!eventId && !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useCreateGroupEventMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      groupId,
+      userId,
+      input,
+    }: {
+      groupId: string;
+      userId: string;
+      input: import('@/lib/api').CreateGroupEventInput;
+    }) => queryFn(api.data.createGroupEvent(groupId, userId, input)),
+    onSuccess: (event) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvents(event.groupId) });
+      qc.invalidateQueries({ queryKey: queryKeys.discussions({ groupId: event.groupId }) });
+    },
+  });
+}
+
+export function useUpdateGroupEventMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      eventId,
+      userId,
+      input,
+    }: {
+      eventId: string;
+      userId: string;
+      input: import('@/lib/api').UpdateGroupEventInput;
+    }) => queryFn(api.data.updateGroupEvent(eventId, userId, input)),
+    onSuccess: (event) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvents(event.groupId) });
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvent(event.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.discussions({ groupId: event.groupId }) });
+      qc.invalidateQueries({ queryKey: queryKeys.discussion(event.discussionId) });
+    },
+  });
+}
+
+export function useCancelGroupEventMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventId, groupId }: { eventId: string; groupId: string }) =>
+      queryFn(api.data.cancelGroupEvent(eventId)),
+    onSuccess: (_void, { eventId, groupId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvent(eventId) });
+    },
+  });
+}
+
+export function useUpsertEventRsvpMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      eventId,
+      userId,
+      response,
+    }: {
+      eventId: string;
+      userId: string;
+      response: import('@/lib/api').EventRsvpResponse;
+    }) => queryFn(api.data.upsertEventRsvp(eventId, userId, response)),
+    onSuccess: (_void, { eventId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.eventRsvps(eventId) });
+      qc.invalidateQueries({ queryKey: queryKeys.myEventRsvp(eventId, userId) });
+      qc.invalidateQueries({ queryKey: ['groupEvents'] });
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvent(eventId) });
+    },
+  });
+}
+
+export function useRemoveEventRsvpMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventId, userId }: { eventId: string; userId: string }) =>
+      queryFn(api.data.removeEventRsvp(eventId, userId)),
+    onSuccess: (_void, { eventId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.eventRsvps(eventId) });
+      qc.invalidateQueries({ queryKey: queryKeys.myEventRsvp(eventId, userId) });
+      qc.invalidateQueries({ queryKey: ['groupEvents'] });
+      qc.invalidateQueries({ queryKey: queryKeys.groupEvent(eventId) });
+    },
+  });
+}
+
+export function useGroupMemberSettingsQuery(
+  groupId: string | undefined,
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.groupMemberSettings(groupId ?? '', userId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getGroupMemberSettings(groupId!, userId!)) as Promise<
+        import('@/lib/api').GroupMemberSettings
+      >,
+    enabled: !!groupId && !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useUpdateGroupMemberSettingsMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      groupId,
+      userId,
+      updates,
+    }: {
+      groupId: string;
+      userId: string;
+      updates: import('@/lib/api').GroupMemberSettingsUpdates;
+    }) =>
+      queryFn(api.data.updateGroupMemberSettings(groupId, userId, updates)) as Promise<
+        import('@/lib/api').GroupMemberSettings
+      >,
+    onSuccess: (_, { groupId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groupMemberSettings(groupId, userId) });
+    },
+  });
+}
+
+export function useRegisterPushTokenMutation() {
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      token,
+      platform,
+    }: {
+      userId: string;
+      token: string;
+      platform: 'ios' | 'android';
+    }) =>
+      queryFn(api.data.registerPushToken(userId, token, platform)) as Promise<
+        import('@/lib/api').PushToken
+      >,
   });
 }
 
@@ -499,14 +816,72 @@ export function useCreateDiscussionPostMutation() {
     }: {
       discussionId: string;
       userId: string;
-      input: import('@/lib/api').CreateDiscussionPostInput;
+      input: CreateDiscussionPostInput;
+      optimisticId?: string;
     }) =>
-      queryFn(api.data.createDiscussionPost(discussionId, userId, input)) as Promise<
-        import('@/lib/api').DiscussionPost
-      >,
-    onSuccess: (_, { discussionId }) => {
+      queryFn(
+        api.data.createDiscussionPost(discussionId, userId, input)
+      ) as Promise<DiscussionPost>,
+    onMutate: async (variables) => {
+      const { discussionId, userId, input, optimisticId: retryId } = variables;
+      const queryKey = queryKeys.discussionPosts(discussionId, userId);
+      await qc.cancelQueries({ queryKey });
+      const previous = qc.getQueryData<DiscussionPostWithOutbound[]>(queryKey);
+      const optimisticId = retryId ?? newOptimisticMessageId();
+      const profile = qc.getQueryData<Profile>(queryKeys.profile(userId));
+
+      if (retryId) {
+        qc.setQueryData<DiscussionPostWithOutbound[]>(queryKey, (old) => {
+          if (!old) return old;
+          return old.map((p) =>
+            p.id === retryId ? { ...p, outboundStatus: 'sending' as const } : p
+          );
+        });
+        return { previous, optimisticId };
+      }
+
+      const optimisticPost: DiscussionPostWithOutbound = {
+        id: optimisticId,
+        discussionId,
+        userId,
+        body: input.body,
+        createdAt: new Date().toISOString(),
+        parentPostId: input.parentPostId,
+        imageUrls: input.imageUrls,
+        authorDisplayName: profile?.displayName,
+        authorAvatarUrl: profile?.avatarUrl,
+        outboundStatus: 'sending',
+        outboundRetryPayload: input,
+      };
+      qc.setQueryData<DiscussionPostWithOutbound[]>(queryKey, (old) => [
+        ...(old ?? []),
+        optimisticPost,
+      ]);
+      return { previous, optimisticId };
+    },
+    onError: (_err, variables, context) => {
+      const optimisticId = context?.optimisticId;
+      if (!optimisticId) return;
+      const queryKey = queryKeys.discussionPosts(variables.discussionId, variables.userId);
+      qc.setQueryData<DiscussionPostWithOutbound[]>(queryKey, (old) => {
+        if (!old) return old;
+        return old.map((p) =>
+          p.id === optimisticId ? { ...p, outboundStatus: 'failed' as const } : p
+        );
+      });
+    },
+    onSuccess: (serverPost, variables, context) => {
+      const optimisticId = context?.optimisticId;
+      const queryKey = queryKeys.discussionPosts(variables.discussionId, variables.userId);
+      if (optimisticId) {
+        qc.setQueryData<DiscussionPostWithOutbound[]>(queryKey, (old) => {
+          if (!old) return [serverPost];
+          return old.map((p) => (p.id === optimisticId ? serverPost : p));
+        });
+      }
       qc.invalidateQueries({
-        predicate: (q) => q.queryKey[0] === 'discussionPosts' && q.queryKey[1] === discussionId,
+        predicate: (q) =>
+          q.queryKey[0] === 'discussionPosts' && q.queryKey[1] === variables.discussionId,
       });
     },
   });
@@ -880,14 +1255,70 @@ export function useCreateChatMessageMutation() {
     }: {
       chatId: string;
       userId: string;
-      input: import('@/lib/api').CreateChatMessageInput;
-    }) =>
-      queryFn(api.data.createChatMessage(chatId, userId, input)) as Promise<
-        import('@/lib/api').ChatMessage
-      >,
-    onSuccess: (_, { chatId, userId }) => {
-      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, userId) });
-      qc.invalidateQueries({ queryKey: queryKeys.chat(chatId) });
+      input: CreateChatMessageInput;
+      optimisticId?: string;
+    }) => queryFn(api.data.createChatMessage(chatId, userId, input)) as Promise<ChatMessage>,
+    onMutate: async (variables) => {
+      const { chatId, userId, input, optimisticId: retryId } = variables;
+      const queryKey = queryKeys.chatMessages(chatId, userId);
+      await qc.cancelQueries({ queryKey });
+      const previous = qc.getQueryData<ChatMessageWithOutbound[]>(queryKey);
+      const optimisticId = retryId ?? newOptimisticMessageId();
+      const profile = qc.getQueryData<Profile>(queryKeys.profile(userId));
+
+      if (retryId) {
+        qc.setQueryData<ChatMessageWithOutbound[]>(queryKey, (old) => {
+          if (!old) return old;
+          return old.map((m) =>
+            m.id === retryId ? { ...m, outboundStatus: 'sending' as const } : m
+          );
+        });
+        return { previous, optimisticId };
+      }
+
+      const optimisticMessage: ChatMessageWithOutbound = {
+        id: optimisticId,
+        chatId,
+        userId,
+        body: input.body,
+        createdAt: new Date().toISOString(),
+        parentMessageId: input.parentMessageId,
+        imageUrls: input.imageUrls,
+        authorDisplayName: profile?.displayName,
+        authorAvatarUrl: profile?.avatarUrl,
+        outboundStatus: 'sending',
+        outboundRetryPayload: input,
+      };
+      qc.setQueryData<ChatMessageWithOutbound[]>(queryKey, (old) => [
+        ...(old ?? []),
+        optimisticMessage,
+      ]);
+      return { previous, optimisticId };
+    },
+    onError: (_err, variables, context) => {
+      const optimisticId = context?.optimisticId;
+      if (!optimisticId) return;
+      const queryKey = queryKeys.chatMessages(variables.chatId, variables.userId);
+      qc.setQueryData<ChatMessageWithOutbound[]>(queryKey, (old) => {
+        if (!old) return old;
+        return old.map((m) =>
+          m.id === optimisticId ? { ...m, outboundStatus: 'failed' as const } : m
+        );
+      });
+    },
+    onSuccess: (serverMessage, variables, context) => {
+      const optimisticId = context?.optimisticId;
+      const queryKey = queryKeys.chatMessages(variables.chatId, variables.userId);
+      if (optimisticId) {
+        qc.setQueryData<ChatMessageWithOutbound[]>(queryKey, (old) => {
+          if (!old) return [serverMessage];
+          return old.map((m) => (m.id === optimisticId ? serverMessage : m));
+        });
+      }
+      qc.invalidateQueries({
+        queryKey: queryKeys.chatMessages(variables.chatId, variables.userId),
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.chat(variables.chatId) });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
     },
   });

@@ -26,6 +26,9 @@ export const queryKeys = {
   receivedFriendRequests: (userId: string) => ['receivedFriendRequests', userId] as const,
   sentFriendRequests: (userId: string) => ['sentFriendRequests', userId] as const,
   pendingFriendRequestCount: (userId: string) => ['pendingFriendRequestCount', userId] as const,
+  inAppNotifications: (userId: string) => ['inAppNotifications', userId] as const,
+  inAppUnreadNotificationCount: (userId: string, badgeClearedAt: string | null) =>
+    ['inAppUnreadNotificationCount', userId, badgeClearedAt ?? ''] as const,
   chatsForUser: (userId: string, folderId?: string) =>
     ['chatsForUser', userId, folderId ?? null] as const,
   chat: (id: string) => ['chat', id] as const,
@@ -40,4 +43,12 @@ export const queryKeys = {
   searchProfiles: (search: string, excludeUserId: string) =>
     ['searchProfiles', search.trim(), excludeUserId] as const,
   groupsWhereUserIsAdmin: (userId: string) => ['groupsWhereUserIsAdmin', userId] as const,
+  announcements: (groupId: string) => ['announcements', groupId] as const,
+  announcement: (id: string) => ['announcement', id] as const,
+  groupEvents: (groupId: string) => ['groupEvents', groupId] as const,
+  groupEvent: (id: string) => ['groupEvent', id] as const,
+  eventRsvps: (eventId: string) => ['eventRsvps', eventId] as const,
+  myEventRsvp: (eventId: string, userId: string) => ['myEventRsvp', eventId, userId] as const,
+  groupMemberSettings: (groupId: string, userId: string) =>
+    ['groupMemberSettings', groupId, userId] as const,
 };

@@ -131,7 +131,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               navigation.emit({ type: 'tabLongPress', target: route.key });
             };
 
-            const badge = typeof options.tabBarBadge === 'number' ? options.tabBarBadge : undefined;
+            const rawBadge =
+              typeof options.tabBarBadge === 'number' ? options.tabBarBadge : undefined;
+            const badge = route.name === 'messages' && isFocused ? undefined : rawBadge;
 
             return (
               <TabItem

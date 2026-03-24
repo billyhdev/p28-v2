@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-
 import { useAuth } from '@/hooks/useAuth';
 import { useAddChatToFolderMutation, useChatsForUserQuery } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/errors';

@@ -1,23 +1,39 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useLayoutEffect, useState } from 'react';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Avatar, StackedAvatars } from '@/components/primitives';
 import { EmptyState } from '@/components/patterns/EmptyState';
 import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
+import { GroupEventFormSheet } from '@/components/patterns/GroupEventFormSheet';
 import { useAuth } from '@/hooks/useAuth';
 import {
+  useAnnouncementsQuery,
+  useCreateGroupEventMutation,
   useDiscussionsQuery,
-  useGroupQuery,
+  useGroupAdminsQuery,
+  useGroupEventsQuery,
   useGroupMembersQuery,
+  useGroupQuery,
   useGroupsForUserQuery,
+  useIsSuperAdminQuery,
   useJoinGroupMutation,
   useLeaveGroupMutation,
 } from '@/hooks/useApiQueries';
-import { getUserFacingError } from '@/lib/api';
-import { formatRelativeTime } from '@/lib/dates';
+import { getUserFacingError, isApiError } from '@/lib/api';
+import { formatGroupEventDateTime, formatRelativeTime } from '@/lib/dates';
+import { compareGroupEventsByStartThenCreated } from '@/lib/groupEventsSort';
 import { t } from '@/lib/i18n';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/theme/tokens';
 
@@ -45,6 +61,9 @@ export default function GroupDetailScreen() {
   } = useGroupQuery(id);
   const { data: memberGroups = [], refetch: refetchMembership } = useGroupsForUserQuery(userId);
   const isMember = !!id && memberGroups.some((g) => g.id === id);
+  const { data: groupEvents = [], refetch: refetchGroupEvents } = useGroupEventsQuery(id, {
+    enabled: !!id && isMember,
+  });
   const { data: members = [], refetch: refetchMembers } = useGroupMembersQuery(id, {
     enabled: !!id,
   });
@@ -53,7 +72,13 @@ export default function GroupDetailScreen() {
     isLoading: discussionsLoading,
     refetch: refetchDiscussions,
   } = useDiscussionsQuery({ groupId: id, enabled: !!id });
-
+  const { data: announcements = [], refetch: refetchAnnouncements } = useAnnouncementsQuery(id, {
+    enabled: !!id,
+  });
+  const { data: groupAdmins = [] } = useGroupAdminsQuery(id, { enabled: !!id });
+  const { data: isSuperAdmin = false } = useIsSuperAdminQuery(userId, { enabled: !!userId });
+  const createEventMutation = useCreateGroupEventMutation();
+  const isGroupAdmin = !!userId && groupAdmins.some((a) => a.userId === userId);
   const joinMutation = useJoinGroupMutation();
   const leaveMutation = useLeaveGroupMutation();
   const isJoining = joinMutation.isPending || leaveMutation.isPending;
@@ -89,7 +114,16 @@ export default function GroupDetailScreen() {
       refetchMembership();
       refetchMembers();
       refetchDiscussions();
-    }, [refetchGroup, refetchMembership, refetchMembers, refetchDiscussions])
+      refetchAnnouncements();
+      refetchGroupEvents();
+    }, [
+      refetchGroup,
+      refetchMembership,
+      refetchMembers,
+      refetchDiscussions,
+      refetchAnnouncements,
+      refetchGroupEvents,
+    ])
   );
 
   const handleJoin = useCallback(() => {
@@ -133,6 +167,76 @@ export default function GroupDetailScreen() {
   const handleManageSettings = useCallback(() => {
     router.push(`/group/settings?groupId=${id}`);
   }, [router, id]);
+
+  const handleCreateAnnouncement = useCallback(() => {
+    if (id) router.push(`/group/announcement/create?groupId=${id}`);
+  }, [router, id]);
+
+  const handleSeeAllAnnouncements = useCallback(() => {
+    if (id) router.push(`/group/announcement/list?groupId=${id}`);
+  }, [router, id]);
+
+  const [eventSheetOpen, setEventSheetOpen] = useState(false);
+  const [eventFormError, setEventFormError] = useState<string | null>(null);
+
+  const handleOpenCreateEvent = useCallback(() => {
+    setEventFormError(null);
+    setEventSheetOpen(true);
+  }, []);
+
+  const handleCloseEventSheet = useCallback(() => {
+    setEventSheetOpen(false);
+    setEventFormError(null);
+  }, []);
+
+  const handleSeeAllEvents = useCallback(() => {
+    if (id) router.push(`/group/event/list?groupId=${id}`);
+  }, [router, id]);
+
+  const handleSubmitCreateEvent = useCallback(
+    (payload: {
+      title: string;
+      description: string;
+      location: string;
+      meetingLink: string;
+      startsAt: string;
+      requiresRsvp: boolean;
+    }) => {
+      if (!userId || !id) return;
+      const start = new Date(payload.startsAt);
+      if (start.getTime() <= Date.now()) {
+        setEventFormError(t('groupEvents.futureOnly'));
+        return;
+      }
+      setEventFormError(null);
+      createEventMutation.mutate(
+        { groupId: id, userId, input: payload },
+        {
+          onSuccess: () => {
+            setEventSheetOpen(false);
+            refetchGroupEvents();
+          },
+          onError: (err) => {
+            setEventFormError(isApiError(err) ? getUserFacingError(err) : t('common.error'));
+          },
+        }
+      );
+    },
+    [userId, id, createEventMutation, refetchGroupEvents]
+  );
+
+  const publishedAnnouncements = announcements.filter((a) => a.status === 'published');
+  const latestPublished =
+    publishedAnnouncements.length > 0
+      ? publishedAnnouncements.reduce((acc, cur) =>
+          new Date(cur.createdAt) > new Date(acc.createdAt) ? cur : acc
+        )
+      : undefined;
+
+  const handleOpenLatestAnnouncementDetail = useCallback(() => {
+    if (!id || !latestPublished) return;
+    router.push(`/group/announcement/${latestPublished.id}?groupId=${encodeURIComponent(id)}`);
+  }, [router, id, latestPublished]);
 
   if (!id) {
     router.back();
@@ -210,43 +314,100 @@ export default function GroupDetailScreen() {
               <Text style={styles.heroMetaText}>{languageName}</Text>
             </View>
           </View>
-          <View style={styles.heroActions}>
-            {isMember ? (
-              <Pressable
-                onPress={handleOpenJoinedSheet}
-                style={({ pressed }) => [styles.heroJoinedPill, pressed && { opacity: 0.85 }]}
-                disabled={isJoining}
-                accessibilityLabel={t('groups.joined')}
-                accessibilityHint={t('groups.opensOptions')}
-              >
-                <Ionicons name="checkmark-circle" size={15} color={colors.onSecondaryContainer} />
-                <Text style={styles.heroJoinedPillText}>{t('groups.joined')}</Text>
-                <Ionicons name="chevron-down" size={14} color={colors.onSecondaryContainer} />
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={handleJoin}
-                style={({ pressed }) => [
-                  styles.heroJoinPill,
-                  pressed && { opacity: 0.9 },
-                  isJoining && { opacity: 0.5 },
-                ]}
-                disabled={isJoining}
-                accessibilityLabel={t('groups.join')}
-                accessibilityHint={t('groups.joinsGroupHint')}
-                accessibilityRole="button"
-              >
-                {joinMutation.isPending ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Text style={styles.heroJoinPillText}>{t('groups.join')}</Text>
-                )}
-              </Pressable>
-            )}
-            <View style={styles.heroMemberCount}>
-              <Ionicons name="people" size={14} color="rgba(255,255,255,0.7)" />
-              <Text style={styles.heroMemberCountText}>{memberCountLabel}</Text>
+          <View style={styles.heroActionsColumn}>
+            <View style={styles.heroPrimaryRow}>
+              {isMember ? (
+                <Pressable
+                  onPress={handleOpenJoinedSheet}
+                  style={({ pressed }) => [styles.heroJoinedPill, pressed && { opacity: 0.85 }]}
+                  disabled={isJoining}
+                  accessibilityLabel={t('groups.joined')}
+                  accessibilityHint={t('groups.opensOptions')}
+                >
+                  <Ionicons name="checkmark-circle" size={15} color={colors.onSecondaryContainer} />
+                  <Text style={styles.heroJoinedPillText}>{t('groups.joined')}</Text>
+                  <Ionicons name="chevron-down" size={14} color={colors.onSecondaryContainer} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={handleJoin}
+                  style={({ pressed }) => [
+                    styles.heroJoinPill,
+                    pressed && { opacity: 0.9 },
+                    isJoining && { opacity: 0.5 },
+                  ]}
+                  disabled={isJoining}
+                  accessibilityLabel={t('groups.join')}
+                  accessibilityHint={t('groups.joinsGroupHint')}
+                  accessibilityRole="button"
+                >
+                  {joinMutation.isPending ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Text style={styles.heroJoinPillText}>{t('groups.join')}</Text>
+                  )}
+                </Pressable>
+              )}
+              <View style={styles.heroMemberCount}>
+                <Ionicons name="people" size={14} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.heroMemberCountText}>{memberCountLabel}</Text>
+              </View>
             </View>
+            {(isGroupAdmin && isMember) || (isSuperAdmin && id) ? (
+              <View style={styles.heroLeaderRow}>
+                {isGroupAdmin && isMember ? (
+                  <>
+                    <Pressable
+                      onPress={handleCreateAnnouncement}
+                      style={({ pressed }) => [
+                        styles.heroAnnounceBtn,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                      accessibilityLabel={t('announcements.newAnnouncement')}
+                      accessibilityHint={t('announcements.announceHint')}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons
+                        name="megaphone-outline"
+                        size={20}
+                        color={colors.onSecondaryContainer}
+                      />
+                    </Pressable>
+                    <Pressable
+                      onPress={handleOpenCreateEvent}
+                      style={({ pressed }) => [
+                        styles.heroAnnounceBtn,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                      accessibilityLabel={t('groupEvents.newEvent')}
+                      accessibilityHint={t('groupEvents.newEventHint')}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons
+                        name="calendar-outline"
+                        size={20}
+                        color={colors.onSecondaryContainer}
+                      />
+                    </Pressable>
+                  </>
+                ) : null}
+                {isSuperAdmin && id ? (
+                  <Pressable
+                    onPress={() => router.push(`/group/${id}/super-admin`)}
+                    style={({ pressed }) => [styles.heroAnnounceBtn, pressed && { opacity: 0.85 }]}
+                    accessibilityLabel={t('groups.superAdminAssignEntryLabel')}
+                    accessibilityHint={t('groups.superAdminAssignEntryHint')}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name="shield-checkmark-outline"
+                      size={20}
+                      color={colors.onSecondaryContainer}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
@@ -281,6 +442,137 @@ export default function GroupDetailScreen() {
           </View>
         </View>
 
+        {/* ── Announcements section (members) ── */}
+        {isMember ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t('announcements.sectionTitle')}</Text>
+              {announcements.length > 0 ? (
+                <Pressable
+                  onPress={handleSeeAllAnnouncements}
+                  style={styles.addTopicButton}
+                  accessibilityLabel={t('announcements.seeAll')}
+                  accessibilityHint={t('announcements.seeAll')}
+                >
+                  <Text style={styles.addTopicText}>{t('announcements.seeAll')}</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.secondary} />
+                </Pressable>
+              ) : null}
+            </View>
+            {latestPublished ? (
+              <View style={styles.announcementCard}>
+                <Pressable
+                  onPress={handleOpenLatestAnnouncementDetail}
+                  style={({ pressed }) => [
+                    styles.announcementCardPressable,
+                    pressed && { opacity: 0.92 },
+                  ]}
+                  accessibilityLabel={latestPublished.title}
+                  accessibilityHint={t('announcements.openDetailHint')}
+                >
+                  <Text style={styles.announcementCardTitle}>{latestPublished.title}</Text>
+                  <Text style={styles.announcementPreview} numberOfLines={3}>
+                    {latestPublished.body}
+                  </Text>
+                  <Text style={styles.announcementMeta}>
+                    {latestPublished.authorDisplayName ?? t('groups.groupMember')}
+                    {' \u00B7 '}
+                    {formatRelativeTime(latestPublished.createdAt)}
+                  </Text>
+                </Pressable>
+                {latestPublished.meetingLink?.trim() ? (
+                  <Pressable
+                    onPress={() => {
+                      void WebBrowser.openBrowserAsync(latestPublished.meetingLink.trim());
+                    }}
+                    style={styles.announcementMeetingLinkRow}
+                    accessibilityLabel={t('groupEvents.joinMeeting')}
+                    accessibilityHint={t('groupEvents.joinMeetingHint')}
+                    accessibilityRole="link"
+                  >
+                    <Ionicons name="videocam-outline" size={18} color={colors.primary} />
+                    <Text style={styles.announcementMeetingLinkText}>
+                      {t('groupEvents.joinMeeting')}
+                    </Text>
+                    <Ionicons name="open-outline" size={16} color={colors.primary} />
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+            {!latestPublished ? (
+              <EmptyState
+                iconName="megaphone-outline"
+                title={t('announcements.noAnnouncements')}
+                subtitle={t('announcements.noAnnouncementsHint')}
+              />
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ── Events section (members) ── */}
+        {isMember ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t('groupEvents.sectionTitle')}</Text>
+              {groupEvents.length > 0 ? (
+                <Pressable
+                  onPress={handleSeeAllEvents}
+                  style={styles.addTopicButton}
+                  accessibilityLabel={t('groupEvents.seeAll')}
+                  accessibilityHint={t('groupEvents.seeAll')}
+                >
+                  <Text style={styles.addTopicText}>{t('groupEvents.seeAll')}</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.secondary} />
+                </Pressable>
+              ) : null}
+            </View>
+            {(() => {
+              const now = Date.now();
+              const upcoming = groupEvents
+                .filter((e) => e.status === 'active' && new Date(e.startsAt).getTime() > now)
+                .sort(compareGroupEventsByStartThenCreated)
+                .slice(0, 3);
+              if (upcoming.length === 0) {
+                return (
+                  <EmptyState
+                    iconName="calendar-outline"
+                    title={t('groupEvents.noEvents')}
+                    subtitle={t('groupEvents.noEventsHint')}
+                  />
+                );
+              }
+              return (
+                <View style={styles.eventList}>
+                  {upcoming.map((ev) => (
+                    <Pressable
+                      key={ev.id}
+                      onPress={() => router.push(`/group/event/${ev.id}`)}
+                      style={({ pressed }) => [styles.eventCard, pressed && { opacity: 0.92 }]}
+                      accessibilityLabel={ev.title}
+                      accessibilityHint={t('groupEvents.eventTitle')}
+                    >
+                      <Text style={styles.eventCardTitle}>{ev.title}</Text>
+                      <Text style={styles.eventCardMeta}>
+                        {formatGroupEventDateTime(ev.startsAt)}
+                      </Text>
+                      {ev.requiresRsvp ? (
+                        <Text style={styles.eventRsvpLine}>
+                          {t('groupEvents.goingCount', {
+                            count: ev.goingCount ?? 0,
+                          })}
+                          {typeof ev.maybeCount === 'number' && ev.maybeCount > 0
+                            ? ` · ${t('groupEvents.maybeCount', { count: ev.maybeCount })}`
+                            : ''}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              );
+            })()}
+          </View>
+        ) : null}
+
         {/* ── Discussions section ── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -313,10 +605,7 @@ export default function GroupDetailScreen() {
                 <Pressable
                   key={d.id}
                   onPress={() => router.push(`/group/discussion/${d.id}`)}
-                  style={({ pressed }) => [
-                    styles.discussionCard,
-                    pressed && { opacity: 0.92 },
-                  ]}
+                  style={({ pressed }) => [styles.discussionCard, pressed && { opacity: 0.92 }]}
                   accessibilityLabel={`${d.title}, ${d.postCount ?? 0}`}
                   accessibilityHint={t('groups.opensDiscussion')}
                 >
@@ -372,9 +661,7 @@ export default function GroupDetailScreen() {
               {joinMutation.isPending ? (
                 <ActivityIndicator size="small" color={colors.onSecondaryContainer} />
               ) : (
-                <Text style={styles.ctaButtonText}>
-                  {t('groups.join').toUpperCase()}
-                </Text>
+                <Text style={styles.ctaButtonText}>{t('groups.join').toUpperCase()}</Text>
               )}
             </Pressable>
           </View>
@@ -399,6 +686,15 @@ export default function GroupDetailScreen() {
             accessibilityHint: t('groups.leavesGroupHint'),
           },
         ]}
+      />
+
+      <GroupEventFormSheet
+        visible={eventSheetOpen}
+        onRequestClose={handleCloseEventSheet}
+        mode="create"
+        onSubmit={handleSubmitCreateEvent}
+        isSubmitting={createEventMutation.isPending}
+        errorMessage={eventFormError}
       />
     </ScrollView>
   );
@@ -495,10 +791,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255,255,255,0.7)',
   },
-  heroActions: {
+  heroActionsColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  heroPrimaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  heroLeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   heroJoinPill: {
     backgroundColor: '#ffffff',
@@ -543,7 +851,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.75)',
   },
-
+  heroAnnounceBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   /* ── Content canvas ── */
   contentCanvas: {
     paddingHorizontal: spacing.lg,
@@ -620,6 +935,78 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  announcementCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    ...editorialShadow,
+  },
+  announcementCardPressable: {
+    width: '100%',
+  },
+  announcementMeetingLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.secondaryContainer,
+    borderRadius: radius.md,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  announcementMeetingLinkText: {
+    ...typography.bodyMd,
+    fontFamily: fontFamily.sansSemiBold,
+    color: colors.primary,
+    flex: 1,
+  },
+  announcementCardTitle: {
+    fontFamily: fontFamily.serif,
+    fontSize: 18,
+    fontWeight: '400',
+    color: colors.primary,
+    marginBottom: spacing.xs,
+  },
+  announcementPreview: {
+    ...typography.bodyMd,
+    color: colors.onSurface,
+    lineHeight: 22,
+    marginBottom: spacing.xs,
+  },
+  announcementMeta: {
+    ...typography.caption,
+    color: colors.onSurfaceVariant,
+  },
+  eventList: {
+    gap: spacing.md,
+  },
+  eventCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...editorialShadow,
+  },
+  eventCardTitle: {
+    fontFamily: fontFamily.serif,
+    fontSize: 18,
+    fontWeight: '400',
+    color: colors.primary,
+    marginBottom: spacing.xs,
+  },
+  eventCardMeta: {
+    ...typography.caption,
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.xxs,
+  },
+  eventRsvpLine: {
+    ...typography.caption,
+    color: colors.secondary,
+    fontFamily: fontFamily.sansSemiBold,
+    fontWeight: '600',
   },
   loadingWrap: {
     paddingVertical: spacing.xl,

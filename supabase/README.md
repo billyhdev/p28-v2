@@ -2,6 +2,16 @@
 
 Migrations live in `supabase/migrations/`. Apply via Supabase CLI (`supabase db push` or `supabase migration up`) or via CI.
 
+## Group announcements
+
+Announcements are stored as **published** immediately. The app calls the **`send-announcement`** Edge Function after insert to deliver pushes. Migration **`00041_remove_announcement_scheduling.sql`** removes the old grace period, `scheduled_publish_at`, and the `pg_cron` hook from **`00040`** (if applied).
+
+## Group events (push)
+
+After a successful **`create_group_event_with_discussion`** RPC, the app best-effort invokes **`send-group-event-created`** with `{ eventId }` so group members (including the creator) with **`notification_preferences.events_enabled`** receive an Expo push. The function response includes `messagesQueued`, `ticketsOk`, and `ticketErrors` for debugging. Deploy with:
+
+`supabase functions deploy send-group-event-created --no-verify-jwt` (align `verify_jwt` with **`send-announcement`**). See **`supabase/functions/send-group-event-created/README.md`**.
+
 ## Schema overview (as of Story 2.1)
 
 - **organizations** — id, name, created_at, updated_at

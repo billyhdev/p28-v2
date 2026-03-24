@@ -1016,6 +1016,15 @@ describe('Supabase data adapter', () => {
         };
         const getClient = (() => ({
           from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'group_events') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              };
+            }
             if (table === 'discussion_posts') {
               return {
                 insert: jest.fn().mockReturnValue({
@@ -1057,6 +1066,32 @@ describe('Supabase data adapter', () => {
           expect((result as ApiError).message).toBe('Reply must have text or at least one image');
         }
       });
+
+      it('returns FORBIDDEN when discussion is linked to a cancelled event', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'group_events') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({
+                      data: { status: 'cancelled', starts_at: '2099-01-01T12:00:00Z' },
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.createDiscussionPost('d1', 'u1', { body: 'Hi' });
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).code).toBe('FORBIDDEN');
+        }
+      });
     });
 
     describe('getUserIdByEmail', () => {
@@ -1090,6 +1125,82 @@ describe('Supabase data adapter', () => {
         if (isApiError(result)) {
           expect((result as ApiError).message).toBe('RPC failed');
         }
+      });
+    });
+
+    describe('addGroupAdmin', () => {
+      it('returns void on success', async () => {
+        const insert = jest.fn().mockResolvedValue({ error: null });
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            insert,
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.addGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(false);
+        expect(insert).toHaveBeenCalledWith({ group_id: 'g1', user_id: 'u1' });
+      });
+
+      it('returns ApiError when insert fails', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            insert: jest.fn().mockResolvedValue({ error: { message: 'Denied' } }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.addGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('Denied');
+        }
+      });
+    });
+  });
+
+  describe('markInAppNotificationsRead', () => {
+    it('calls rpc with all null targets to mark every unread notification', async () => {
+      const rpc = jest.fn().mockResolvedValue({ error: null });
+      const getClient = (() => ({ rpc })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.markInAppNotificationsRead({ userId: 'u1' });
+      expect(isApiError(result)).toBe(false);
+      expect(rpc).toHaveBeenCalledWith('mark_in_app_notifications_read', {
+        p_notification_ids: null,
+        p_announcement_id: null,
+        p_group_event_id: null,
+      });
+    });
+
+    it('returns VALIDATION_ERROR when more than one target is provided', async () => {
+      const rpc = jest.fn();
+      const getClient = (() => ({ rpc })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.markInAppNotificationsRead({
+        userId: 'u1',
+        announcementId: 'a1',
+        groupEventId: 'e1',
+      });
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect(result.code).toBe('VALIDATION_ERROR');
+      }
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it('calls rpc when announcementId is set', async () => {
+      const rpc = jest.fn().mockResolvedValue({ error: null });
+      const getClient = (() => ({ rpc })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.markInAppNotificationsRead({
+        userId: 'u1',
+        announcementId: 'a1',
+      });
+      expect(isApiError(result)).toBe(false);
+      expect(rpc).toHaveBeenCalledWith('mark_in_app_notifications_read', {
+        p_notification_ids: null,
+        p_announcement_id: 'a1',
+        p_group_event_id: null,
       });
     });
   });

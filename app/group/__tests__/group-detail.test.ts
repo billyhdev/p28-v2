@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const groupDetailPath = path.join(__dirname, '..', '[id].tsx');
+const groupDetailPath = path.join(__dirname, '..', '[id]', 'index.tsx');
 const groupDetailSource = fs.readFileSync(groupDetailPath, 'utf8');
 
 describe('GroupDetailScreen discussion contract', () => {
@@ -34,5 +34,10 @@ describe('GroupDetailScreen discussion contract', () => {
   it('does not import from Supabase or adapters directly', () => {
     expect(groupDetailSource).not.toMatch(/from\s+['"]@supabase/);
     expect(groupDetailSource).not.toMatch(/lib\/api\/adapters/);
+  });
+
+  it('navigates latest announcement card to announcement detail', () => {
+    expect(groupDetailSource).toMatch(/handleOpenLatestAnnouncementDetail/);
+    expect(groupDetailSource).toMatch(/\/group\/announcement\/\$\{latestPublished\.id\}/);
   });
 });

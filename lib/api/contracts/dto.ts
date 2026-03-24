@@ -66,6 +66,142 @@ export interface NotificationPreferencesUpdates {
   messagesEnabled?: boolean;
 }
 
+/** Group announcement lifecycle (legacy rows may still be cancelled). */
+export type AnnouncementStatus = 'published' | 'cancelled';
+
+/** Announcement in a group (push + in-app). */
+export interface Announcement {
+  id: string;
+  groupId: string;
+  createdByUserId: string;
+  title: string;
+  body: string;
+  /** Online meeting URL (Zoom, Meet, etc.); optional. */
+  meetingLink: string;
+  status: AnnouncementStatus;
+  publishedAt?: string;
+  cancelledAt?: string;
+  createdAt: string;
+  authorDisplayName?: string;
+  authorAvatarUrl?: string;
+}
+
+/** Create announcement (published immediately; push sent via Edge after insert). */
+export interface CreateAnnouncementInput {
+  title: string;
+  body: string;
+  meetingLink: string;
+}
+
+/** Group event lifecycle. */
+export type GroupEventStatus = 'active' | 'cancelled';
+
+/** RSVP response for a group event. */
+export type EventRsvpResponse = 'going' | 'maybe' | 'not_going';
+
+/** Scheduled event in a group (with linked discussion thread). */
+export interface GroupEvent {
+  id: string;
+  groupId: string;
+  createdByUserId: string;
+  title: string;
+  description: string;
+  startsAt: string;
+  requiresRsvp: boolean;
+  status: GroupEventStatus;
+  cancelledAt?: string;
+  discussionId: string;
+  createdAt: string;
+  /** Address or venue name (optional). */
+  location: string;
+  /** Online meeting URL (Zoom, Meet, etc.); optional. */
+  meetingLink: string;
+  authorDisplayName?: string;
+  authorAvatarUrl?: string;
+  /** Count of members who responded "going" (when fetched with list). */
+  goingCount?: number;
+  /** Count of members who responded "maybe" (when fetched with list). */
+  maybeCount?: number;
+}
+
+export interface CreateGroupEventInput {
+  title: string;
+  description: string;
+  startsAt: string;
+  requiresRsvp: boolean;
+  location: string;
+  meetingLink: string;
+}
+
+export interface UpdateGroupEventInput {
+  title: string;
+  description: string;
+  startsAt: string;
+  requiresRsvp: boolean;
+  location: string;
+  meetingLink: string;
+}
+
+/** One member's RSVP row (for lists and detail). */
+export interface EventRsvpAttendee {
+  userId: string;
+  response: EventRsvpResponse;
+  displayName?: string;
+  avatarUrl?: string;
+  updatedAt: string;
+}
+
+/** Per-member settings for a group (e.g. announcements toggle). */
+export interface GroupMemberSettings {
+  userId: string;
+  groupId: string;
+  announcementsEnabled: boolean;
+  updatedAt?: string;
+}
+
+export interface GroupMemberSettingsUpdates {
+  announcementsEnabled?: boolean;
+}
+
+/** Registered Expo push token for a device. */
+export interface PushToken {
+  id: string;
+  userId: string;
+  token: string;
+  platform: 'ios' | 'android';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** In-app notification row (group announcement or event); list + unread badge. */
+export type InAppNotificationKind = 'announcement' | 'group_event';
+
+export interface InAppNotification {
+  id: string;
+  kind: InAppNotificationKind;
+  groupId: string;
+  /** Snapshot of group name when the notification was created. */
+  groupName: string;
+  announcementId?: string;
+  groupEventId?: string;
+  title: string;
+  summary: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+/**
+ * Mark in-app notifications read (RPC).
+ * At most one targeting option: specific ids, announcementId, or groupEventId.
+ * Omit all targets to mark every unread notification for the user.
+ */
+export interface MarkInAppNotificationsReadInput {
+  userId: string;
+  notificationIds?: string[];
+  announcementId?: string;
+  groupEventId?: string;
+}
+
 /** Group type: forum (discussions) or ministry (announcements, events, recurring services). */
 export type GroupType = 'forum' | 'ministry';
 
@@ -150,6 +286,15 @@ export interface Discussion {
   authorDisplayName?: string;
   authorAvatarUrl?: string;
   groupName?: string;
+  /**
+   * When this thread is the linked discussion for a group event (`group_events.discussion_id`),
+   * replies/reactions are read-only only if the event is cancelled.
+   */
+  linkedGroupEvent?: {
+    id: string;
+    status: GroupEventStatus;
+    startsAt: string;
+  };
 }
 
 /** Input for creating a discussion (topic). */

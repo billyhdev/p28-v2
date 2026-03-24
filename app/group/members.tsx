@@ -1,9 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Avatar } from '@/components/primitives';
 import { EmptyState } from '@/components/patterns/EmptyState';
+import { GroupMemberRowList } from '@/components/patterns/GroupMemberRowList';
 import { useAuth } from '@/hooks/useAuth';
 import { useFriendIdsQuery, useGroupMembersQuery, useGroupQuery } from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
@@ -18,15 +18,7 @@ export default function GroupMembersScreen() {
   const { isLoading: groupLoading } = useGroupQuery(groupId);
   const { data: members = [], isLoading: membersLoading } = useGroupMembersQuery(groupId);
   const { data: friendIds = [] } = useFriendIdsQuery(currentUserId || undefined);
-  const friendSet = new Set(friendIds);
-
-  const sortedMembers = useMemo(
-    () =>
-      [...members].sort((a, b) =>
-        a.userId === currentUserId ? -1 : b.userId === currentUserId ? 1 : 0
-      ),
-    [members, currentUserId]
-  );
+  const friendSet = useMemo(() => new Set(friendIds), [friendIds]);
 
   const handleMemberPress = useCallback(
     (memberId: string) => {
@@ -64,64 +56,12 @@ export default function GroupMembersScreen() {
           subtitle={t('groups.noMembersSubtitle')}
         />
       ) : (
-        <View style={styles.list}>
-          {sortedMembers.map((m) => {
-            const isSelf = m.userId === currentUserId;
-            const rowContent = (
-              <>
-                <Avatar
-                  source={m.avatarUrl ? { uri: m.avatarUrl } : null}
-                  fallbackText={m.displayName}
-                  size="md"
-                  accessibilityLabel={
-                    m.displayName
-                      ? `${m.displayName} ${t('groups.profilePicture')}`
-                      : t('groups.groupMember')
-                  }
-                />
-                <View style={styles.memberInfo}>
-                  <Text
-                    style={isSelf ? styles.memberNameMuted : styles.memberName}
-                    numberOfLines={1}
-                  >
-                    {m.displayName ?? t('common.loading')}
-                  </Text>
-                  {isSelf ? (
-                    <Text style={styles.friendLabel}>{t('groups.yourself')}</Text>
-                  ) : currentUserId && friendSet.has(m.userId) ? (
-                    <Text style={styles.friendLabel}>{t('friends.friend')}</Text>
-                  ) : null}
-                </View>
-              </>
-            );
-            if (isSelf) {
-              return (
-                <View
-                  key={m.userId}
-                  style={[styles.memberRow, styles.memberRowSelf]}
-                  accessibilityLabel={
-                    m.displayName
-                      ? `${m.displayName}, ${t('groups.yourself')}`
-                      : t('groups.yourself')
-                  }
-                >
-                  {rowContent}
-                </View>
-              );
-            }
-            return (
-              <Pressable
-                key={m.userId}
-                onPress={() => handleMemberPress(m.userId)}
-                style={({ pressed }) => [styles.memberRow, pressed && styles.memberRowPressed]}
-                accessibilityLabel={m.displayName ?? t('groups.groupMember')}
-                accessibilityHint={t('groups.opensProfile')}
-              >
-                {rowContent}
-              </Pressable>
-            );
-          })}
-        </View>
+        <GroupMemberRowList
+          items={members}
+          currentUserId={currentUserId}
+          friendUserIds={friendSet}
+          onMemberPress={handleMemberPress}
+        />
       )}
     </ScrollView>
   );
@@ -147,39 +87,5 @@ const styles = StyleSheet.create({
     ...typography.title,
     color: colors.textPrimary,
     marginBottom: spacing.lg,
-  },
-  list: {
-    gap: spacing.sm,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 12,
-  },
-  memberRowSelf: {
-    opacity: 0.55,
-  },
-  memberRowPressed: {
-    opacity: 0.8,
-  },
-  memberInfo: {
-    flex: 1,
-  },
-  memberName: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  memberNameMuted: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  friendLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
   },
 });

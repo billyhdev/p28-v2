@@ -24,6 +24,7 @@ npm run db:delete-chats  # Requires SUPABASE_SERVICE_ROLE_KEY in .env
 ```
 
 **Running a single test file:**
+
 ```bash
 npx jest lib/api/__tests__/facade.test.ts
 ```

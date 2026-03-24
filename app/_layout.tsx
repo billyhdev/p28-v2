@@ -15,15 +15,22 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
+import { BrandedSplash } from '@/components/patterns/BrandedSplash';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LocaleProvider, useLocale } from '@/contexts/LocaleContext';
 import { PendingSignUpProvider } from '@/contexts/PendingSignUpContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfileQuery } from '@/hooks/useApiQueries';
 import { t } from '@/lib/i18n';
+import {
+  handleInitialNotificationResponse,
+  registerForPushNotificationsAsync,
+  setupNotificationHandler,
+  subscribeToNotificationResponses,
+} from '@/lib/push';
 import { colors, fontFamily } from '@/theme/tokens';
 
 export { ErrorBoundary } from 'expo-router';
@@ -33,6 +40,8 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
+
+setupNotificationHandler();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +53,10 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  const [splashReady, setSplashReady] = useState(false);
+  const onSplashComplete = useCallback(() => {
+    setSplashReady(true);
+  }, []);
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
@@ -58,17 +71,21 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (error) throw error;
+    if (!error) return;
+    void SplashScreen.hideAsync();
+    throw error;
   }, [error]);
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
 
   if (!loaded) {
     return null;
+  }
+
+  if (error) {
+    return null;
+  }
+
+  if (!splashReady) {
+    return <BrandedSplash onComplete={onSplashComplete} />;
   }
 
   return (
@@ -112,6 +129,18 @@ function RootLayoutNav() {
     setLocaleRef.current(profile.preferredLanguage);
   }, [profile?.preferredLanguage]);
 
+  const userId = session?.user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    void registerForPushNotificationsAsync(userId);
+  }, [userId]);
+
+  useEffect(() => {
+    void handleInitialNotificationResponse(router);
+    const sub = subscribeToNotificationResponses(router);
+    return () => sub.remove();
+  }, [router]);
+
   const navTheme = {
     ...DefaultTheme,
     colors: {
@@ -136,7 +165,11 @@ function RootLayoutNav() {
             headerShown: true,
             title: t('profile.title'),
             headerBackButtonDisplayMode: 'minimal',
-            headerTitleStyle: { fontFamily: fontFamily.serif, fontWeight: '400', color: colors.onSurface },
+            headerTitleStyle: {
+              fontFamily: fontFamily.serif,
+              fontWeight: '400',
+              color: colors.onSurface,
+            },
           }}
         />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

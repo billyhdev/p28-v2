@@ -14,11 +14,7 @@ export default function ManageGroupsScreen() {
   const { session } = useAuth();
   const userId = session?.user?.id;
 
-  const {
-    data: adminGroups = [],
-    isLoading,
-    refetch,
-  } = useGroupsWhereUserIsAdminQuery(userId);
+  const { data: adminGroups = [], isLoading, refetch } = useGroupsWhereUserIsAdminQuery(userId);
 
   const { data: memberGroups = [] } = useGroupsForUserQuery(userId);
   const memberGroupIds = new Set(memberGroups.map((g) => g.id));

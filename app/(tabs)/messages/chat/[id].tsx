@@ -41,7 +41,7 @@ import {
 } from '@/hooks/useApiQueries';
 import { api, getUserFacingError } from '@/lib/api';
 import { queryKeys } from '@/lib/api/queryKeys';
-import type { ChatMessage, PostReactionType } from '@/lib/api';
+import type { ChatMessage, CreateChatMessageInput, PostReactionType } from '@/lib/api';
 import { formatDateHeader, isSameDay } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 
@@ -71,10 +71,12 @@ export default function ChatDetailScreen() {
   const { data: messages = [], refetch: refetchMessages } = useChatMessagesQuery(id, {
     userId,
   });
-  const { data: reactionDetails = [], isLoading: reactionsLoading } =
-    useChatMessageReactionsQuery(reactionMessage?.id, {
+  const { data: reactionDetails = [], isLoading: reactionsLoading } = useChatMessageReactionsQuery(
+    reactionMessage?.id,
+    {
       enabled: !!reactionMessage,
-    });
+    }
+  );
 
   const createMessageMutation = useCreateChatMessageMutation();
   const updateMessageMutation = useUpdateChatMessageMutation();
@@ -220,24 +222,19 @@ export default function ChatDetailScreen() {
         }
       );
     } else {
-      createMessageMutation.mutate(
-        {
-          chatId: id,
-          userId,
-          input: {
-            body,
-            imageUrls: attachedImageUrls.length > 0 ? attachedImageUrls : undefined,
-            parentMessageId: replyingTo?.id,
-          },
-        },
-        {
-          onSuccess: () => {
-            setComposeText('');
-            setAttachedImageUrls([]);
-            setReplyingTo(null);
-          },
-        }
-      );
+      const input = {
+        body,
+        imageUrls: attachedImageUrls.length > 0 ? attachedImageUrls : undefined,
+        parentMessageId: replyingTo?.id,
+      };
+      setComposeText('');
+      setAttachedImageUrls([]);
+      setReplyingTo(null);
+      createMessageMutation.mutate({
+        chatId: id,
+        userId,
+        input,
+      });
     }
   }, [
     userId,
@@ -250,6 +247,26 @@ export default function ChatDetailScreen() {
     createMessageMutation,
     updateMessageMutation,
   ]);
+
+  const handleRetryOutboundMessage = useCallback(
+    (msg: ChatMessage) => {
+      if (!userId || !id) return;
+      const payload = (msg as ChatMessage & { outboundRetryPayload?: CreateChatMessageInput })
+        .outboundRetryPayload;
+      if (!payload) return;
+      createMessageMutation.mutate({
+        chatId: id,
+        userId,
+        input: {
+          body: payload.body,
+          imageUrls: payload.imageUrls,
+          parentMessageId: payload.parentMessageId,
+        },
+        optimisticId: msg.id,
+      });
+    },
+    [userId, id, createMessageMutation]
+  );
 
   const pickImage = useCallback(async () => {
     if (!userId) return;
@@ -407,11 +424,7 @@ export default function ChatDetailScreen() {
           accessibilityRole="button"
         >
           <Avatar
-            source={
-              firstOtherMember?.avatarUrl
-                ? { uri: firstOtherMember.avatarUrl }
-                : null
-            }
+            source={firstOtherMember?.avatarUrl ? { uri: firstOtherMember.avatarUrl } : null}
             fallbackText={headerTitle}
             size="lg"
           />
@@ -447,31 +460,27 @@ export default function ChatDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() =>
-          scrollViewRef.current?.scrollToEnd({ animated: false })
-        }
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
       >
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
           const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null;
-          const showDateSeparator =
-            !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
+          const showDateSeparator = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
 
-          const isFirstInGroup =
-            !prevMsg || prevMsg.userId !== msg.userId || showDateSeparator;
+          const isFirstInGroup = !prevMsg || prevMsg.userId !== msg.userId || showDateSeparator;
           const nextIsDifferentDay =
             nextMsg != null && !isSameDay(msg.createdAt, nextMsg.createdAt);
-          const isLastInGroup =
-            !nextMsg || nextMsg.userId !== msg.userId || nextIsDifferentDay;
+          const isLastInGroup = !nextMsg || nextMsg.userId !== msg.userId || nextIsDifferentDay;
+          const outboundStatus = (msg as ChatMessage & { outboundStatus?: 'sending' | 'failed' })
+            .outboundStatus;
+          const canReactToMessage = !!userId && !outboundStatus;
 
           return (
             <View key={msg.id}>
               {showDateSeparator ? (
                 <View style={styles.dateSeparator}>
                   <View style={styles.dateSeparatorLine} />
-                  <Text style={styles.dateSeparatorText}>
-                    {formatDateHeader(msg.createdAt)}
-                  </Text>
+                  <Text style={styles.dateSeparatorText}>{formatDateHeader(msg.createdAt)}</Text>
                   <View style={styles.dateSeparatorLine} />
                 </View>
               ) : null}
@@ -486,9 +495,15 @@ export default function ChatDetailScreen() {
                 isLastInGroup={isLastInGroup}
                 onImagePress={(url) => setPreviewImageUrl(url)}
                 onLongPress={() => setReactionMessage(msg)}
-                onSwipeRight={() => (setEditingMessage(null), setReplyingTo(msg))}
+                onSwipeRight={
+                  canReactToMessage
+                    ? () => (setEditingMessage(null), setReplyingTo(msg))
+                    : undefined
+                }
                 onSwipeLeft={
-                  userId && msg.userId === userId ? () => handleStartEdit(msg) : undefined
+                  userId && msg.userId === userId && !outboundStatus
+                    ? () => handleStartEdit(msg)
+                    : undefined
                 }
                 onAddReaction={(reactionType) =>
                   reactMutation.mutate({
@@ -507,8 +522,11 @@ export default function ChatDetailScreen() {
                   })
                 }
                 onAuthorPress={() => router.push(`/profile/${msg.userId}`)}
-                canReact={!!userId}
+                canReact={canReactToMessage}
                 currentUserId={userId}
+                onRetrySend={
+                  outboundStatus === 'failed' ? () => handleRetryOutboundMessage(msg) : undefined
+                }
               />
             </View>
           );
@@ -522,7 +540,7 @@ export default function ChatDetailScreen() {
           onChangeText={setComposeText}
           onSend={handlePost}
           canSend={canPost}
-          isSending={createMessageMutation.isPending || updateMessageMutation.isPending}
+          isSending={!!editingMessage && updateMessageMutation.isPending}
           sendLabel={editingMessage ? t('discussions.updateReply') : t('discussions.postReply')}
           attachedImageUrls={attachedImageUrls}
           onRemoveImage={removeAttachedImage}

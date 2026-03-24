@@ -1,6 +1,14 @@
 import { Image } from 'expo-image';
 import { useMemo, useRef } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Avatar } from '@/components/primitives';
@@ -27,6 +35,8 @@ export interface MessageRowProps {
   onAuthorPress?: () => void;
   canReact?: boolean;
   currentUserId?: string;
+  /** Retry a failed optimistic send (own messages only). */
+  onRetrySend?: () => void;
 }
 
 export function MessageRow({
@@ -43,12 +53,16 @@ export function MessageRow({
   onAuthorPress,
   canReact = false,
   currentUserId,
+  onRetrySend,
 }: MessageRowProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const counts = post.reactionCounts ?? { prayer: 0, laugh: 0, thumbsUp: 0 };
   const userReactions = post.userReactionTypes ?? [];
   const hasReactions = counts.prayer > 0 || counts.laugh > 0 || counts.thumbsUp > 0;
   const isOwnMessage = !!currentUserId && post.userId === currentUserId;
+  const outboundStatus = post.outboundStatus;
+  const showFailedOutbound = isOwnMessage && outboundStatus === 'failed' && !!onRetrySend;
+  const showSendingOutbound = isOwnMessage && outboundStatus === 'sending';
 
   const panResponder = useMemo(
     () =>
@@ -82,13 +96,17 @@ export function MessageRow({
   );
 
   const handleLongPress = () => {
-    if (canReact && onLongPress) onLongPress();
+    if (canReact && onLongPress && !outboundStatus) onLongPress();
   };
 
   const isUserReaction = (type: PostReactionType) =>
     !!currentUserId && userReactions.includes(type);
 
-  const swipeEnabled = !!(canReact && (onSwipeRight || (isOwnMessage && onSwipeLeft)));
+  const swipeEnabled = !!(
+    canReact &&
+    !outboundStatus &&
+    (onSwipeRight || (isOwnMessage && onSwipeLeft))
+  );
 
   const replyIconOpacity = useMemo(
     () =>
@@ -116,22 +134,14 @@ export function MessageRow({
   return (
     <View style={styles.messageWrapper}>
       <Animated.View
-        style={[
-          styles.swipeIconContainer,
-          styles.swipeIconLeft,
-          { opacity: replyIconOpacity },
-        ]}
+        style={[styles.swipeIconContainer, styles.swipeIconLeft, { opacity: replyIconOpacity }]}
         pointerEvents="none"
       >
         <Ionicons name="arrow-undo-outline" size={20} color={colors.primary} />
       </Animated.View>
       {onSwipeLeft ? (
         <Animated.View
-          style={[
-            styles.swipeIconContainer,
-            styles.swipeIconRight,
-            { opacity: editIconOpacity },
-          ]}
+          style={[styles.swipeIconContainer, styles.swipeIconRight, { opacity: editIconOpacity }]}
           pointerEvents="none"
         >
           <Ionicons name="pencil-outline" size={20} color={colors.primary} />
@@ -143,15 +153,24 @@ export function MessageRow({
         {...(swipeEnabled ? panResponder.panHandlers : {})}
       >
         <View style={[styles.messageRow, isOwnMessage && styles.messageRowOwn]}>
+          {showFailedOutbound ? (
+            <Pressable
+              onPress={onRetrySend}
+              style={styles.retryButton}
+              accessibilityLabel={t('discussions.retrySend')}
+              accessibilityHint={t('discussions.retrySendHint')}
+              accessibilityRole="button"
+            >
+              <Ionicons name="refresh" size={22} color={colors.error} />
+            </Pressable>
+          ) : null}
           {/* Avatar (others) — only on last message in a consecutive group */}
           {isOwnMessage ? null : isLastInGroup ? (
             <Pressable
               onPress={onAuthorPress}
               style={styles.avatarContainer}
               accessibilityLabel={
-                post.authorDisplayName
-                  ? `View ${post.authorDisplayName}'s profile`
-                  : 'View profile'
+                post.authorDisplayName ? `View ${post.authorDisplayName}'s profile` : 'View profile'
               }
               accessibilityRole="button"
             >
@@ -166,22 +185,17 @@ export function MessageRow({
           )}
 
           {/* Content column */}
-          <View
-            style={[
-              styles.contentColumn,
-              isOwnMessage && styles.contentColumnOwn,
-            ]}
-          >
+          <View style={[styles.contentColumn, isOwnMessage && styles.contentColumnOwn]}>
             {/* Name + timestamp row — only on the first message in a group */}
             {isFirstInGroup ? (
-              <View
-                style={[
-                  styles.metaRow,
-                  isOwnMessage && styles.metaRowOwn,
-                ]}
-              >
+              <View style={[styles.metaRow, isOwnMessage && styles.metaRowOwn]}>
                 {isOwnMessage ? (
-                  <Text style={styles.timestamp}>{timeString}</Text>
+                  <View style={styles.metaRowOwnTime}>
+                    {showSendingOutbound ? (
+                      <ActivityIndicator size="small" color={colors.onSurfaceVariant} />
+                    ) : null}
+                    <Text style={styles.timestamp}>{timeString}</Text>
+                  </View>
                 ) : (
                   <>
                     <Pressable onPress={onAuthorPress} accessibilityRole="link">
@@ -196,117 +210,126 @@ export function MessageRow({
             ) : null}
 
             <View>
-            {/* Message bubble */}
-            <Pressable
-              onLongPress={canReact ? handleLongPress : undefined}
-              delayLongPress={400}
-              style={({ pressed }) => [
-                styles.bubble,
-                isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
-                pressed && canReact && styles.bubblePressed,
-              ]}
-              accessibilityLabel={t('discussions.reactToReply')}
-              accessibilityHint={
-                canReact
-                  ? isOwnMessage
-                    ? `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')} ${t('discussions.swipeToEditHint')}`
-                    : `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')}`
-                  : undefined
-              }
-              accessibilityRole="button"
-            >
-              {parentPost ? (
-                <View style={[styles.replyPreview, isOwnMessage && styles.replyPreviewOwn]}>
-                  <Text style={[styles.replyPreviewAuthor, isOwnMessage && styles.replyPreviewAuthorOwn]}>
-                    {t('discussions.replyingTo')}{' '}
-                    {parentPost.authorDisplayName ?? t('common.loading')}
-                  </Text>
-                  <Text
-                    style={[styles.replyPreviewBody, isOwnMessage && styles.replyPreviewBodyOwn]}
-                    numberOfLines={2}
-                  >
-                    {parentPost.body ?? ''}
-                  </Text>
-                </View>
-              ) : null}
-
-              {post.body ? (
-                <Text style={[styles.messageBody, isOwnMessage && styles.messageBodyOwn]}>
-                  {post.body}
-                </Text>
-              ) : null}
-
-              {isEdited ? (
-                <Text style={[styles.editedLabel, isOwnMessage && styles.editedLabelOwn]}>
-                  {t('discussions.edited')}
-                </Text>
-              ) : null}
-
-              {post.imageUrls && post.imageUrls.length > 0 ? (
-                <View style={styles.imagesRow}>
-                  {post.imageUrls.map((url, idx) => (
-                    <Pressable
-                      key={url}
-                      onPress={() => onImagePress?.(url)}
-                      style={styles.imagePressable}
-                      accessibilityLabel={`View attached image ${idx + 1} full size`}
-                      accessibilityRole="button"
-                    >
-                      <Image source={{ uri: url }} style={styles.messageImage} contentFit="cover" />
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </Pressable>
-
-            {hasReactions ? (
-              <View style={styles.reactionBadges}>
-                {(['prayer', 'laugh', 'thumbs_up'] as PostReactionType[]).map((type) => {
-                  const countKey = type === 'thumbs_up' ? 'thumbsUp' : type;
-                  if ((counts as unknown as Record<string, number>)[countKey] <= 0) return null;
-                  const count = (counts as unknown as Record<string, number>)[countKey];
-                  const isMine = isUserReaction(type);
-                  const onPress =
-                    canReact && (isMine ? onRemoveReaction : onAddReaction)
-                      ? () => (isMine ? onRemoveReaction?.(type) : onAddReaction?.(type))
-                      : undefined;
-                  return (
-                    <Pressable
-                      key={type}
-                      onPress={onPress}
-                      style={({ pressed }) => [
-                        styles.reactionBadge,
-                        isOwnMessage
-                          ? styles.reactionBadgeOwnBubble
-                          : styles.reactionBadgeOtherBubble,
-                        isMine && styles.reactionBadgeMine,
-                        pressed && canReact && styles.reactionBadgePressed,
+              {/* Message bubble */}
+              <Pressable
+                onLongPress={canReact ? handleLongPress : undefined}
+                delayLongPress={400}
+                style={({ pressed }) => [
+                  styles.bubble,
+                  isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
+                  showFailedOutbound && styles.bubbleFailed,
+                  pressed && canReact && !outboundStatus && styles.bubblePressed,
+                ]}
+                accessibilityLabel={
+                  showFailedOutbound ? t('discussions.sendFailed') : t('discussions.reactToReply')
+                }
+                accessibilityHint={
+                  showFailedOutbound
+                    ? t('discussions.retrySendHint')
+                    : canReact
+                      ? isOwnMessage
+                        ? `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')} ${t('discussions.swipeToEditHint')}`
+                        : `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')}`
+                      : undefined
+                }
+                accessibilityRole="button"
+              >
+                {parentPost ? (
+                  <View style={[styles.replyPreview, isOwnMessage && styles.replyPreviewOwn]}>
+                    <Text
+                      style={[
+                        styles.replyPreviewAuthor,
+                        isOwnMessage && styles.replyPreviewAuthorOwn,
                       ]}
-                      disabled={!onPress}
-                      accessibilityLabel={
-                        isMine
-                          ? `Remove ${type} reaction (${count})`
-                          : onPress
-                            ? `Add ${type} reaction (${count})`
-                            : `${REACTION_EMOJI[type]} ${count}`
-                      }
-                      accessibilityRole={onPress ? 'button' : 'text'}
                     >
-                      <Text style={styles.reactionEmoji}>{REACTION_EMOJI[type]}</Text>
-                      {count > 1 ? (
-                        <Text
-                          style={[styles.reactionCount, isMine && styles.reactionCountMine]}
-                        >
-                          {count}
-                        </Text>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : null}
-            </View>
+                      {t('discussions.replyingTo')}{' '}
+                      {parentPost.authorDisplayName ?? t('common.loading')}
+                    </Text>
+                    <Text
+                      style={[styles.replyPreviewBody, isOwnMessage && styles.replyPreviewBodyOwn]}
+                      numberOfLines={2}
+                    >
+                      {parentPost.body ?? ''}
+                    </Text>
+                  </View>
+                ) : null}
 
+                {post.body ? (
+                  <Text style={[styles.messageBody, isOwnMessage && styles.messageBodyOwn]}>
+                    {post.body}
+                  </Text>
+                ) : null}
+
+                {isEdited ? (
+                  <Text style={[styles.editedLabel, isOwnMessage && styles.editedLabelOwn]}>
+                    {t('discussions.edited')}
+                  </Text>
+                ) : null}
+
+                {post.imageUrls && post.imageUrls.length > 0 ? (
+                  <View style={styles.imagesRow}>
+                    {post.imageUrls.map((url, idx) => (
+                      <Pressable
+                        key={url}
+                        onPress={() => onImagePress?.(url)}
+                        style={styles.imagePressable}
+                        accessibilityLabel={`View attached image ${idx + 1} full size`}
+                        accessibilityRole="button"
+                      >
+                        <Image
+                          source={{ uri: url }}
+                          style={styles.messageImage}
+                          contentFit="cover"
+                        />
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+                {showFailedOutbound ? (
+                  <Text style={styles.failedOutboundLabel}>{t('discussions.sendFailed')}</Text>
+                ) : null}
+              </Pressable>
+
+              {hasReactions ? (
+                <View style={styles.reactionBadges}>
+                  {(['prayer', 'laugh', 'thumbs_up'] as PostReactionType[]).map((type) => {
+                    const countKey = type === 'thumbs_up' ? 'thumbsUp' : type;
+                    if ((counts as unknown as Record<string, number>)[countKey] <= 0) return null;
+                    const count = (counts as unknown as Record<string, number>)[countKey];
+                    const isMine = isUserReaction(type);
+                    const onPress =
+                      canReact && (isMine ? onRemoveReaction : onAddReaction)
+                        ? () => (isMine ? onRemoveReaction?.(type) : onAddReaction?.(type))
+                        : undefined;
+                    return (
+                      <Pressable
+                        key={type}
+                        onPress={onPress}
+                        style={({ pressed }) => [
+                          styles.reactionBadge,
+                          isOwnMessage
+                            ? styles.reactionBadgeOwnBubble
+                            : styles.reactionBadgeOtherBubble,
+                          pressed && canReact && styles.reactionBadgePressed,
+                        ]}
+                        disabled={!onPress}
+                        accessibilityLabel={
+                          isMine
+                            ? `Remove ${type} reaction (${count})`
+                            : onPress
+                              ? `Add ${type} reaction (${count})`
+                              : `${REACTION_EMOJI[type]} ${count}`
+                        }
+                        accessibilityRole={onPress ? 'button' : 'text'}
+                      >
+                        <Text style={styles.reactionEmoji}>{REACTION_EMOJI[type]}</Text>
+                        {count > 1 ? <Text style={styles.reactionCount}>{count}</Text> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
           </View>
 
           {/* Own message avatar on the right — only on last in group */}
@@ -388,6 +411,11 @@ const styles = StyleSheet.create({
   metaRowOwn: {
     flexDirection: 'row',
   },
+  metaRowOwnTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
 
   authorName: {
     fontFamily: fontFamily.sansSemiBold,
@@ -416,8 +444,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryContainer,
     borderTopRightRadius: 4,
   },
+  bubbleFailed: {
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
   bubblePressed: {
     opacity: 0.85,
+  },
+  failedOutboundLabel: {
+    ...typography.caption,
+    color: colors.error,
+    marginTop: spacing.xxs,
+  },
+  retryButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xxs,
+    justifyContent: 'center',
   },
 
   replyPreview: {
@@ -510,9 +553,6 @@ const styles = StyleSheet.create({
   reactionBadgeOwnBubble: {
     backgroundColor: colors.primaryContainer,
   },
-  reactionBadgeMine: {
-    backgroundColor: colors.primary,
-  },
   reactionBadgePressed: {
     opacity: 0.8,
   },
@@ -523,8 +563,5 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
     fontSize: 12,
     color: colors.onSurfaceVariant,
-  },
-  reactionCountMine: {
-    color: colors.onPrimary,
   },
 });

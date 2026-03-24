@@ -328,10 +328,7 @@ function SelectField({
                   accessibilityLabel={doneLabel ?? t('common.done')}
                 />
               </View>
-              <ScrollView
-                contentContainerStyle={styles.sheetList}
-                style={styles.sheetScroll}
-              >
+              <ScrollView contentContainerStyle={styles.sheetList} style={styles.sheetScroll}>
                 {options.map((opt) => {
                   const active = opt.value === value;
                   return (
@@ -344,10 +341,7 @@ function SelectField({
                       style={[styles.sheetItem, active ? styles.sheetItemActive : null]}
                     >
                       <Text
-                        style={[
-                          styles.sheetItemText,
-                          active ? styles.sheetItemTextActive : null,
-                        ]}
+                        style={[styles.sheetItemText, active ? styles.sheetItemTextActive : null]}
                       >
                         {opt.label}
                       </Text>

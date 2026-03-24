@@ -5,8 +5,31 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { t } from '@/lib/i18n';
 import { colors, typography } from '@/theme/tokens';
 
-export default function GroupLayout() {
+/**
+ * Native stack back can fail or feel flaky after routes where the parent stack
+ * hides the header (e.g. group/[id]). Use explicit navigation like group/manage
+ * and group/event/[id]/_layout.
+ */
+function GroupStackHeaderBack() {
   const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.back()}
+      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
+      accessibilityLabel={t('common.back')}
+      accessibilityHint={t('groups.backToGroupsHint')}
+      accessibilityRole="button"
+    >
+      <Ionicons name="chevron-back" size={22} color={colors.primary} />
+    </Pressable>
+  );
+}
+
+const groupStackBackHeader = {
+  headerLeft: () => <GroupStackHeaderBack />,
+} as const;
+
+export default function GroupLayout() {
   return (
     <Stack
       screenOptions={{
@@ -25,20 +48,7 @@ export default function GroupLayout() {
       <Stack.Screen
         name="[id]"
         options={{
-          title: '',
-          headerTransparent: true,
-          headerStyle: { backgroundColor: 'transparent' },
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
-              accessibilityLabel={t('common.back')}
-              accessibilityHint={t('groups.backToGroupsHint')}
-              accessibilityRole="button"
-            >
-              <Ionicons name="chevron-back" size={22} color="#ffffff" />
-            </Pressable>
-          ),
+          headerShown: false,
         }}
       />
       <Stack.Screen
@@ -59,47 +69,76 @@ export default function GroupLayout() {
         name="settings"
         options={{
           title: t('groups.settingsTitle'),
+          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="discussion/[id]"
         options={{
           title: '',
+          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="discussion/create"
         options={{
           title: t('discussions.createDiscussion'),
+          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="discussion/edit"
         options={{
           title: t('discussions.editDiscussion'),
+          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="members"
         options={{
           title: t('groups.people'),
+          ...groupStackBackHeader,
+        }}
+      />
+      <Stack.Screen
+        name="announcement/create"
+        options={{
+          title: t('announcements.screenTitle'),
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen
+        name="announcement/list"
+        options={{
+          title: t('announcements.listTitle'),
+          ...groupStackBackHeader,
+        }}
+      />
+      <Stack.Screen
+        name="announcement/[id]"
+        options={{
+          title: t('announcements.detailTitle'),
+          ...groupStackBackHeader,
+        }}
+      />
+      <Stack.Screen
+        name="event/list"
+        options={{
+          title: t('groupEvents.listTitle'),
+          ...groupStackBackHeader,
+        }}
+      />
+      <Stack.Screen
+        name="event/[id]"
+        options={{
+          headerShown: false,
         }}
       />
       <Stack.Screen
         name="manage"
         options={{
           title: t('groups.manageMyGroupsTitle'),
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
-              accessibilityLabel={t('common.back')}
-              accessibilityHint={t('groups.backToGroupsHint')}
-              accessibilityRole="button"
-            >
-              <Ionicons name="chevron-back" size={22} color={colors.primary} />
-            </Pressable>
-          ),
+          ...groupStackBackHeader,
         }}
       />
     </Stack>

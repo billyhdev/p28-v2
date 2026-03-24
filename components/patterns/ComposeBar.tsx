@@ -1,13 +1,6 @@
 import React from 'react';
 import { Image } from 'expo-image';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { t } from '@/lib/i18n';
@@ -168,7 +161,15 @@ export function ComposeBar({
             <Ionicons
               name="image-outline"
               size={isChat ? 24 : 22}
-              color={atLimit ? (isChat ? colors.outlineVariant : colors.ink300) : (isChat ? colors.onSurfaceVariant : colors.primary)}
+              color={
+                atLimit
+                  ? isChat
+                    ? colors.outlineVariant
+                    : colors.ink300
+                  : isChat
+                    ? colors.onSurfaceVariant
+                    : colors.primary
+              }
             />
           )}
         </Pressable>
