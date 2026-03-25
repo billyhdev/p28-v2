@@ -1,4 +1,8 @@
-import { isGroupEventDiscussionReadOnly, isGroupEventPast } from '@/lib/dates';
+import {
+  formatGroupEventCalendarBlock,
+  isGroupEventDiscussionReadOnly,
+  isGroupEventPast,
+} from '@/lib/dates';
 
 describe('isGroupEventDiscussionReadOnly', () => {
   it('returns true when event is cancelled', () => {
@@ -22,6 +26,14 @@ describe('isGroupEventDiscussionReadOnly', () => {
         startsAt: '2000-01-01T00:00:00.000Z',
       })
     ).toBe(false);
+  });
+});
+
+describe('formatGroupEventCalendarBlock', () => {
+  it('returns a short month label and numeric day', () => {
+    const { month, day } = formatGroupEventCalendarBlock('2025-10-24T15:00:00.000Z');
+    expect(day).toMatch(/^\d{1,2}$/);
+    expect(month.length).toBeGreaterThan(0);
   });
 });
 

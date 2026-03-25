@@ -10,6 +10,7 @@ export { ListItem } from './ListItem';
 export type { ListItemProps } from './ListItem';
 export { Avatar } from './Avatar';
 export type { AvatarProps } from './Avatar';
+export { avatarFallbackInitial } from '@/lib/avatarFallbackInitial';
 export { StackedAvatars } from './StackedAvatars';
 export type { StackedAvatarsProps, StackedAvatarMember } from './StackedAvatars';
 export { Badge } from './Badge';

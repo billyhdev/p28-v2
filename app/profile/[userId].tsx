@@ -24,7 +24,7 @@ import {
 } from '@/hooks/useApiQueries';
 import { api, getUserFacingError } from '@/lib/api';
 import type { ApiError } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { preferredLanguageDisplayLabel, t } from '@/lib/i18n';
 import { avatarSizes, colors, radius, spacing, typography } from '@/theme/tokens';
 
 const cardStyle = {
@@ -97,15 +97,6 @@ export default function UserProfileScreen() {
 
   const errorMessage = isError && error && 'message' in error ? getUserFacingError(error) : null;
 
-  const preferredLanguageLabel =
-    profile?.preferredLanguage === 'en'
-      ? t('language.english')
-      : profile?.preferredLanguage === 'ko'
-        ? t('language.korean')
-        : profile?.preferredLanguage === 'km'
-          ? t('language.khmer')
-          : (profile?.preferredLanguage ?? '—');
-
   const showBio = areFriends === true;
 
   if (!userId) {
@@ -171,7 +162,9 @@ export default function UserProfileScreen() {
                     accessibilityRole="button"
                   >
                     <Ionicons name="people-outline" size={18} color={colors.textPrimary} />
-                    <Text style={styles.friendsButtonText}>{t('friends.friends')}</Text>
+                    <Text style={styles.friendsButtonText} numberOfLines={1} ellipsizeMode="tail">
+                      {t('friends.friends')}
+                    </Text>
                     <Ionicons name="chevron-down" size={18} color={colors.textPrimary} />
                   </Pressable>
                   <Pressable
@@ -186,7 +179,15 @@ export default function UserProfileScreen() {
                     accessibilityRole="button"
                   >
                     <Ionicons name="chatbubble-outline" size={18} color={colors.onPrimary} />
-                    <Text style={styles.messageButtonText}>{t('friends.startChat')}</Text>
+                    <Text
+                      style={styles.messageButtonText}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      {t('friends.startChat')}
+                    </Text>
                   </Pressable>
                 </View>
               ) : (
@@ -217,7 +218,9 @@ export default function UserProfileScreen() {
             </View>
             <View style={styles.row}>
               <Text style={styles.rowLabel}>{t('profile.preferredLanguage')}</Text>
-              <Text style={styles.rowValue}>{preferredLanguageLabel}</Text>
+              <Text style={styles.rowValue}>
+                {preferredLanguageDisplayLabel(profile?.preferredLanguage)}
+              </Text>
             </View>
           </View>
         </View>
@@ -265,18 +268,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.lg,
   },
-  headerText: { flex: 1, height: avatarSizes.xl },
+  headerText: { flex: 1, minHeight: avatarSizes.xl },
   title: { ...typography.h3, color: colors.textPrimary, marginBottom: spacing.xs },
   friendActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     flexWrap: 'wrap',
+    maxWidth: '100%',
   },
   friendsButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
     gap: 6,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
@@ -294,8 +299,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
     gap: 6,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.primary,
     borderRadius: radius.button,
@@ -306,6 +314,8 @@ const styles = StyleSheet.create({
   messageButtonText: {
     ...typography.label,
     color: colors.onPrimary,
+    flex: 1,
+    minWidth: 0,
   },
   card: { ...cardStyle },
   cardTitle: { ...typography.cardTitle, color: colors.textPrimary, marginBottom: spacing.sm },

@@ -36,6 +36,7 @@ export function setupNotificationHandler(): void {
     handleNotification: async () => ({
       shouldShowAlert: true,
       shouldPlaySound: true,
+      // Client owns badge while JS runs (`useAppIconBadgeSync`); remote `badge` updates icon when app is killed.
       shouldSetBadge: false,
       shouldShowBanner: true,
       shouldShowList: true,
@@ -119,12 +120,12 @@ export async function registerForPushNotificationsAsync(userId: string): Promise
   }
 }
 
-interface RouterLike {
+export interface NotificationRouterLike {
   push: (href: string) => void;
 }
 
 function navigateFromNotificationData(
-  router: RouterLike,
+  router: NotificationRouterLike,
   data: Record<string, unknown> | undefined
 ): void {
   // Remote payloads often stringify `data` values (especially on Android).
@@ -148,7 +149,9 @@ function navigateFromNotificationData(
 }
 
 /** Handle cold start: user opened app from a notification. */
-export async function handleInitialNotificationResponse(router: RouterLike): Promise<void> {
+export async function handleInitialNotificationResponse(
+  router: NotificationRouterLike
+): Promise<void> {
   const last = await Notifications.getLastNotificationResponseAsync();
   if (!last) return;
   const data = last.notification.request.content.data as Record<string, unknown> | undefined;
@@ -160,7 +163,7 @@ export async function handleInitialNotificationResponse(router: RouterLike): Pro
  * Returns a subscription with `remove()` for cleanup.
  */
 export function subscribeToNotificationResponses(
-  router: RouterLike
+  router: NotificationRouterLike
 ): ReturnType<typeof Notifications.addNotificationResponseReceivedListener> {
   return Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response.notification.request.content.data as Record<string, unknown> | undefined;

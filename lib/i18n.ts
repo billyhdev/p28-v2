@@ -72,4 +72,16 @@ export function t(key: string, params?: Record<string, string | number>): string
   return result;
 }
 
+/**
+ * User-facing label for a profile/group preferred_language code (en, ko, km).
+ * Unknown codes are shown as-is; missing/empty shows an em dash.
+ */
+export function preferredLanguageDisplayLabel(code: string | undefined | null): string {
+  if (code == null || code === '') return '—';
+  if (code === 'en') return t('language.english');
+  if (code === 'ko') return t('language.korean');
+  if (code === 'km') return t('language.khmer');
+  return code;
+}
+
 export { SupportedLocale as Locale };

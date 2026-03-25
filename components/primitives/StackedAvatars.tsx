@@ -69,10 +69,11 @@ export function StackedAvatars({
           styles.avatarWrap,
           { marginLeft: idx > 0 ? overlapValue : 0, zIndex: displayMembers.length - idx },
         ];
+        const fallbackLabel = (m.displayName && m.displayName.trim()) || m.userId;
         const content = (
           <Avatar
             source={m.avatarUrl ? { uri: m.avatarUrl } : null}
-            fallbackText={m.displayName ?? ''}
+            fallbackText={fallbackLabel}
             size={size}
             ringed={ringed}
             accessibilityLabel={

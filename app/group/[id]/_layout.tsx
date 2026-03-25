@@ -1,12 +1,12 @@
-import { Stack, useRouter } from 'expo-router';
-import { Pressable } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Stack } from 'expo-router';
 
+import { StackHeaderBack } from '@/components/patterns/StackHeaderBack';
+import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
 import { colors, typography } from '@/theme/tokens';
 
 export default function GroupDetailStackLayout() {
-  const router = useRouter();
+  useLocale();
   return (
     <Stack
       screenOptions={{
@@ -19,6 +19,7 @@ export default function GroupDetailStackLayout() {
         headerBackButtonDisplayMode: 'minimal' as const,
         headerBackTitleVisible: false,
         headerTintColor: colors.primary,
+        headerLeft: () => <StackHeaderBack accessibilityHint={t('groups.backToGroupsHint')} />,
       }}
     >
       <Stack.Screen
@@ -28,15 +29,7 @@ export default function GroupDetailStackLayout() {
           headerTransparent: true,
           headerStyle: { backgroundColor: 'transparent' },
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
-              accessibilityLabel={t('common.back')}
-              accessibilityHint={t('groups.backToGroupsHint')}
-              accessibilityRole="button"
-            >
-              <Ionicons name="chevron-back" size={22} color="#ffffff" />
-            </Pressable>
+            <StackHeaderBack iconColor="#ffffff" accessibilityHint={t('groups.backToGroupsHint')} />
           ),
         }}
       />

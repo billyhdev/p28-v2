@@ -1,6 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import {
   useGroupMemberSettingsQuery,
   useGroupQuery,
@@ -25,18 +24,34 @@ export default function GroupSettingsScreen() {
   });
   const updateMemberSettings = useUpdateGroupMemberSettingsMutation();
 
-  const handleOpenNotificationSettings = () => {
-    router.push('/profile/notifications');
-  };
-
   const announcementsEnabled = memberSettings?.announcementsEnabled ?? true;
+  const recurringMeetingsEnabled = memberSettings?.recurringMeetingsEnabled ?? true;
+  const eventsEnabled = memberSettings?.eventsEnabled ?? true;
 
-  const handleToggleGroupAnnouncements = (value: boolean) => {
+  const handleToggleAnnouncements = (value: boolean) => {
     if (!userId || !groupId) return;
     updateMemberSettings.mutate({
       groupId,
       userId,
       updates: { announcementsEnabled: value },
+    });
+  };
+
+  const handleToggleRecurringMeetings = (value: boolean) => {
+    if (!userId || !groupId) return;
+    updateMemberSettings.mutate({
+      groupId,
+      userId,
+      updates: { recurringMeetingsEnabled: value },
+    });
+  };
+
+  const handleToggleEvents = (value: boolean) => {
+    if (!userId || !groupId) return;
+    updateMemberSettings.mutate({
+      groupId,
+      userId,
+      updates: { eventsEnabled: value },
     });
   };
 
@@ -55,47 +70,75 @@ export default function GroupSettingsScreen() {
       {group ? <Text style={styles.groupName}>{group.name}</Text> : null}
 
       {isMember ? (
-        <View style={styles.section}>
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleTextCol}>
-              <Text style={styles.optionTitle}>{t('groups.announcementsToggle')}</Text>
-              <Text style={styles.optionSubtitle} numberOfLines={3}>
-                {t('groups.announcementsToggleHint')}
-              </Text>
+        <>
+          {group?.type === 'ministry' ? (
+            <View style={styles.section}>
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleTextCol}>
+                  <Text style={styles.optionTitle}>{t('groups.recurringMeetingsToggle')}</Text>
+                  <Text style={styles.optionSubtitle} numberOfLines={4}>
+                    {t('groups.recurringMeetingsToggleHint')}
+                  </Text>
+                </View>
+                <Switch
+                  value={recurringMeetingsEnabled}
+                  onValueChange={handleToggleRecurringMeetings}
+                  disabled={updateMemberSettings.isPending}
+                  trackColor={{ false: colors.outlineVariant, true: colors.primaryFixed }}
+                  thumbColor={
+                    recurringMeetingsEnabled ? colors.primary : colors.surfaceContainerHighest
+                  }
+                  style={{ transform: [{ scaleX: 0.95 }, { scaleY: 0.95 }] }}
+                  accessibilityLabel={t('groups.recurringMeetingsToggle')}
+                  accessibilityHint={t('groups.recurringMeetingsToggleHint')}
+                />
+              </View>
             </View>
-            <Switch
-              value={announcementsEnabled}
-              onValueChange={handleToggleGroupAnnouncements}
-              disabled={updateMemberSettings.isPending}
-              trackColor={{ false: colors.outlineVariant, true: colors.primaryFixed }}
-              thumbColor={announcementsEnabled ? colors.primary : colors.surfaceContainerHighest}
-              style={{ transform: [{ scaleX: 0.95 }, { scaleY: 0.95 }] }}
-              accessibilityLabel={t('groups.announcementsToggle')}
-              accessibilityHint={t('groups.announcementsToggleHint')}
-            />
-          </View>
-        </View>
-      ) : null}
+          ) : null}
 
-      <View style={styles.section}>
-        <Pressable
-          style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}
-          onPress={handleOpenNotificationSettings}
-          accessibilityLabel={t('groups.manageNotifications')}
-          accessibilityHint={t('groups.notificationsForGroupHint')}
-        >
-          <View style={styles.optionIcon}>
-            <Ionicons name="notifications-outline" size={24} color={colors.primary} />
+          <View style={styles.section}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextCol}>
+                <Text style={styles.optionTitle}>{t('groups.announcementsToggle')}</Text>
+                <Text style={styles.optionSubtitle} numberOfLines={3}>
+                  {t('groups.announcementsToggleHint')}
+                </Text>
+              </View>
+              <Switch
+                value={announcementsEnabled}
+                onValueChange={handleToggleAnnouncements}
+                disabled={updateMemberSettings.isPending}
+                trackColor={{ false: colors.outlineVariant, true: colors.primaryFixed }}
+                thumbColor={announcementsEnabled ? colors.primary : colors.surfaceContainerHighest}
+                style={{ transform: [{ scaleX: 0.95 }, { scaleY: 0.95 }] }}
+                accessibilityLabel={t('groups.announcementsToggle')}
+                accessibilityHint={t('groups.announcementsToggleHint')}
+              />
+            </View>
           </View>
-          <View style={styles.optionContent}>
-            <Text style={styles.optionTitle}>{t('groups.notificationsForGroup')}</Text>
-            <Text style={styles.optionSubtitle} numberOfLines={2}>
-              {t('groups.notificationsForGroupHint')}
-            </Text>
+
+          <View style={styles.section}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextCol}>
+                <Text style={styles.optionTitle}>{t('groups.groupEventsToggle')}</Text>
+                <Text style={styles.optionSubtitle} numberOfLines={4}>
+                  {t('groups.groupEventsToggleHint')}
+                </Text>
+              </View>
+              <Switch
+                value={eventsEnabled}
+                onValueChange={handleToggleEvents}
+                disabled={updateMemberSettings.isPending}
+                trackColor={{ false: colors.outlineVariant, true: colors.primaryFixed }}
+                thumbColor={eventsEnabled ? colors.primary : colors.surfaceContainerHighest}
+                style={{ transform: [{ scaleX: 0.95 }, { scaleY: 0.95 }] }}
+                accessibilityLabel={t('groups.groupEventsToggle')}
+                accessibilityHint={t('groups.groupEventsToggleHint')}
+              />
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.ink300} />
-        </Pressable>
-      </View>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -129,26 +172,6 @@ const styles = StyleSheet.create({
     minHeight: minTouchTarget + spacing.md,
   },
   toggleTextCol: {
-    flex: 1,
-  },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  optionRowPressed: {
-    backgroundColor: colors.surface100,
-  },
-  optionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.sm,
-    backgroundColor: colors.brandSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  optionContent: {
     flex: 1,
   },
   optionTitle: {

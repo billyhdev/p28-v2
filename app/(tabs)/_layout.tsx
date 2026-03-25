@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useSegments } from 'expo-router';
 
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { FloatingTabBar } from '@/components/navigation/FloatingTabBar';
@@ -16,6 +16,9 @@ import { colors, fontFamily } from '@/theme/tokens';
 
 export default function TabLayout() {
   useLocale();
+  const segments = useSegments() as readonly string[];
+  const messagesIdx = segments.indexOf('messages');
+  const hideMessagesTabHeader = messagesIdx >= 0 && segments[messagesIdx + 1] === 'chat';
   const { session } = useAuth();
   const userId = session?.user?.id;
   const { data: pendingCount } = usePendingFriendRequestCountQuery(userId);
@@ -76,6 +79,7 @@ export default function TabLayout() {
           tabBarAccessibilityLabel: t('tabs.messages'),
           tabBarBadge: messagesTabBadge,
           lazy: false,
+          headerShown: !hideMessagesTabHeader,
         }}
       />
       <Tabs.Screen

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { useGroupEventsQuery, useGroupQuery } from '@/hooks/useApiQueries';
+import { useGroupEventsQuery, useGroupQuery, useGroupsForUserQuery } from '@/hooks/useApiQueries';
+import { useAuth } from '@/hooks/useAuth';
 import { t } from '@/lib/i18n';
 import { formatGroupEventDateTime, isGroupEventPast } from '@/lib/dates';
 import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
@@ -13,8 +14,15 @@ import { sortGroupEventsForList } from '@/lib/groupEventsSort';
 export default function GroupEventListScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const router = useRouter();
+  const { session } = useAuth();
+  const userId = session?.user?.id;
   const { data: group } = useGroupQuery(groupId);
-  const { data: events = [], isLoading } = useGroupEventsQuery(groupId, { enabled: !!groupId });
+  const { data: memberGroups = [] } = useGroupsForUserQuery(userId);
+  const isMember = !!groupId && !!userId && memberGroups.some((g) => g.id === groupId);
+  const { data: events = [], isLoading } = useGroupEventsQuery(groupId, {
+    enabled: !!groupId,
+    discover: !isMember,
+  });
   const sortedEvents = useMemo(() => sortGroupEventsForList(events), [events]);
 
   useEffect(() => {
@@ -34,7 +42,12 @@ export default function GroupEventListScreen() {
             isPast && styles.cardPast,
             pressed && { opacity: 0.92 },
           ]}
-          onPress={() => router.push(`/group/event/${item.id}`)}
+          onPress={() =>
+            router.push({
+              pathname: '/group/event/[id]',
+              params: { id: item.id, fromGroup: '1' },
+            })
+          }
           accessibilityLabel={item.title}
           accessibilityRole="button"
         >

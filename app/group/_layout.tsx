@@ -1,35 +1,12 @@
-import { Stack, useRouter } from 'expo-router';
-import { Pressable } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Stack } from 'expo-router';
 
+import { StackHeaderBack } from '@/components/patterns/StackHeaderBack';
+import { useLocale } from '@/contexts/LocaleContext';
 import { t } from '@/lib/i18n';
 import { colors, typography } from '@/theme/tokens';
 
-/**
- * Native stack back can fail or feel flaky after routes where the parent stack
- * hides the header (e.g. group/[id]). Use explicit navigation like group/manage
- * and group/event/[id]/_layout.
- */
-function GroupStackHeaderBack() {
-  const router = useRouter();
-  return (
-    <Pressable
-      onPress={() => router.back()}
-      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 8 })}
-      accessibilityLabel={t('common.back')}
-      accessibilityHint={t('groups.backToGroupsHint')}
-      accessibilityRole="button"
-    >
-      <Ionicons name="chevron-back" size={22} color={colors.primary} />
-    </Pressable>
-  );
-}
-
-const groupStackBackHeader = {
-  headerLeft: () => <GroupStackHeaderBack />,
-} as const;
-
 export default function GroupLayout() {
+  useLocale();
   return (
     <Stack
       screenOptions={{
@@ -43,6 +20,7 @@ export default function GroupLayout() {
         headerBackTitleVisible: false,
         headerBackTitle: '',
         headerTintColor: colors.primary,
+        headerLeft: () => <StackHeaderBack accessibilityHint={t('groups.backToGroupsHint')} />,
       }}
     >
       <Stack.Screen
@@ -69,35 +47,36 @@ export default function GroupLayout() {
         name="settings"
         options={{
           title: t('groups.settingsTitle'),
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="discussion/[id]"
         options={{
           title: '',
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="discussion/create"
         options={{
           title: t('discussions.createDiscussion'),
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="discussion/edit"
         options={{
           title: t('discussions.editDiscussion'),
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="members"
         options={{
           title: t('groups.people'),
-          ...groupStackBackHeader,
+        }}
+      />
+      <Stack.Screen
+        name="leaders"
+        options={{
+          title: t('groups.leaders'),
         }}
       />
       <Stack.Screen
@@ -111,21 +90,18 @@ export default function GroupLayout() {
         name="announcement/list"
         options={{
           title: t('announcements.listTitle'),
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="announcement/[id]"
         options={{
           title: t('announcements.detailTitle'),
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
         name="event/list"
         options={{
           title: t('groupEvents.listTitle'),
-          ...groupStackBackHeader,
         }}
       />
       <Stack.Screen
@@ -138,7 +114,6 @@ export default function GroupLayout() {
         name="manage"
         options={{
           title: t('groups.manageMyGroupsTitle'),
-          ...groupStackBackHeader,
         }}
       />
     </Stack>

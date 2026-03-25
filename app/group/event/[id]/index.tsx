@@ -17,8 +17,9 @@ import { GroupEventFormSheet } from '@/components/patterns/GroupEventFormSheet';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useCancelGroupEventMutation,
-  useGroupAdminsQuery,
+  useUserIsGroupAdminQuery,
   useGroupEventQuery,
+  useGroupQuery,
   useGroupsForUserQuery,
   useMarkInAppNotificationsReadMutation,
   useMyEventRsvpQuery,
@@ -35,8 +36,18 @@ import {
 import { t } from '@/lib/i18n';
 import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
+function paramString(v: string | string[] | undefined): string | undefined {
+  if (v == null) return undefined;
+  return Array.isArray(v) ? v[0] : v;
+}
+
 export default function GroupEventDetailScreen() {
-  const { id: eventId } = useLocalSearchParams<{ id: string }>();
+  const { id: eventId, fromGroup: fromGroupParam } = useLocalSearchParams<{
+    id: string;
+    fromGroup?: string | string[];
+  }>();
+  const fromGroup = paramString(fromGroupParam);
+  const openedFromGroupScreen = fromGroup === '1' || fromGroup === 'true' || fromGroup === 'yes';
   const router = useRouter();
   const { session } = useAuth();
   const userId = session?.user?.id;
@@ -50,8 +61,9 @@ export default function GroupEventDetailScreen() {
   } = useGroupEventQuery(eventId, {
     enabled: !!eventId,
   });
-  const { data: admins = [] } = useGroupAdminsQuery(event?.groupId, {
-    enabled: !!event?.groupId,
+  const showGroupNavLink = !!event?.groupId && !openedFromGroupScreen;
+  const { data: groupForNav } = useGroupQuery(event?.groupId, {
+    enabled: !!event?.groupId && showGroupNavLink,
   });
   const { mutate: markInAppNotificationsRead } = useMarkInAppNotificationsReadMutation();
 
@@ -61,7 +73,9 @@ export default function GroupEventDetailScreen() {
   }, [userId, eventId, markInAppNotificationsRead]);
   const { data: memberGroups = [] } = useGroupsForUserQuery(userId);
   const isMember = !!event?.groupId && !!userId && memberGroups.some((g) => g.id === event.groupId);
-  const isGroupAdmin = !!userId && admins.some((a) => a.userId === userId);
+  const { data: isGroupAdmin = false } = useUserIsGroupAdminQuery(event?.groupId, userId, {
+    enabled: !!event?.groupId && !!userId,
+  });
   const isCreator = !!userId && !!event && event.createdByUserId === userId;
 
   const { data: myRsvp } = useMyEventRsvpQuery(eventId, userId, {
@@ -155,6 +169,24 @@ export default function GroupEventDetailScreen() {
     removeRsvpMutation.mutate({ eventId, userId });
   }, [userId, eventId, removeRsvpMutation]);
 
+  const openEventDiscussion = useCallback(() => {
+    if (!event) return;
+    if (!isMember) {
+      Alert.alert(t('groups.join'), t('groupEvents.joinToDiscuss'));
+      return;
+    }
+    router.push(`/group/discussion/${event.discussionId}`);
+  }, [event, isMember, router]);
+
+  const openAttendees = useCallback(() => {
+    if (!event) return;
+    if (!isMember) {
+      Alert.alert(t('groups.join'), t('groupEvents.joinToSeeAttendees'));
+      return;
+    }
+    router.push(`/group/event/${event.id}/attendees`);
+  }, [event, isMember, router]);
+
   if (!eventId) {
     router.back();
     return null;
@@ -235,8 +267,34 @@ export default function GroupEventDetailScreen() {
         {event.authorDisplayName ?? t('groups.groupMember')}
       </Text>
 
+      {showGroupNavLink ? (
+        <Pressable
+          onPress={() => router.push(`/group/${event.groupId}`)}
+          style={styles.linkRow}
+          accessibilityLabel={
+            groupForNav
+              ? `${t('groupEvents.viewGroup')}, ${groupForNav.name}`
+              : t('groupEvents.viewGroup')
+          }
+          accessibilityHint={t('groupEvents.viewGroupHint')}
+          accessibilityRole="link"
+        >
+          <View style={styles.linkTextCol}>
+            <Text style={styles.linkTitle}>{t('groupEvents.viewGroup')}</Text>
+            <Text style={styles.linkSub} numberOfLines={1}>
+              {groupForNav?.name ?? t('common.loading')}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+        </Pressable>
+      ) : null}
+
       {event.description ? (
         <Text style={[styles.body, isPastEvent && styles.bodyPast]}>{event.description}</Text>
+      ) : null}
+
+      {!isMember && event.requiresRsvp && isActive && isFuture ? (
+        <Text style={styles.joinForRsvpHint}>{t('groupEvents.joinToRsvp')}</Text>
       ) : null}
 
       {event.requiresRsvp ? (
@@ -308,9 +366,10 @@ export default function GroupEventDetailScreen() {
 
       {event.requiresRsvp ? (
         <Pressable
-          onPress={() => router.push(`/group/event/${event.id}/attendees`)}
+          onPress={openAttendees}
           style={styles.linkRow}
           accessibilityLabel={t('groupEvents.attendeesLink')}
+          accessibilityHint={isMember ? undefined : t('groupEvents.joinToSeeAttendees')}
           accessibilityRole="link"
         >
           <View style={styles.linkTextCol}>
@@ -327,13 +386,15 @@ export default function GroupEventDetailScreen() {
       ) : null}
 
       <Pressable
-        onPress={() => router.push(`/group/discussion/${event.discussionId}`)}
+        onPress={openEventDiscussion}
         style={[styles.discussionCard, eventDiscussionReadOnly && styles.discussionCardMuted]}
         accessibilityLabel={t('groupEvents.discussionLink')}
         accessibilityHint={
-          eventDiscussionReadOnly
-            ? `${t('groupEvents.discussionReadOnlyBanner')} ${t('groupEvents.discussionDisabledCancelled')}`
-            : t('groupEvents.discussionHint')
+          !isMember
+            ? t('groupEvents.joinToDiscuss')
+            : eventDiscussionReadOnly
+              ? `${t('groupEvents.discussionReadOnlyBanner')} ${t('groupEvents.discussionDisabledCancelled')}`
+              : t('groupEvents.discussionHint')
         }
         accessibilityRole="button"
       >
@@ -499,6 +560,12 @@ const styles = StyleSheet.create({
   },
   bodyPast: {
     color: colors.onSurfaceVariant,
+  },
+  joinForRsvpHint: {
+    ...typography.bodyMd,
+    fontFamily: fontFamily.sansSemiBold,
+    color: colors.secondary,
+    marginTop: spacing.sm,
   },
   rsvpNote: {
     ...typography.caption,

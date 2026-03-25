@@ -16,13 +16,14 @@ import { EmptyState } from '@/components/patterns/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useAddGroupAdminMutation,
-  useGroupAdminsQuery,
+  useGroupAdminsAllQuery,
   useIsSuperAdminQuery,
+  useRemoveGroupAdminMutation,
   useSearchProfilesQuery,
 } from '@/hooks/useApiQueries';
+import type { GroupAdmin, Profile } from '@/lib/api';
 import { getUserFacingError } from '@/lib/errors';
 import { t } from '@/lib/i18n';
-import type { Profile } from '@/lib/api';
 import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -33,6 +34,11 @@ function displayNameFor(profile: Profile): string {
     [profile.firstName, profile.lastName].filter(Boolean).join(' ') ??
     t('common.loading')
   );
+}
+
+function displayNameForAdmin(admin: GroupAdmin): string {
+  const n = admin.displayName?.trim();
+  return n && n.length > 0 ? n : t('notifications.unknownUser');
 }
 
 export default function SuperAdminAssignGroupAdminScreen() {
@@ -61,7 +67,9 @@ export default function SuperAdminAssignGroupAdminScreen() {
   } = useIsSuperAdminQuery(userId, {
     enabled: !!userId,
   });
-  const { data: admins = [] } = useGroupAdminsQuery(groupId, { enabled: !!groupId });
+  const { data: admins = [], isLoading: adminsLoading } = useGroupAdminsAllQuery(groupId, {
+    enabled: !!groupId,
+  });
   const adminIdSet = useMemo(() => new Set(admins.map((a) => a.userId)), [admins]);
 
   const { data: searchResults = [], isFetching: isSearching } = useSearchProfilesQuery(
@@ -71,6 +79,7 @@ export default function SuperAdminAssignGroupAdminScreen() {
   );
 
   const addAdminMutation = useAddGroupAdminMutation();
+  const removeAdminMutation = useRemoveGroupAdminMutation();
 
   useEffect(() => {
     if (!userId || isRoleLoading) return;
@@ -107,6 +116,37 @@ export default function SuperAdminAssignGroupAdminScreen() {
       );
     },
     [groupId, addAdminMutation]
+  );
+
+  const handleRemove = useCallback(
+    (targetUserId: string, name: string) => {
+      if (!groupId) return;
+      Alert.alert(
+        t('groups.superAdminRemoveConfirmTitle'),
+        t('groups.superAdminRemoveConfirmMessage', { name }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('groups.superAdminRemoveAdminButton'),
+            style: 'destructive',
+            onPress: () => {
+              removeAdminMutation.mutate(
+                { groupId, userId: targetUserId },
+                {
+                  onSuccess: () => {
+                    Alert.alert(t('common.successTitle'), t('groups.superAdminRemoveSuccess'));
+                  },
+                  onError: (err) => {
+                    Alert.alert(t('common.error'), getUserFacingError(err));
+                  },
+                }
+              );
+            },
+          },
+        ]
+      );
+    },
+    [groupId, removeAdminMutation]
   );
 
   const renderItem = useCallback(
@@ -168,7 +208,85 @@ export default function SuperAdminAssignGroupAdminScreen() {
 
   const showMinChars = debouncedSearch.length > 0 && debouncedSearch.length < 2;
   const showResults = debouncedSearch.length >= 2;
-  const empty =
+  const showSearchSpinner = showResults && isSearching;
+  const listData = showResults && !isSearching && searchResults.length > 0 ? searchResults : [];
+
+  const listHeader = (
+    <View>
+      <Text style={styles.helper}>{t('groups.superAdminAssignHelper')}</Text>
+
+      <Text style={styles.sectionTitle}>{t('groups.superAdminCurrentAdminsSection')}</Text>
+      {adminsLoading ? (
+        <View style={styles.adminsLoading}>
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      ) : admins.length === 0 ? (
+        <Text style={styles.noAdmins}>{t('groups.superAdminNoAdmins')}</Text>
+      ) : (
+        admins.map((admin) => {
+          const name = displayNameForAdmin(admin);
+          return (
+            <View key={admin.userId} style={styles.row}>
+              <Avatar
+                source={admin.avatarUrl ? { uri: admin.avatarUrl } : null}
+                fallbackText={name}
+                size="md"
+              />
+              <View style={styles.rowText}>
+                <Text style={styles.rowName} numberOfLines={1}>
+                  {name}
+                </Text>
+              </View>
+              <Button
+                title={t('groups.superAdminRemoveAdminButton')}
+                variant="secondary"
+                onPress={() => handleRemove(admin.userId, name)}
+                disabled={removeAdminMutation.isPending}
+                accessibilityLabel={t('groups.superAdminRemoveAdminButton')}
+                accessibilityHint={t('groups.superAdminRemoveAdminHint')}
+                style={styles.assignBtn}
+              />
+            </View>
+          );
+        })
+      )}
+
+      <View style={styles.searchBlock}>
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search"
+            size={20}
+            color={colors.onSurfaceVariant}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t('groups.superAdminAssignSearchPlaceholder')}
+            placeholderTextColor={`${colors.onSurfaceVariant}99`}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            accessibilityLabel={t('groups.superAdminAssignSearchPlaceholder')}
+            accessibilityHint={t('groups.superAdminAssignSearchHint')}
+          />
+        </View>
+
+        {showMinChars ? (
+          <Text style={styles.minChars}>{t('groups.superAdminAssignMinChars')}</Text>
+        ) : null}
+
+        {showSearchSpinner ? (
+          <View style={styles.searchSpinner}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  const listEmpty =
     showResults && !isSearching && searchResults.length === 0 ? (
       <View style={styles.emptyWrap}>
         <EmptyState
@@ -181,48 +299,16 @@ export default function SuperAdminAssignGroupAdminScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.helper}>{t('groups.superAdminAssignHelper')}</Text>
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={20}
-          color={colors.onSurfaceVariant}
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t('groups.superAdminAssignSearchPlaceholder')}
-          placeholderTextColor={`${colors.onSurfaceVariant}99`}
-          value={search}
-          onChangeText={setSearch}
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="none"
-          accessibilityLabel={t('groups.superAdminAssignSearchPlaceholder')}
-          accessibilityHint={t('groups.superAdminAssignSearchHint')}
-        />
-      </View>
-
-      {showMinChars ? (
-        <Text style={styles.minChars}>{t('groups.superAdminAssignMinChars')}</Text>
-      ) : null}
-
-      {isSearching && showResults ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : showResults && searchResults.length > 0 ? (
-        <FlatList
-          data={searchResults}
-          keyExtractor={(p) => p.userId}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-          ListFooterComponent={<View style={styles.footerSpacer} />}
-        />
-      ) : (
-        empty
-      )}
+      <FlatList
+        data={listData}
+        keyExtractor={(p) => p.userId}
+        renderItem={renderItem}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        ListFooterComponent={listData.length > 0 ? <View style={styles.footerSpacer} /> : undefined}
+      />
     </View>
   );
 }
@@ -243,6 +329,23 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.onSurfaceVariant,
     marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.labelSm,
+    color: colors.onSurface,
+    marginBottom: spacing.sm,
+  },
+  adminsLoading: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  noAdmins: {
+    ...typography.bodyMd,
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.lg,
+  },
+  searchBlock: {
+    marginTop: spacing.lg,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -267,8 +370,13 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     marginBottom: spacing.md,
   },
+  searchSpinner: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+  },
   listContent: {
-    paddingTop: spacing.sm,
+    flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   footerSpacer: {
     height: spacing.xxl,
@@ -309,5 +417,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingVertical: spacing.xl,
+    minHeight: 200,
   },
 });

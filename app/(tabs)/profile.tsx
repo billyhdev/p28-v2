@@ -17,7 +17,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfileQuery } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/api';
-import { t } from '@/lib/i18n';
+import { preferredLanguageDisplayLabel, t } from '@/lib/i18n';
 import { Avatar } from '@/components/primitives';
 import { TAB_BAR_HEIGHT } from '@/components/navigation/FloatingTabBar';
 import { colors, spacing, typography, radius, fontFamily } from '@/theme/tokens';
@@ -159,6 +159,17 @@ export default function ProfileScreen() {
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>{t('profile.country').toUpperCase()}</Text>
               <Text style={styles.infoValue}>{profile?.country ?? '—'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <Ionicons name="language-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>{t('profile.preferredLanguage').toUpperCase()}</Text>
+              <Text style={styles.infoValue}>
+                {preferredLanguageDisplayLabel(profile?.preferredLanguage)}
+              </Text>
             </View>
           </View>
         </View>

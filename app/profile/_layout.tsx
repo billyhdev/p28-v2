@@ -1,26 +1,38 @@
 import { Stack } from 'expo-router';
+
+import { StackHeaderBack } from '@/components/patterns/StackHeaderBack';
 import { useLocale } from '@/contexts/LocaleContext';
-import { t } from '@/lib/i18n';
+import { colors, typography } from '@/theme/tokens';
 
 export default function ProfileLayout() {
-  useLocale(); // Re-render when locale changes so titles update
+  useLocale();
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerTitleStyle: {
+          ...typography.title,
+          color: colors.textPrimary,
+        },
+        headerShadowVisible: false,
+        headerTintColor: colors.primary,
+        headerBackButtonDisplayMode: 'minimal',
+        headerBackTitleVisible: false,
+        headerLeft: () => <StackHeaderBack fallbackHref="/(tabs)" />,
+      }}
+    >
       <Stack.Screen
         name="[userId]"
         options={{
-          title: t('profile.title'),
-          headerShown: true,
+          // Root stack (`app/_layout`) shows title + back for `/profile/*`.
+          headerShown: false,
         }}
       />
       <Stack.Screen name="edit" options={{ headerShown: false }} />
-      <Stack.Screen name="settings" options={{ title: t('profile.settings'), headerShown: true }} />
-      <Stack.Screen
-        name="notifications"
-        options={{ title: t('profile.notificationPreferences'), headerShown: true }}
-      />
-      <Stack.Screen name="language" options={{ title: t('language.title'), headerShown: true }} />
-      <Stack.Screen name="conduct" options={{ title: t('conduct.title'), headerShown: true }} />
+      <Stack.Screen name="settings" options={{ headerShown: false }} />
+      <Stack.Screen name="notifications" options={{ headerShown: false }} />
+      <Stack.Screen name="language" options={{ headerShown: false }} />
+      <Stack.Screen name="conduct" options={{ headerShown: false }} />
     </Stack>
   );
 }

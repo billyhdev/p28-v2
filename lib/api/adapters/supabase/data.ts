@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { isAllowedRecurringMeetingTimeZone } from '@/lib/ianaTimeZones';
 import { parseMeetingLinkInput } from '@/lib/meetingLink';
 import type { DataContract } from '../../contracts';
 import type { ApiError } from '../../contracts/errors';
@@ -16,8 +17,11 @@ import type {
   CreateDiscussionPostInput,
   Announcement,
   CreateAnnouncementInput,
+  CreateGlobalAnnouncementInput,
+  GlobalAnnouncement,
   CreateGroupDiscussionInput,
   CreateGroupEventInput,
+  CreateGroupRecurringMeetingInput,
   CreateGroupInput,
   Discussion,
   DiscussionPost,
@@ -26,7 +30,9 @@ import type {
   FriendRequest,
   Group,
   GroupEvent,
+  GroupRecurringMeeting,
   PostReactionDetail,
+  RecurringMeetingFrequency,
   GroupAdmin,
   GroupDiscussion,
   GroupMember,
@@ -46,6 +52,7 @@ import type {
   UpdateDiscussionInput,
   UpdateDiscussionPostInput,
   UpdateGroupEventInput,
+  UpdateGroupRecurringMeetingInput,
   UpdateGroupInput,
 } from '../../contracts/dto';
 
@@ -181,10 +188,43 @@ async function resolveAvatarDisplayUrl(
   }
 }
 
+/** Display fields for stacked avatars / member rows (name + resolved avatar URL). */
+async function fetchProfileDisplayByUserIds(
+  getClient: () => SupabaseClient,
+  userIds: string[]
+): Promise<Map<string, { displayName?: string; avatarUrl?: string }>> {
+  const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
+  const unique = [...new Set(userIds)];
+  for (const uid of unique) {
+    const { data: p } = await getClient()
+      .from('profiles')
+      .select('display_name, first_name, last_name, avatar_url, email')
+      .eq('user_id', uid)
+      .maybeSingle();
+    if (!p) continue;
+    const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+    let displayName: string | undefined = p.display_name?.trim() || derivedDisplayName || undefined;
+    if (!displayName) {
+      const email = typeof p.email === 'string' ? p.email.trim() : '';
+      if (email) {
+        const local = email.split('@')[0]?.trim();
+        if (local) displayName = local;
+      }
+    }
+    let avatarUrl = p.avatar_url ?? undefined;
+    if (avatarUrl) {
+      avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
+    }
+    profileMap.set(uid, { displayName, avatarUrl });
+  }
+  return profileMap;
+}
+
 function mapNotificationPrefsRow(row: {
   user_id: string;
   events_enabled: boolean;
   announcements_enabled: boolean;
+  recurring_meetings_enabled?: boolean | null;
   messages_enabled: boolean;
   updated_at?: string | null;
 }): NotificationPreferences {
@@ -192,6 +232,7 @@ function mapNotificationPrefsRow(row: {
     userId: row.user_id,
     eventsEnabled: row.events_enabled ?? true,
     announcementsEnabled: row.announcements_enabled ?? true,
+    recurringMeetingsEnabled: row.recurring_meetings_enabled ?? true,
     messagesEnabled: row.messages_enabled ?? true,
     updatedAt: row.updated_at ?? undefined,
   };
@@ -244,15 +285,16 @@ function mapGroupMemberRow(
   };
 }
 
-function mapGroupAdminRow(row: {
-  user_id: string;
-  group_id: string;
-  assigned_at?: string | null;
-}): GroupAdmin {
+function mapGroupAdminRow(
+  row: { user_id: string; group_id: string; assigned_at?: string | null },
+  profile?: { displayName?: string; avatarUrl?: string } | null
+): GroupAdmin {
   return {
     userId: row.user_id,
     groupId: row.group_id,
     assignedAt: row.assigned_at ?? undefined,
+    displayName: profile?.displayName,
+    avatarUrl: profile?.avatarUrl,
   };
 }
 
@@ -286,6 +328,24 @@ function mapAnnouncementRow(
     createdAt: row.created_at,
     authorDisplayName: profile?.displayName,
     authorAvatarUrl: profile?.avatarUrl,
+  };
+}
+
+type GlobalAnnouncementRow = {
+  id: string;
+  title: string;
+  description: string;
+  created_by_user_id: string;
+  created_at: string;
+};
+
+function mapGlobalAnnouncementRow(row: GlobalAnnouncementRow): GlobalAnnouncement {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    createdByUserId: row.created_by_user_id,
+    createdAt: row.created_at,
   };
 }
 
@@ -358,6 +418,78 @@ function mapGroupEventRow(
     goingCount: counts?.going,
     maybeCount: counts?.maybe,
   };
+}
+
+type GroupRecurringMeetingRow = {
+  id: string;
+  group_id: string;
+  created_by_user_id: string;
+  title: string;
+  description: string;
+  location: string;
+  meeting_link: string | null;
+  recurrence_frequency: string;
+  weekday: number;
+  time_local: string;
+  timezone: string;
+  month_week_ordinal: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function normalizeTimeLocalForDb(raw: string): string {
+  const t = raw.trim();
+  const m = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/.exec(t);
+  if (!m) return '00:00:00';
+  const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+  const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+  const s = m[3] !== undefined ? Math.min(59, Math.max(0, parseInt(m[3], 10))) : 0;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function mapGroupRecurringMeetingRow(row: GroupRecurringMeetingRow): GroupRecurringMeeting {
+  const tl = row.time_local?.length >= 5 ? row.time_local.slice(0, 5) : (row.time_local ?? '');
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    createdByUserId: row.created_by_user_id,
+    title: row.title,
+    description: row.description ?? '',
+    location: row.location ?? '',
+    meetingLink: row.meeting_link ?? '',
+    recurrenceFrequency: row.recurrence_frequency as RecurringMeetingFrequency,
+    weekday: row.weekday,
+    timeLocal: tl,
+    timezone: row.timezone,
+    monthWeekOrdinal: row.month_week_ordinal ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function validateRecurringMeetingWrite(
+  input: CreateGroupRecurringMeetingInput | UpdateGroupRecurringMeetingInput
+): ApiError | null {
+  const title = input.title.trim();
+  if (!title) {
+    return { message: 'Title is required', code: 'VALIDATION_ERROR' };
+  }
+  if (input.weekday < 0 || input.weekday > 6) {
+    return { message: 'Invalid weekday', code: 'VALIDATION_ERROR' };
+  }
+  if (!['weekly', 'biweekly', 'monthly_nth'].includes(input.recurrenceFrequency)) {
+    return { message: 'Invalid recurrence', code: 'VALIDATION_ERROR' };
+  }
+  if (input.recurrenceFrequency === 'monthly_nth') {
+    const o = input.monthWeekOrdinal;
+    if (o === undefined || !((o >= 1 && o <= 4) || o === -1)) {
+      return { message: 'Choose which week of the month', code: 'VALIDATION_ERROR' };
+    }
+  }
+  if (!isAllowedRecurringMeetingTimeZone(input.timezone)) {
+    return { message: 'Invalid timezone', code: 'VALIDATION_ERROR' };
+  }
+  return null;
 }
 
 async function loadProfileMapForUserIds(
@@ -545,6 +677,7 @@ function mapRow(row: {
   avatar_url?: string | null;
   bio?: string | null;
   updated_at?: string | null;
+  notifications_badge_cleared_at?: string | null;
 }): Profile {
   const derivedDisplayName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
   const displayName = row.display_name?.trim() || derivedDisplayName || undefined;
@@ -560,7 +693,56 @@ function mapRow(row: {
     avatarUrl: row.avatar_url ?? undefined,
     bio: row.bio ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+    notificationsBadgeClearedAt: row.notifications_badge_cleared_at ?? undefined,
   };
+}
+
+type InvokeEdgeWithUserJwtResult = { ok: true; data: unknown } | { ok: false; error: ApiError };
+
+/**
+ * Refresh session and invoke an Edge Function (Authorization uses current session).
+ */
+async function invokeEdgeWithUserJwt(
+  getClient: () => SupabaseClient,
+  functionName: string,
+  body: Record<string, unknown>
+): Promise<InvokeEdgeWithUserJwtResult> {
+  try {
+    const client = getClient();
+    await client.auth.refreshSession();
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      return { ok: false, error: { message: 'Not signed in', code: 'UNAUTHORIZED' } };
+    }
+    const { data, error } = await client.functions.invoke(functionName, { body });
+    if (error) {
+      return { ok: false, error: toApiError(error) };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: toApiError(e) };
+  }
+}
+
+function interpretRemoteErrorPayload(data: unknown): void | ApiError {
+  const payload = data as { error?: string } | null;
+  if (payload && typeof payload.error === 'string' && payload.error.length > 0) {
+    return { message: payload.error, code: 'REMOTE_ERROR' };
+  }
+  return;
+}
+
+/**
+ * Invoke push-related Edge Functions; fails on `{ error: string }` JSON body.
+ */
+async function invokePushEdgeFunctionWithUserJwt(
+  getClient: () => SupabaseClient,
+  functionName: string,
+  body: Record<string, unknown>
+): Promise<void | ApiError> {
+  const r = await invokeEdgeWithUserJwt(getClient, functionName, body);
+  if (!r.ok) return r.error;
+  return interpretRemoteErrorPayload(r.data);
 }
 
 /**
@@ -574,7 +756,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { data, error } = await getClient()
           .from('profiles')
           .select(
-            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at, notifications_badge_cleared_at'
           )
           .eq('user_id', userId)
           .maybeSingle();
@@ -608,7 +790,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .from('profiles')
           .upsert(payload, { onConflict: 'user_id' })
           .select(
-            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at, notifications_badge_cleared_at'
           )
           .single();
         if (error) return toApiError(error);
@@ -644,7 +826,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .from('profiles')
           .upsert(payload, { onConflict: 'user_id' })
           .select(
-            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at'
+            'user_id, email, display_name, first_name, last_name, birth_date, country, preferred_language, avatar_url, bio, updated_at, notifications_badge_cleared_at'
           )
           .single();
         if (error) return toApiError(error);
@@ -659,11 +841,31 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
+    async setNotificationsBadgeClearedAt(
+      userId: string,
+      clearedAtIso: string
+    ): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('profiles')
+          .update({
+            notifications_badge_cleared_at: clearedAtIso,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
     async getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError> {
       try {
         const { data, error } = await getClient()
           .from('notification_preferences')
-          .select('user_id, events_enabled, announcements_enabled, messages_enabled, updated_at')
+          .select(
+            'user_id, events_enabled, announcements_enabled, recurring_meetings_enabled, messages_enabled, updated_at'
+          )
           .eq('user_id', userId)
           .maybeSingle();
         if (error) return toApiError(error);
@@ -672,13 +874,16 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           user_id: userId,
           events_enabled: true,
           announcements_enabled: true,
+          recurring_meetings_enabled: true,
           messages_enabled: true,
           updated_at: new Date().toISOString(),
         };
         const { data: inserted, error: insertError } = await getClient()
           .from('notification_preferences')
           .upsert(defaults, { onConflict: 'user_id' })
-          .select('user_id, events_enabled, announcements_enabled, messages_enabled, updated_at')
+          .select(
+            'user_id, events_enabled, announcements_enabled, recurring_meetings_enabled, messages_enabled, updated_at'
+          )
           .single();
         if (insertError) return toApiError(insertError);
         if (!inserted) return { message: 'Failed to create preferences', code: 'NOT_FOUND' };
@@ -700,6 +905,8 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           eventsEnabled: updates.eventsEnabled ?? current?.eventsEnabled ?? true,
           announcementsEnabled:
             updates.announcementsEnabled ?? current?.announcementsEnabled ?? true,
+          recurringMeetingsEnabled:
+            updates.recurringMeetingsEnabled ?? current?.recurringMeetingsEnabled ?? true,
           messagesEnabled: updates.messagesEnabled ?? current?.messagesEnabled ?? true,
           updatedAt: new Date().toISOString(),
         };
@@ -707,13 +914,16 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           user_id: userId,
           events_enabled: merged.eventsEnabled,
           announcements_enabled: merged.announcementsEnabled,
+          recurring_meetings_enabled: merged.recurringMeetingsEnabled,
           messages_enabled: merged.messagesEnabled,
           updated_at: merged.updatedAt,
         };
         const { data, error } = await getClient()
           .from('notification_preferences')
           .upsert(payload, { onConflict: 'user_id' })
-          .select('user_id, events_enabled, announcements_enabled, messages_enabled, updated_at')
+          .select(
+            'user_id, events_enabled, announcements_enabled, recurring_meetings_enabled, messages_enabled, updated_at'
+          )
           .single();
         if (error) return toApiError(error);
         if (!data) return { message: 'Failed to update preferences', code: 'NOT_FOUND' };
@@ -981,32 +1191,18 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
     async getGroupMembers(groupId: string): Promise<GroupMember[] | ApiError> {
       try {
-        const { data: rows, error } = await getClient()
-          .from('group_members')
-          .select('user_id, group_id, joined_at')
-          .eq('group_id', groupId)
-          .order('joined_at');
+        const { data: rows, error } = await getClient().rpc('group_members_for_display', {
+          p_group_id: groupId,
+        });
         if (error) return toApiError(error);
-        const members = rows ?? [];
+        const members = (rows ?? []) as Array<{
+          user_id: string;
+          group_id: string;
+          joined_at: string;
+        }>;
         if (members.length === 0) return [];
-        const userIds = [...new Set(members.map((r) => r.user_id))];
-        const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
-        for (const uid of userIds) {
-          const { data: p } = await getClient()
-            .from('profiles')
-            .select('display_name, first_name, last_name, avatar_url')
-            .eq('user_id', uid)
-            .maybeSingle();
-          if (p) {
-            const derivedDisplayName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
-            const displayName = p.display_name?.trim() || derivedDisplayName || undefined;
-            let avatarUrl = p.avatar_url ?? undefined;
-            if (avatarUrl) {
-              avatarUrl = await resolveAvatarDisplayUrl(getClient, avatarUrl);
-            }
-            profileMap.set(uid, { displayName, avatarUrl });
-          }
-        }
+        const userIds = members.map((r) => r.user_id);
+        const profileMap = await fetchProfileDisplayByUserIds(getClient, userIds);
         return members.map((r) => mapGroupMemberRow(r, profileMap.get(r.user_id) ?? null));
       } catch (e) {
         return toApiError(e);
@@ -1124,13 +1320,59 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
     async getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError> {
       try {
+        const { data, error } = await getClient().rpc('group_admins_for_display', {
+          p_group_id: groupId,
+        });
+        if (error) return toApiError(error);
+        const admins = (data ?? []) as Array<{
+          user_id: string;
+          group_id: string;
+          assigned_at: string;
+        }>;
+        if (admins.length === 0) return [];
+        const userIds = admins.map((r) => r.user_id);
+        const profileMap = await fetchProfileDisplayByUserIds(getClient, userIds);
+        return admins.map((r) => mapGroupAdminRow(r, profileMap.get(r.user_id) ?? null));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupAdminsAll(groupId: string): Promise<GroupAdmin[] | ApiError> {
+      try {
         const { data, error } = await getClient()
           .from('group_admins')
           .select('user_id, group_id, assigned_at')
           .eq('group_id', groupId)
           .order('assigned_at');
         if (error) return toApiError(error);
-        return (data ?? []).map(mapGroupAdminRow);
+        const admins = data ?? [];
+        if (admins.length === 0) return [];
+        const userIds = admins.map((r) => r.user_id);
+        const profileMap = await fetchProfileDisplayByUserIds(getClient, userIds);
+        return admins.map((r) => mapGroupAdminRow(r, profileMap.get(r.user_id) ?? null));
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async isUserGroupAdmin(groupId: string, userId: string): Promise<boolean | ApiError> {
+      try {
+        const { data, error } = await getClient()
+          .from('group_admins')
+          .select('user_id')
+          .eq('group_id', groupId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) return toApiError(error);
+        if (data) return true;
+        const { data: roleRow, error: roleError } = await getClient()
+          .from('app_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (roleError) return toApiError(roleError);
+        return roleRow?.role === 'super_admin';
       } catch (e) {
         return toApiError(e);
       }
@@ -1148,18 +1390,51 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
-    async getAnnouncements(groupId: string): Promise<Announcement[] | ApiError> {
+    async removeGroupAdmin(groupId: string, userId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('group_admins')
+          .delete()
+          .eq('group_id', groupId)
+          .eq('user_id', userId);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getAnnouncements(
+      groupId: string,
+      options?: { discover?: boolean; status?: 'published'; limit?: number }
+    ): Promise<Announcement[] | ApiError> {
       try {
         const client = getClient();
-        const { data: rows, error } = await client
-          .from('announcements')
-          .select(
-            'id, group_id, created_by_user_id, title, body, meeting_link, status, published_at, cancelled_at, created_at'
-          )
-          .eq('group_id', groupId)
-          .order('created_at', { ascending: false });
-        if (error) return toApiError(error);
-        const list = (rows ?? []) as AnnouncementRow[];
+        let list: AnnouncementRow[];
+        if (options?.discover) {
+          const { data: rows, error } = await client.rpc(
+            'discovery_published_announcements_for_group',
+            { p_group_id: groupId }
+          );
+          if (error) return toApiError(error);
+          list = (rows ?? []) as AnnouncementRow[];
+        } else {
+          let q = client
+            .from('announcements')
+            .select(
+              'id, group_id, created_by_user_id, title, body, meeting_link, status, published_at, cancelled_at, created_at'
+            )
+            .eq('group_id', groupId)
+            .order('created_at', { ascending: false });
+          if (options?.status === 'published') {
+            q = q.eq('status', 'published');
+          }
+          if (options?.limit != null) {
+            q = q.limit(options.limit);
+          }
+          const { data: rows, error } = await q;
+          if (error) return toApiError(error);
+          list = (rows ?? []) as AnnouncementRow[];
+        }
         if (list.length === 0) return [];
         const userIds = [...new Set(list.map((r) => r.created_by_user_id))];
         const profileMap = new Map<string, { displayName?: string; avatarUrl?: string }>();
@@ -1188,14 +1463,11 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
     async getAnnouncement(id: string): Promise<Announcement | ApiError> {
       try {
         const client = getClient();
-        const { data: row, error } = await client
-          .from('announcements')
-          .select(
-            'id, group_id, created_by_user_id, title, body, meeting_link, status, published_at, cancelled_at, created_at'
-          )
-          .eq('id', id)
-          .maybeSingle();
+        const { data: viewerRows, error } = await client.rpc('announcement_for_viewer', {
+          p_announcement_id: id,
+        });
         if (error) return toApiError(error);
+        const row = Array.isArray(viewerRows) ? viewerRows[0] : viewerRows;
         if (!row) return { message: 'Announcement not found', code: 'NOT_FOUND' };
         const r = row as AnnouncementRow;
         const { data: p } = await client
@@ -1264,54 +1536,134 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       }
     },
 
-    async publishAnnouncement(announcementId: string): Promise<void | ApiError> {
+    async listGlobalAnnouncements(options?: {
+      limit?: number;
+    }): Promise<GlobalAnnouncement[] | ApiError> {
       try {
-        const client = getClient();
-        // Best-effort refresh so the access token passes Edge verify_jwt (stale cache causes 401).
-        await client.auth.refreshSession();
-        const { data: sessionData, error: sessionError } = await client.auth.getSession();
-        if (sessionError || !sessionData.session?.access_token) {
-          return { message: 'Not signed in', code: 'UNAUTHORIZED' };
-        }
-        // Let the client attach Authorization via fetchWithAuth (uses session after refresh).
-        const { data, error } = await client.functions.invoke('send-announcement', {
-          body: { announcementId },
-        });
-        if (error) {
-          return toApiError(error);
-        }
-        const payload = data as { error?: string } | null;
-        if (payload && typeof payload.error === 'string' && payload.error.length > 0) {
-          return { message: payload.error, code: 'REMOTE_ERROR' };
-        }
-        return;
+        const limit = Math.min(Math.max(options?.limit ?? 10, 1), 50);
+        const { data, error } = await getClient()
+          .from('global_announcements')
+          .select('id, title, description, created_by_user_id, created_at')
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        if (error) return toApiError(error);
+        return (data ?? []).map((row) => mapGlobalAnnouncementRow(row as GlobalAnnouncementRow));
       } catch (e) {
         return toApiError(e);
       }
     },
 
-    async getGroupEvents(groupId: string): Promise<GroupEvent[] | ApiError> {
+    async createGlobalAnnouncement(
+      userId: string,
+      input: CreateGlobalAnnouncementInput
+    ): Promise<GlobalAnnouncement | ApiError> {
+      try {
+        const title = input.title.trim();
+        const description = input.description.trim();
+        if (!title || !description) {
+          return { message: 'Title and description are required', code: 'VALIDATION_ERROR' };
+        }
+        const { data: row, error } = await getClient()
+          .from('global_announcements')
+          .insert({
+            title,
+            description,
+            created_by_user_id: userId,
+          })
+          .select('id, title, description, created_by_user_id, created_at')
+          .single();
+        if (error) return toApiError(error);
+        return mapGlobalAnnouncementRow(row as GlobalAnnouncementRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async publishAnnouncement(announcementId: string): Promise<void | ApiError> {
+      return invokePushEdgeFunctionWithUserJwt(getClient, 'send-announcement', {
+        announcementId,
+      });
+    },
+
+    async notifyGroupEventCreated(eventId: string): Promise<void | ApiError> {
+      const r = await invokeEdgeWithUserJwt(getClient, 'send-group-event-created', {
+        eventId,
+      });
+      if (!r.ok) return r.error;
+      const remoteErr = interpretRemoteErrorPayload(r.data);
+      if (remoteErr) return remoteErr;
+
+      const payload = r.data as {
+        ok?: boolean;
+        eligibleMembers?: number;
+        messagesQueued?: number;
+        ticketsOk?: number;
+        ticketErrors?: string[];
+      } | null;
+
+      if (payload?.ok && (payload.ticketsOk ?? 0) === 0 && (payload.messagesQueued ?? 0) > 0) {
+        console.warn(
+          '[notifyGroupEventCreated] Expo returned no ok tickets (check device / credentials)',
+          payload.ticketErrors ?? [],
+          { eventId }
+        );
+      }
+      if (
+        payload?.ok &&
+        (payload.messagesQueued ?? 0) === 0 &&
+        (payload.eligibleMembers ?? 0) > 0
+      ) {
+        console.warn(
+          '[notifyGroupEventCreated] No push tokens for eligible members; open app on device to register',
+          { eventId }
+        );
+      }
+      return;
+    },
+
+    async getGroupEvents(
+      groupId: string,
+      options?: { discover?: boolean }
+    ): Promise<GroupEvent[] | ApiError> {
       try {
         const client = getClient();
-        const { data: rows, error } = await client
-          .from('group_events')
-          .select(
-            'id, group_id, created_by_user_id, title, description, starts_at, requires_rsvp, status, cancelled_at, discussion_id, created_at, location, meeting_link'
-          )
-          .eq('group_id', groupId)
-          .order('starts_at', { ascending: true })
-          .order('created_at', { ascending: false });
-        if (error) return toApiError(error);
-        const list = (rows ?? []) as GroupEventRow[];
+        type DiscoveryEventRow = GroupEventRow & { going_count?: number; maybe_count?: number };
+        let list: DiscoveryEventRow[];
+        if (options?.discover) {
+          const { data: rows, error } = await client.rpc('discovery_group_events_for_group', {
+            p_group_id: groupId,
+          });
+          if (error) return toApiError(error);
+          list = (rows ?? []) as DiscoveryEventRow[];
+        } else {
+          const { data: rows, error } = await client
+            .from('group_events')
+            .select(
+              'id, group_id, created_by_user_id, title, description, starts_at, requires_rsvp, status, cancelled_at, discussion_id, created_at, location, meeting_link'
+            )
+            .eq('group_id', groupId)
+            .order('starts_at', { ascending: true })
+            .order('created_at', { ascending: false });
+          if (error) return toApiError(error);
+          list = (rows ?? []) as DiscoveryEventRow[];
+        }
         if (list.length === 0) return [];
         const userIds = [...new Set(list.map((r) => r.created_by_user_id))];
         const profileMap = await loadProfileMapForUserIds(getClient, userIds);
-        const countsMap = await loadEventRsvpCounts(
-          client,
-          list.map((r) => r.id)
-        );
+        const countsMap = options?.discover
+          ? null
+          : await loadEventRsvpCounts(
+              client,
+              list.map((r) => r.id)
+            );
         return list.map((r) =>
-          mapGroupEventRow(r, profileMap.get(r.created_by_user_id), countsMap.get(r.id))
+          mapGroupEventRow(
+            r,
+            profileMap.get(r.created_by_user_id),
+            options?.discover
+              ? { going: r.going_count ?? 0, maybe: r.maybe_count ?? 0 }
+              : countsMap?.get(r.id)
+          )
         );
       } catch (e) {
         return toApiError(e);
@@ -1321,19 +1673,18 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
     async getGroupEvent(id: string): Promise<GroupEvent | ApiError> {
       try {
         const client = getClient();
-        const { data: row, error } = await client
-          .from('group_events')
-          .select(
-            'id, group_id, created_by_user_id, title, description, starts_at, requires_rsvp, status, cancelled_at, discussion_id, created_at, location, meeting_link'
-          )
-          .eq('id', id)
-          .maybeSingle();
+        const { data: viewerRows, error } = await client.rpc('group_event_for_viewer', {
+          p_event_id: id,
+        });
         if (error) return toApiError(error);
+        const row = Array.isArray(viewerRows) ? viewerRows[0] : viewerRows;
         if (!row) return { message: 'Event not found', code: 'NOT_FOUND' };
-        const r = row as GroupEventRow;
+        const r = row as GroupEventRow & { going_count?: number; maybe_count?: number };
         const profileMap = await loadProfileMapForUserIds(getClient, [r.created_by_user_id]);
-        const countsMap = await loadEventRsvpCounts(client, [r.id]);
-        return mapGroupEventRow(r, profileMap.get(r.created_by_user_id), countsMap.get(r.id));
+        return mapGroupEventRow(r, profileMap.get(r.created_by_user_id), {
+          going: r.going_count ?? 0,
+          maybe: r.maybe_count ?? 0,
+        });
       } catch (e) {
         return toApiError(e);
       }
@@ -1381,61 +1732,6 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         }
         const created = await this.getGroupEvent(eventId);
         if (isApiError(created)) return created;
-
-        try {
-          const client = getClient();
-          await client.auth.refreshSession();
-          const { data: sessionData, error: sessionError } = await client.auth.getSession();
-          if (!sessionError && sessionData.session?.access_token) {
-            const { data, error: fnError } = await client.functions.invoke(
-              'send-group-event-created',
-              { body: { eventId } }
-            );
-            if (fnError && typeof __DEV__ !== 'undefined' && __DEV__) {
-              console.warn('[createGroupEvent] send-group-event-created invoke failed', fnError);
-            }
-            const payload = data as {
-              error?: string;
-              ok?: boolean;
-              eligibleMembers?: number;
-              messagesQueued?: number;
-              ticketsOk?: number;
-              ticketErrors?: string[];
-            } | null;
-            if (payload?.error && typeof __DEV__ !== 'undefined' && __DEV__) {
-              console.warn('[createGroupEvent] send-group-event-created', payload.error);
-            }
-            if (
-              typeof __DEV__ !== 'undefined' &&
-              __DEV__ &&
-              payload?.ok &&
-              (payload.ticketsOk ?? 0) === 0 &&
-              (payload.messagesQueued ?? 0) > 0
-            ) {
-              console.warn(
-                '[createGroupEvent] Expo returned no ok tickets (check device / credentials)',
-                payload.ticketErrors,
-                payload
-              );
-            }
-            if (
-              typeof __DEV__ !== 'undefined' &&
-              __DEV__ &&
-              payload?.ok &&
-              (payload.messagesQueued ?? 0) === 0 &&
-              (payload.eligibleMembers ?? 0) > 0
-            ) {
-              console.warn(
-                '[createGroupEvent] No push tokens for eligible members; open app on device to register',
-                payload
-              );
-            }
-          }
-        } catch (e) {
-          if (typeof __DEV__ !== 'undefined' && __DEV__) {
-            console.warn('[createGroupEvent] push notify skipped', e);
-          }
-        }
 
         return created;
       } catch (e) {
@@ -1490,6 +1786,142 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { error } = await getClient().rpc('cancel_group_event', {
           p_event_id: eventId,
         });
+        if (error) return toApiError(error);
+        return;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getGroupRecurringMeetings(
+      groupId: string,
+      options?: { discover?: boolean }
+    ): Promise<GroupRecurringMeeting[] | ApiError> {
+      try {
+        const client = getClient();
+        let list: GroupRecurringMeetingRow[];
+        if (options?.discover) {
+          const { data: rows, error } = await client.rpc(
+            'discovery_group_recurring_meetings_for_group',
+            { p_group_id: groupId }
+          );
+          if (error) return toApiError(error);
+          list = (rows ?? []) as GroupRecurringMeetingRow[];
+        } else {
+          const { data: rows, error } = await client
+            .from('group_recurring_meetings')
+            .select(
+              'id, group_id, created_by_user_id, title, description, location, meeting_link, recurrence_frequency, weekday, time_local, timezone, month_week_ordinal, created_at, updated_at'
+            )
+            .eq('group_id', groupId)
+            .order('created_at', { ascending: true });
+          if (error) return toApiError(error);
+          list = (rows ?? []) as GroupRecurringMeetingRow[];
+        }
+        return list.map(mapGroupRecurringMeetingRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async createGroupRecurringMeeting(
+      groupId: string,
+      userId: string,
+      input: CreateGroupRecurringMeetingInput
+    ): Promise<GroupRecurringMeeting | ApiError> {
+      try {
+        const err = validateRecurringMeetingWrite(input);
+        if (err) return err;
+        const meetingLinkParsed = parseMeetingLinkInput(input.meetingLink ?? '');
+        if (!meetingLinkParsed.ok) {
+          return {
+            message:
+              meetingLinkParsed.reason === 'too_long'
+                ? 'Meeting link is too long'
+                : 'Enter a valid meeting link (http or https)',
+            code: 'VALIDATION_ERROR',
+          };
+        }
+        const timeDb = normalizeTimeLocalForDb(input.timeLocal);
+        const rowPayload = {
+          group_id: groupId,
+          created_by_user_id: userId,
+          title: input.title.trim(),
+          description: input.description?.trim() ?? '',
+          location: input.location?.trim() ?? '',
+          meeting_link: meetingLinkParsed.value || null,
+          recurrence_frequency: input.recurrenceFrequency,
+          weekday: input.weekday,
+          time_local: timeDb,
+          timezone: input.timezone.trim(),
+          month_week_ordinal:
+            input.recurrenceFrequency === 'monthly_nth' ? input.monthWeekOrdinal! : null,
+        };
+        const { data: row, error } = await getClient()
+          .from('group_recurring_meetings')
+          .insert(rowPayload)
+          .select(
+            'id, group_id, created_by_user_id, title, description, location, meeting_link, recurrence_frequency, weekday, time_local, timezone, month_week_ordinal, created_at, updated_at'
+          )
+          .single();
+        if (error) return toApiError(error);
+        return mapGroupRecurringMeetingRow(row as GroupRecurringMeetingRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async updateGroupRecurringMeeting(
+      meetingId: string,
+      _userId: string,
+      input: UpdateGroupRecurringMeetingInput
+    ): Promise<GroupRecurringMeeting | ApiError> {
+      try {
+        const err = validateRecurringMeetingWrite(input);
+        if (err) return err;
+        const meetingLinkParsed = parseMeetingLinkInput(input.meetingLink ?? '');
+        if (!meetingLinkParsed.ok) {
+          return {
+            message:
+              meetingLinkParsed.reason === 'too_long'
+                ? 'Meeting link is too long'
+                : 'Enter a valid meeting link (http or https)',
+            code: 'VALIDATION_ERROR',
+          };
+        }
+        const timeDb = normalizeTimeLocalForDb(input.timeLocal);
+        const { data: row, error } = await getClient()
+          .from('group_recurring_meetings')
+          .update({
+            title: input.title.trim(),
+            description: input.description?.trim() ?? '',
+            location: input.location?.trim() ?? '',
+            meeting_link: meetingLinkParsed.value || null,
+            recurrence_frequency: input.recurrenceFrequency,
+            weekday: input.weekday,
+            time_local: timeDb,
+            timezone: input.timezone.trim(),
+            month_week_ordinal:
+              input.recurrenceFrequency === 'monthly_nth' ? input.monthWeekOrdinal! : null,
+          })
+          .eq('id', meetingId)
+          .select(
+            'id, group_id, created_by_user_id, title, description, location, meeting_link, recurrence_frequency, weekday, time_local, timezone, month_week_ordinal, created_at, updated_at'
+          )
+          .single();
+        if (error) return toApiError(error);
+        return mapGroupRecurringMeetingRow(row as GroupRecurringMeetingRow);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async deleteGroupRecurringMeeting(meetingId: string): Promise<void | ApiError> {
+      try {
+        const { error } = await getClient()
+          .from('group_recurring_meetings')
+          .delete()
+          .eq('id', meetingId);
         if (error) return toApiError(error);
         return;
       } catch (e) {
@@ -1597,7 +2029,9 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       try {
         const { data, error } = await getClient()
           .from('group_member_settings')
-          .select('user_id, group_id, announcements_enabled, updated_at')
+          .select(
+            'user_id, group_id, announcements_enabled, recurring_meetings_enabled, events_enabled, updated_at'
+          )
           .eq('group_id', groupId)
           .eq('user_id', userId)
           .maybeSingle();
@@ -1607,12 +2041,16 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
             userId,
             groupId,
             announcementsEnabled: true,
+            recurringMeetingsEnabled: true,
+            eventsEnabled: true,
           };
         }
         return {
           userId: data.user_id,
           groupId: data.group_id,
           announcementsEnabled: data.announcements_enabled,
+          recurringMeetingsEnabled: data.recurring_meetings_enabled ?? true,
+          eventsEnabled: data.events_enabled ?? true,
           updatedAt: data.updated_at ?? undefined,
         };
       } catch (e) {
@@ -1626,9 +2064,21 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       updates: GroupMemberSettingsUpdates
     ): Promise<GroupMemberSettings | ApiError> {
       try {
-        if (updates.announcementsEnabled === undefined) {
+        const hasChange =
+          updates.announcementsEnabled !== undefined ||
+          updates.recurringMeetingsEnabled !== undefined ||
+          updates.eventsEnabled !== undefined;
+        if (!hasChange) {
           return { message: 'No settings to update', code: 'VALIDATION_ERROR' };
         }
+        const existing = await this.getGroupMemberSettings(groupId, userId);
+        if (isApiError(existing)) return existing;
+        const merged = {
+          announcementsEnabled: updates.announcementsEnabled ?? existing.announcementsEnabled,
+          recurringMeetingsEnabled:
+            updates.recurringMeetingsEnabled ?? existing.recurringMeetingsEnabled,
+          eventsEnabled: updates.eventsEnabled ?? existing.eventsEnabled,
+        };
         const now = new Date().toISOString();
         const { data, error } = await getClient()
           .from('group_member_settings')
@@ -1636,18 +2086,24 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
             {
               user_id: userId,
               group_id: groupId,
-              announcements_enabled: updates.announcementsEnabled,
+              announcements_enabled: merged.announcementsEnabled,
+              recurring_meetings_enabled: merged.recurringMeetingsEnabled,
+              events_enabled: merged.eventsEnabled,
               updated_at: now,
             },
             { onConflict: 'user_id,group_id' }
           )
-          .select('user_id, group_id, announcements_enabled, updated_at')
+          .select(
+            'user_id, group_id, announcements_enabled, recurring_meetings_enabled, events_enabled, updated_at'
+          )
           .single();
         if (error) return toApiError(error);
         return {
           userId: data.user_id,
           groupId: data.group_id,
           announcementsEnabled: data.announcements_enabled,
+          recurringMeetingsEnabled: data.recurring_meetings_enabled ?? true,
+          eventsEnabled: data.events_enabled ?? true,
           updatedAt: data.updated_at ?? undefined,
         };
       } catch (e) {
@@ -1783,13 +2239,13 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
       try {
         const excludeIds = new Set<string>();
         if (params?.groupId) {
-          const { data: evRows, error: evErr } = await getClient()
-            .from('group_events')
-            .select('discussion_id')
-            .eq('group_id', params.groupId);
-          if (evErr) return toApiError(evErr);
-          for (const er of (evRows ?? []) as { discussion_id: string }[]) {
-            if (er.discussion_id) excludeIds.add(er.discussion_id);
+          const { data: shadowIds, error: shadowErr } = await getClient().rpc(
+            'discovery_group_event_discussion_ids',
+            { p_group_id: params.groupId }
+          );
+          if (shadowErr) return toApiError(shadowErr);
+          for (const did of (shadowIds ?? []) as string[]) {
+            if (did) excludeIds.add(did);
           }
         }
         let query = getClient()
@@ -2700,6 +3156,39 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         }
         const inserts = toAdd.map((uid) => ({ chat_id: chatId, user_id: uid }));
         const { error } = await getClient().from('chat_members').insert(inserts);
+        if (error) return toApiError(error);
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async removeChatMember(
+      chatId: string,
+      memberUserId: string,
+      removedByUserId: string
+    ): Promise<void | ApiError> {
+      try {
+        if (!memberUserId || memberUserId === removedByUserId) {
+          return { message: 'Invalid member', code: 'VALIDATION_ERROR' };
+        }
+        const { data: chatRow, error: chatErr } = await getClient()
+          .from('chats')
+          .select('created_by_user_id')
+          .eq('id', chatId)
+          .single();
+        if (chatErr) return toApiError(chatErr);
+        if (!chatRow) return { message: 'Chat not found', code: 'NOT_FOUND' };
+        if (chatRow.created_by_user_id !== removedByUserId) {
+          return {
+            message: 'Only the person who created the chat can remove members',
+            code: 'FORBIDDEN',
+          };
+        }
+        const { error } = await getClient()
+          .from('chat_members')
+          .delete()
+          .eq('chat_id', chatId)
+          .eq('user_id', memberUserId);
         if (error) return toApiError(error);
       } catch (e) {
         return toApiError(e);
@@ -3658,6 +4147,27 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         });
         if (error) return toApiError(error);
         return;
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getAppBadgeCount(userId: string): Promise<number | ApiError> {
+      try {
+        const { data, error } = await getClient().rpc('get_app_badge_count', {
+          p_user_id: userId,
+        });
+        if (error) return toApiError(error);
+        if (typeof data === 'number' && Number.isFinite(data)) {
+          return Math.max(0, data);
+        }
+        if (typeof data === 'string') {
+          const n = parseInt(data, 10);
+          return Number.isFinite(n)
+            ? Math.max(0, n)
+            : { message: 'Invalid badge count response', code: 'INVALID_RESPONSE' };
+        }
+        return { message: 'Invalid badge count response', code: 'INVALID_RESPONSE' };
       } catch (e) {
         return toApiError(e);
       }

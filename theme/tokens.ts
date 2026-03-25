@@ -44,6 +44,8 @@ export const colors = {
   primaryContainer: '#1b365d',
   primaryFixed: '#d6e3ff', // input focus background
   onPrimary: '#ffffff',
+  /** Muted text on `primaryContainer` surfaces (e.g. Sacred Gatherings dark cards). */
+  onPrimaryContainer: '#87a0cd',
 
   // Secondary — warm illuminating gold
   secondary: '#775a19',
@@ -74,6 +76,9 @@ export const colors = {
 
   // Focus ring
   focusRing: 'rgba(0, 32, 70, 0.25)',
+
+  /** Recurring meeting card divider (body is white; join row uses secondaryContainer) */
+  recurringMeetingCardDivider: 'rgba(0, 32, 70, 0.12)',
 
   // ---------------------------------------------------------------------------
   // Backward-compat aliases (map old names → new values during migration)
@@ -134,6 +139,8 @@ export const radius = {
   md: 8,
   button: 9999, // pill shape — "Soft-Touch CTA"
   card: 24, // xl = 1.5rem
+  /** Stitch “Sacred Gatherings” cards — 2rem corners */
+  sacredGatheringCard: 32,
   chip: 9999, // pill
   lg: 16,
   xl: 24,

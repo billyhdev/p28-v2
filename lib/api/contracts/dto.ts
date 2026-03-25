@@ -32,6 +32,10 @@ export interface Profile {
   avatarUrl?: string;
   bio?: string;
   updatedAt?: string;
+  /**
+   * ISO timestamp: last time the user focused the Notifications tab (server-synced for badge/push).
+   */
+  notificationsBadgeClearedAt?: string;
 }
 
 export interface ProfileUpdates {
@@ -55,6 +59,7 @@ export interface NotificationPreferences {
   userId: string;
   eventsEnabled: boolean;
   announcementsEnabled: boolean;
+  recurringMeetingsEnabled: boolean;
   messagesEnabled: boolean;
   updatedAt?: string;
 }
@@ -63,6 +68,7 @@ export interface NotificationPreferences {
 export interface NotificationPreferencesUpdates {
   eventsEnabled?: boolean;
   announcementsEnabled?: boolean;
+  recurringMeetingsEnabled?: boolean;
   messagesEnabled?: boolean;
 }
 
@@ -91,6 +97,20 @@ export interface CreateAnnouncementInput {
   title: string;
   body: string;
   meetingLink: string;
+}
+
+/** Platform-wide announcement shown at the top of the home feed. */
+export interface GlobalAnnouncement {
+  id: string;
+  title: string;
+  description: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface CreateGlobalAnnouncementInput {
+  title: string;
+  description: string;
 }
 
 /** Group event lifecycle. */
@@ -142,6 +162,55 @@ export interface UpdateGroupEventInput {
   meetingLink: string;
 }
 
+/** How often a recurring ministry meeting repeats (wall clock in `timezone`). */
+export type RecurringMeetingFrequency = 'weekly' | 'biweekly' | 'monthly_nth';
+
+/** Standing / recurring meeting info for a ministry group (not a dated event). */
+export interface GroupRecurringMeeting {
+  id: string;
+  groupId: string;
+  createdByUserId: string;
+  title: string;
+  description: string;
+  location: string;
+  meetingLink: string;
+  recurrenceFrequency: RecurringMeetingFrequency;
+  /** 0 = Sunday … 6 = Saturday (JavaScript `Date.getDay`). */
+  weekday: number;
+  /** Local wall time in `timezone`, `HH:mm` or `HH:mm:ss`. */
+  timeLocal: string;
+  /** IANA timezone for `timeLocal` and weekday interpretation. */
+  timezone: string;
+  /** 1–4 = first…fourth; -1 = last. Only when `recurrenceFrequency === 'monthly_nth'`. */
+  monthWeekOrdinal?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateGroupRecurringMeetingInput {
+  title: string;
+  description: string;
+  location: string;
+  meetingLink: string;
+  recurrenceFrequency: RecurringMeetingFrequency;
+  weekday: number;
+  timeLocal: string;
+  timezone: string;
+  monthWeekOrdinal?: number;
+}
+
+export interface UpdateGroupRecurringMeetingInput {
+  title: string;
+  description: string;
+  location: string;
+  meetingLink: string;
+  recurrenceFrequency: RecurringMeetingFrequency;
+  weekday: number;
+  timeLocal: string;
+  timezone: string;
+  monthWeekOrdinal?: number;
+}
+
 /** One member's RSVP row (for lists and detail). */
 export interface EventRsvpAttendee {
   userId: string;
@@ -156,11 +225,15 @@ export interface GroupMemberSettings {
   userId: string;
   groupId: string;
   announcementsEnabled: boolean;
+  recurringMeetingsEnabled: boolean;
+  eventsEnabled: boolean;
   updatedAt?: string;
 }
 
 export interface GroupMemberSettingsUpdates {
   announcementsEnabled?: boolean;
+  recurringMeetingsEnabled?: boolean;
+  eventsEnabled?: boolean;
 }
 
 /** Registered Expo push token for a device. */
@@ -240,7 +313,10 @@ export interface UpdateGroupInput {
   country?: string;
 }
 
-/** Group membership. From group_members table. Optional profile fields when enriched. */
+/**
+ * Group membership for community roster. Loaded via `group_members_for_display` (filters
+ * platform super_admins already shown as leaders). See lib/groupCommunityDisplay.ts.
+ */
 export interface GroupMember {
   userId: string;
   groupId: string;
@@ -249,11 +325,17 @@ export interface GroupMember {
   avatarUrl?: string;
 }
 
-/** Group admin (creator or assigned). From group_admins table. */
+/**
+ * Group admin for community leader list. Loaded via `group_admins_for_display` (hides
+ * platform super_admins unless creator or also a member). See lib/groupCommunityDisplay.ts.
+ */
 export interface GroupAdmin {
   userId: string;
   groupId: string;
   assignedAt?: string;
+  /** From profiles when loaded (for avatars / labels). */
+  displayName?: string;
+  avatarUrl?: string;
 }
 
 /** Group discussion post. From group_discussions table. @deprecated Use Discussion/DiscussionPost for Reddit-style topics. */

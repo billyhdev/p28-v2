@@ -352,14 +352,14 @@ export function MessageRow({
   );
 }
 
-const BUBBLE_RADIUS = 18;
+const BUBBLE_RADIUS = 16;
 
 const styles = StyleSheet.create({
   messageWrapper: {
     position: 'relative',
-    marginBottom: 3,
+    marginBottom: 1,
     overflow: 'hidden',
-    paddingBottom: 3,
+    paddingBottom: 1,
   },
   swipeIconContainer: {
     position: 'absolute',
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
 
   avatarContainer: {
     alignSelf: 'flex-end',
-    marginBottom: 3,
+    marginBottom: 1,
   },
   avatarSpacer: {
     width: 36,
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginBottom: spacing.xxs,
+    marginBottom: 2,
     paddingHorizontal: spacing.xxs,
   },
   metaRowOwn: {
@@ -432,8 +432,8 @@ const styles = StyleSheet.create({
   bubble: {
     borderRadius: BUBBLE_RADIUS,
     borderCurve: 'continuous',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     maxWidth: '100%',
   },
   bubbleOther: {
@@ -493,8 +493,8 @@ const styles = StyleSheet.create({
 
   messageBody: {
     fontFamily: fontFamily.sans,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     color: colors.onSurface,
   },
   messageBodyOwn: {

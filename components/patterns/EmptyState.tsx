@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { Pressable, View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button } from '@/components/primitives';
 import { colors, spacing, typography, radius } from '@/theme/tokens';
@@ -10,9 +10,20 @@ export interface EmptyStateProps {
   subtitle?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Default `button`. Use `link` for a compact text action (e.g. admin-only create). */
+  actionVariant?: 'button' | 'link';
+  actionAccessibilityHint?: string;
 }
 
-export function EmptyState({ iconName, title, subtitle, actionLabel, onAction }: EmptyStateProps) {
+export function EmptyState({
+  iconName,
+  title,
+  subtitle,
+  actionLabel,
+  onAction,
+  actionVariant = 'button',
+  actionAccessibilityHint,
+}: EmptyStateProps) {
   return (
     <View style={styles.card}>
       <View style={styles.iconWrap}>
@@ -20,13 +31,25 @@ export function EmptyState({ iconName, title, subtitle, actionLabel, onAction }:
       </View>
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-      {actionLabel && onAction ? (
+      {actionLabel && onAction && actionVariant === 'link' ? (
+        <Pressable
+          onPress={onAction}
+          style={({ pressed }) => [styles.linkWrap, pressed && { opacity: 0.75 }]}
+          accessibilityLabel={actionLabel}
+          accessibilityHint={actionAccessibilityHint}
+          accessibilityRole="link"
+        >
+          <Text style={styles.linkText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+      {actionLabel && onAction && actionVariant === 'button' ? (
         <Button
           title={actionLabel}
           onPress={onAction}
           variant="secondary"
           style={styles.action}
           accessibilityLabel={actionLabel}
+          accessibilityHint={actionAccessibilityHint}
         />
       ) : null}
     </View>
@@ -65,5 +88,15 @@ const styles = StyleSheet.create({
   },
   action: {
     marginTop: spacing.sm,
+  },
+  linkWrap: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  linkText: {
+    ...typography.bodyStrong,
+    color: colors.primary,
+    textDecorationLine: 'underline',
+    textAlign: 'center',
   },
 });

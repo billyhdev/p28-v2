@@ -4,10 +4,11 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
+
+import { LabeledSwitchRow } from '@/components/patterns';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useNotificationPreferencesQuery,
@@ -15,7 +16,7 @@ import {
 } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { colors, radius, spacing, typography, minTouchTarget } from '@/theme/tokens';
+import { colors, radius, spacing, typography } from '@/theme/tokens';
 
 export default function NotificationPreferencesScreen() {
   const { session } = useAuth();
@@ -36,13 +37,14 @@ export default function NotificationPreferencesScreen() {
     (mutationError && 'message' in mutationError ? getUserFacingError(mutationError) : null);
 
   const handleToggle = (
-    key: 'eventsEnabled' | 'announcementsEnabled' | 'messagesEnabled',
+    key: 'eventsEnabled' | 'announcementsEnabled' | 'recurringMeetingsEnabled' | 'messagesEnabled',
     value: boolean
   ) => {
     if (!userId || !prefs) return;
     const next = {
       eventsEnabled: prefs.eventsEnabled,
       announcementsEnabled: prefs.announcementsEnabled,
+      recurringMeetingsEnabled: prefs.recurringMeetingsEnabled,
       messagesEnabled: prefs.messagesEnabled,
       [key]: value,
     };
@@ -92,77 +94,38 @@ export default function NotificationPreferencesScreen() {
 
       {showToggles ? (
         <View style={styles.card}>
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>{t('notifications.events')}</Text>
-            <Pressable
-              onPress={() => prefs && handleToggle('eventsEnabled', !prefs.eventsEnabled)}
-              disabled={isSubmitting}
-              style={({ pressed }) => [
-                styles.toggleTouchTarget,
-                pressed && styles.toggleTouchTargetPressed,
-              ]}
-              accessibilityLabel={t('notifications.events')}
-              accessibilityHint={t('notifications.eventsHint')}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: prefs?.eventsEnabled ?? true }}
-            >
-              <Switch
-                value={prefs?.eventsEnabled ?? true}
-                onValueChange={(v) => handleToggle('eventsEnabled', v)}
-                disabled={isSubmitting}
-                trackColor={{ false: colors.surface100, true: colors.primary }}
-                thumbColor={colors.surface}
-              />
-            </Pressable>
-          </View>
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>{t('notifications.announcements')}</Text>
-            <Pressable
-              onPress={() =>
-                prefs && handleToggle('announcementsEnabled', !prefs.announcementsEnabled)
-              }
-              disabled={isSubmitting}
-              style={({ pressed }) => [
-                styles.toggleTouchTarget,
-                pressed && styles.toggleTouchTargetPressed,
-              ]}
-              accessibilityLabel={t('notifications.announcements')}
-              accessibilityHint={t('notifications.announcementsHint')}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: prefs?.announcementsEnabled ?? true }}
-            >
-              <Switch
-                value={prefs?.announcementsEnabled ?? true}
-                onValueChange={(v) => handleToggle('announcementsEnabled', v)}
-                disabled={isSubmitting}
-                trackColor={{ false: colors.surface100, true: colors.primary }}
-                thumbColor={colors.surface}
-              />
-            </Pressable>
-          </View>
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>{t('notifications.messages')}</Text>
-            <Pressable
-              onPress={() => prefs && handleToggle('messagesEnabled', !prefs.messagesEnabled)}
-              disabled={isSubmitting}
-              style={({ pressed }) => [
-                styles.toggleTouchTarget,
-                pressed && styles.toggleTouchTargetPressed,
-              ]}
-              accessibilityLabel={t('notifications.messages')}
-              accessibilityHint={t('notifications.messagesHint')}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: prefs?.messagesEnabled ?? true }}
-            >
-              <Switch
-                value={prefs?.messagesEnabled ?? true}
-                onValueChange={(v) => handleToggle('messagesEnabled', v)}
-                disabled={isSubmitting}
-                trackColor={{ false: colors.surface100, true: colors.primary }}
-                thumbColor={colors.surface}
-              />
-            </Pressable>
-          </View>
+          <LabeledSwitchRow
+            label={t('notifications.events')}
+            value={prefs?.eventsEnabled ?? true}
+            onValueChange={(v) => handleToggle('eventsEnabled', v)}
+            disabled={isSubmitting}
+            accessibilityLabel={t('notifications.events')}
+            accessibilityHint={t('notifications.eventsHint')}
+          />
+          <LabeledSwitchRow
+            label={t('notifications.announcements')}
+            value={prefs?.announcementsEnabled ?? true}
+            onValueChange={(v) => handleToggle('announcementsEnabled', v)}
+            disabled={isSubmitting}
+            accessibilityLabel={t('notifications.announcements')}
+            accessibilityHint={t('notifications.announcementsHint')}
+          />
+          <LabeledSwitchRow
+            label={t('notifications.recurringMeetings')}
+            value={prefs?.recurringMeetingsEnabled ?? true}
+            onValueChange={(v) => handleToggle('recurringMeetingsEnabled', v)}
+            disabled={isSubmitting}
+            accessibilityLabel={t('notifications.recurringMeetings')}
+            accessibilityHint={t('notifications.recurringMeetingsHint')}
+          />
+          <LabeledSwitchRow
+            label={t('notifications.messages')}
+            value={prefs?.messagesEnabled ?? true}
+            onValueChange={(v) => handleToggle('messagesEnabled', v)}
+            disabled={isSubmitting}
+            accessibilityLabel={t('notifications.messages')}
+            accessibilityHint={t('notifications.messagesHint')}
+          />
         </View>
       ) : null}
     </ScrollView>
@@ -209,24 +172,4 @@ const styles = StyleSheet.create({
   retryButtonPressed: { opacity: 0.8 },
   retryButtonText: { ...typography.body, color: colors.primary, fontWeight: '600' },
   card: { ...cardStyle },
-  cardTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-    minHeight: minTouchTarget,
-  },
-  toggleLabel: { ...typography.body, color: colors.textPrimary, flex: 1 },
-  toggleTouchTarget: {
-    minWidth: minTouchTarget,
-    minHeight: minTouchTarget,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  toggleTouchTargetPressed: { opacity: 0.8 },
 });

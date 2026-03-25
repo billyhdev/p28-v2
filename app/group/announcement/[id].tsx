@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 
 import {
   useAnnouncementQuery,
-  useGroupAdminsQuery,
+  useUserIsGroupAdminQuery,
   useGroupQuery,
   useMarkInAppNotificationsReadMutation,
 } from '@/hooks/useApiQueries';
@@ -41,8 +41,9 @@ export default function AnnouncementDetailScreen() {
 
   const groupId = announcement?.groupId ?? groupIdParam;
   const { data: group } = useGroupQuery(groupId);
-  const { data: admins = [] } = useGroupAdminsQuery(groupId, { enabled: !!groupId });
-  const isGroupAdmin = !!userId && admins.some((a) => a.userId === userId);
+  const { data: isGroupAdmin = false } = useUserIsGroupAdminQuery(groupId, userId, {
+    enabled: !!groupId && !!userId,
+  });
   const { mutate: markInAppNotificationsRead } = useMarkInAppNotificationsReadMutation();
 
   useEffect(() => {

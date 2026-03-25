@@ -8,15 +8,16 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/primitives';
+import { LabeledSwitchRow } from './LabeledSwitchRow';
 import { useFadeSheetAnimation } from '@/hooks/useFadeSheetAnimation';
 import type { GroupEvent } from '@/lib/api';
 import { formatGroupEventDateTime } from '@/lib/dates';
@@ -58,6 +59,7 @@ export function GroupEventFormSheet({
   isSubmitting = false,
   errorMessage = null,
 }: GroupEventFormSheetProps) {
+  const insets = useSafeAreaInsets();
   const { sheetSlideAnim, sheetFadeAnim } = useFadeSheetAnimation(visible);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -166,7 +168,7 @@ export function GroupEventFormSheet({
           />
         </Pressable>
         <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetSlideAnim }] }]}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={styles.sheetInner}>
+          <View style={styles.sheetInner}>
             <View style={styles.handle} />
             <View style={styles.headerRow}>
               <Text style={styles.sheetTitle}>{sheetTitle}</Text>
@@ -183,7 +185,15 @@ export function GroupEventFormSheet({
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                {
+                  paddingBottom:
+                    spacing.majorSectionGap * 2 +
+                    spacing.xl +
+                    Math.max(insets.bottom, Platform.OS === 'ios' ? spacing.xxl : spacing.xl),
+                },
+              ]}
             >
               <Text style={styles.label}>{t('groupEvents.eventName')}</Text>
               <TextInput
@@ -324,24 +334,15 @@ export function GroupEventFormSheet({
                 />
               ) : null}
 
-              <View style={styles.switchSection}>
-                <View style={styles.switchLabelRow}>
-                  <Text style={styles.switchLabelText}>{t('groupEvents.requiresRsvp')}</Text>
-                  <Switch
-                    value={requiresRsvp}
-                    onValueChange={setRequiresRsvp}
-                    trackColor={{
-                      false: colors.surfaceContainerHigh,
-                      true: colors.primary,
-                    }}
-                    thumbColor={colors.surfaceContainerLowest}
-                    ios_backgroundColor={colors.surfaceContainerHigh}
-                    accessibilityLabel={t('groupEvents.requiresRsvp')}
-                    accessibilityHint={t('groupEvents.requiresRsvpHint')}
-                  />
-                </View>
-                <Text style={styles.switchHint}>{t('groupEvents.requiresRsvpHint')}</Text>
-              </View>
+              <LabeledSwitchRow
+                variant="sheet"
+                label={t('groupEvents.requiresRsvp')}
+                value={requiresRsvp}
+                onValueChange={setRequiresRsvp}
+                hint={t('groupEvents.requiresRsvpHint')}
+                accessibilityLabel={t('groupEvents.requiresRsvp')}
+                accessibilityHint={t('groupEvents.requiresRsvpHint')}
+              />
 
               {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
@@ -358,7 +359,7 @@ export function GroupEventFormSheet({
                 <ActivityIndicator style={styles.spinner} color={colors.primary} />
               ) : null}
             </ScrollView>
-          </Pressable>
+          </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
@@ -380,7 +381,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingTop: spacing.sm,
-    paddingBottom: Platform.OS === 'ios' ? spacing.xxl : spacing.xl,
   },
   sheetInner: {
     paddingHorizontal: spacing.lg,
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     // Extra room so fields + submit stay scrollable above the keyboard (sheet + KAV).
-    paddingBottom: spacing.majorSectionGap * 2 + spacing.xl,
+    // Bottom inset lives here (not on the sheet) so drags at the bottom of the sheet still scroll.
     gap: spacing.sm,
   },
   label: {
@@ -477,28 +477,6 @@ const styles = StyleSheet.create({
     borderColor: colors.outlineVariant,
     backgroundColor: colors.surfaceContainerHigh,
     overflow: 'hidden',
-  },
-  switchSection: {
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  switchLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    rowGap: spacing.xs,
-  },
-  switchLabelText: {
-    ...typography.caption,
-    color: colors.onSurfaceVariant,
-    flexShrink: 1,
-  },
-  switchHint: {
-    ...typography.caption,
-    color: colors.onSurfaceVariant,
   },
   errorText: {
     ...typography.caption,

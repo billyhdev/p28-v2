@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet, ViewStyle } from 'react-native';
+import { Pressable, Text, StyleSheet, View, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { colors, spacing, radius, typography, minTouchTarget } from '@/theme/tokens';
 
@@ -30,6 +30,13 @@ export function Button({
   accessibilityHint,
   style: styleProp,
 }: ButtonProps) {
+  const flatStyle = styleProp ? (StyleSheet.flatten(styleProp) as ViewStyle) : undefined;
+  const outerMinHeight = flatStyle?.minHeight;
+  const pressableMinHeight =
+    typeof outerMinHeight === 'number' && Number.isFinite(outerMinHeight)
+      ? Math.max(minTouchTarget, outerMinHeight)
+      : minTouchTarget;
+
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.get() }],
@@ -50,33 +57,34 @@ export function Button({
         : variantStyles.textLabel;
 
   return (
-    <Animated.View
-      style={[
-        styles.base,
-        containerVariant,
-        fullWidth && styles.fullWidth,
-        disabled && styles.disabled,
-        animatedStyle,
-        styleProp,
-      ]}
-    >
-      <Pressable
-        onPress={onPress}
-        disabled={disabled}
-        onPressIn={() => {
-          if (!disabled) scale.set(withSpring(0.97, springConfig));
-        }}
-        onPressOut={() => {
-          scale.set(withSpring(1, springConfig));
-        }}
-        style={styles.pressable}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? title}
-        accessibilityHint={accessibilityHint}
-        accessibilityState={{ disabled }}
+    <Animated.View style={[animatedStyle, fullWidth && styles.fullWidth]}>
+      <View
+        style={[
+          styles.base,
+          containerVariant,
+          fullWidth && styles.fullWidth,
+          disabled && styles.disabled,
+          styleProp,
+        ]}
       >
-        <Text style={[styles.label, labelVariant]}>{title}</Text>
-      </Pressable>
+        <Pressable
+          onPress={onPress}
+          disabled={disabled}
+          onPressIn={() => {
+            if (!disabled) scale.set(withSpring(0.97, springConfig));
+          }}
+          onPressOut={() => {
+            scale.set(withSpring(1, springConfig));
+          }}
+          style={[styles.pressable, { minHeight: pressableMinHeight }]}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel ?? title}
+          accessibilityHint={accessibilityHint}
+          accessibilityState={{ disabled }}
+        >
+          <Text style={[styles.label, labelVariant]}>{title}</Text>
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -91,7 +99,6 @@ const styles = StyleSheet.create({
   },
   pressable: {
     flexDirection: 'row',
-    minHeight: minTouchTarget,
     minWidth: minTouchTarget,
     paddingHorizontal: spacing.md,
     justifyContent: 'center',

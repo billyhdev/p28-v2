@@ -2,7 +2,7 @@
  * Unit tests for lib/i18n (t() and changeLanguage).
  * Run from project root: npm run test:unit
  */
-import { changeLanguage, getLocale, t } from '@/lib/i18n';
+import { changeLanguage, getLocale, preferredLanguageDisplayLabel, t } from '@/lib/i18n';
 
 describe('i18n', () => {
   beforeEach(() => {
@@ -85,6 +85,27 @@ describe('i18n', () => {
       expect(getLocale()).toBe('en');
       changeLanguage('ko');
       expect(getLocale()).toBe('ko');
+    });
+  });
+
+  describe('preferredLanguageDisplayLabel', () => {
+    it('returns em dash for empty or missing', () => {
+      expect(preferredLanguageDisplayLabel(undefined)).toBe('—');
+      expect(preferredLanguageDisplayLabel(null)).toBe('—');
+      expect(preferredLanguageDisplayLabel('')).toBe('—');
+    });
+
+    it('returns localized name for supported codes', () => {
+      changeLanguage('en');
+      expect(preferredLanguageDisplayLabel('en')).toBe('English');
+      expect(preferredLanguageDisplayLabel('ko')).toBe('Korean');
+      expect(preferredLanguageDisplayLabel('km')).toBe('Khmer');
+      changeLanguage('ko');
+      expect(preferredLanguageDisplayLabel('en')).toBe('영어');
+    });
+
+    it('returns raw code for unknown locale', () => {
+      expect(preferredLanguageDisplayLabel('es')).toBe('es');
     });
   });
 });

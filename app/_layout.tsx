@@ -15,22 +15,20 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-reanimated';
 
 import { BrandedSplash } from '@/components/patterns/BrandedSplash';
+import { StackHeaderBack } from '@/components/patterns/StackHeaderBack';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LocaleProvider, useLocale } from '@/contexts/LocaleContext';
 import { PendingSignUpProvider } from '@/contexts/PendingSignUpContext';
-import { useAuth } from '@/hooks/useAuth';
 import { useProfileQuery } from '@/hooks/useApiQueries';
+import { useAppIconBadgeSync } from '@/hooks/useAppIconBadgeSync';
+import { useAuth } from '@/hooks/useAuth';
+import { useExpoPushRouting } from '@/hooks/useExpoPushRouting';
 import { t } from '@/lib/i18n';
-import {
-  handleInitialNotificationResponse,
-  registerForPushNotificationsAsync,
-  setupNotificationHandler,
-  subscribeToNotificationResponses,
-} from '@/lib/push';
+import { setupNotificationHandler } from '@/lib/push';
 import { colors, fontFamily } from '@/theme/tokens';
 
 export { ErrorBoundary } from 'expo-router';
@@ -103,11 +101,48 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const { session, isLoading } = useAuth();
-  const { setLocale } = useLocale();
+  const { locale, setLocale } = useLocale();
   const setLocaleRef = useRef(setLocale);
   setLocaleRef.current = setLocale;
   const segments = useSegments();
   const router = useRouter();
+
+  const upcomingEventsStackOptions = useMemo(() => {
+    return {
+      headerShown: true as const,
+      title: t('home.upcomingEvents'),
+      headerBackButtonDisplayMode: 'minimal' as const,
+      headerTitleStyle: {
+        fontFamily: fontFamily.serif,
+        fontWeight: '400' as const,
+        color: colors.onSurface,
+      },
+      headerLeft: () => <StackHeaderBack fallbackHref="/(tabs)" />,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t()` uses locale; keep title in sync after language change
+  }, [locale]);
+
+  const profileStackScreenOptions = useMemo(() => {
+    const sub = segments[0] === 'profile' ? segments[1] : undefined;
+    let title = t('profile.title');
+    if (sub === 'settings') title = t('profile.settings');
+    else if (sub === 'notifications') title = t('profile.notificationPreferences');
+    else if (sub === 'language') title = t('language.title');
+    else if (sub === 'conduct') title = t('conduct.title');
+    else if (sub === 'edit') title = t('profile.editProfile');
+    return {
+      headerShown: true as const,
+      title,
+      headerBackButtonDisplayMode: 'minimal' as const,
+      headerTitleStyle: {
+        fontFamily: fontFamily.serif,
+        fontWeight: '400' as const,
+        color: colors.onSurface,
+      },
+      headerLeft: () => <StackHeaderBack fallbackHref="/(tabs)" />,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t()` uses locale; keep title in sync after language change
+  }, [segments, locale]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -130,16 +165,8 @@ function RootLayoutNav() {
   }, [profile?.preferredLanguage]);
 
   const userId = session?.user?.id;
-  useEffect(() => {
-    if (!userId) return;
-    void registerForPushNotificationsAsync(userId);
-  }, [userId]);
-
-  useEffect(() => {
-    void handleInitialNotificationResponse(router);
-    const sub = subscribeToNotificationResponses(router);
-    return () => sub.remove();
-  }, [router]);
+  useExpoPushRouting({ userId, router });
+  useAppIconBadgeSync(userId);
 
   const navTheme = {
     ...DefaultTheme,
@@ -157,22 +184,19 @@ function RootLayoutNav() {
     <ThemeProvider value={navTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '' }} />
+        <Stack.Screen name="upcoming-events" options={upcomingEventsStackOptions} />
         <Stack.Screen name="group" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={profileStackScreenOptions} />
         <Stack.Screen
-          name="profile"
+          name="modal"
           options={{
+            presentation: 'modal',
             headerShown: true,
-            title: t('profile.title'),
-            headerBackButtonDisplayMode: 'minimal',
-            headerTitleStyle: {
-              fontFamily: fontFamily.serif,
-              fontWeight: '400',
-              color: colors.onSurface,
-            },
+            title: '',
+            headerLeft: () => <StackHeaderBack />,
           }}
         />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
   );

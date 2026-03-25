@@ -3,12 +3,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -19,6 +20,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -27,12 +29,13 @@ import type { OutboundMessageStatus } from '@/components/messages';
 import { ComposeBar } from '@/components/patterns/ComposeBar';
 import { ReactionSheet } from '@/components/patterns/ReactionSheet';
 import { useAuth } from '@/hooks/useAuth';
+import { useIosKeyboardAvoidingParentOffset } from '@/hooks/useIosKeyboardAvoidingParentOffset';
 import {
   useCreateDiscussionPostMutation,
   useDiscussionPostReactionsQuery,
   useDiscussionPostsQuery,
   useDiscussionQuery,
-  useGroupAdminsQuery,
+  useUserIsGroupAdminQuery,
   useGroupsForUserQuery,
   useIsAdminQuery,
   useJoinGroupMutation,
@@ -406,7 +409,10 @@ export default function DiscussionDetailScreen() {
   const router = useRouter();
   const userId = session?.user?.id;
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
+  const { iosKeyboardVerticalOffset, parentContainerProps } = useIosKeyboardAvoidingParentOffset();
 
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [attachedImageUrls, setAttachedImageUrls] = useState<string[]>([]);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -415,6 +421,7 @@ export default function DiscussionDetailScreen() {
   const [replyingToPost, setReplyingToPost] = useState<DiscussionPost | null>(null);
   const [editingPost, setEditingPost] = useState<DiscussionPost | null>(null);
   const navigation = useNavigation();
+  const scrollViewRef = useRef<ScrollView>(null);
   const {
     data: discussion,
     isLoading,
@@ -424,7 +431,11 @@ export default function DiscussionDetailScreen() {
   } = useDiscussionQuery(id);
   const { data: posts = [], refetch: refetchPosts } = useDiscussionPostsQuery(id, { userId });
   const { data: memberGroups = [] } = useGroupsForUserQuery(userId);
-  const { data: groupAdmins = [] } = useGroupAdminsQuery(discussion?.groupId);
+  const { data: isCurrentUserGroupAdmin = false } = useUserIsGroupAdminQuery(
+    discussion?.groupId,
+    userId,
+    { enabled: !!discussion?.groupId && !!userId }
+  );
   const { data: isAppAdmin } = useIsAdminQuery(userId);
   const isMember =
     !!discussion && !!userId && memberGroups.some((g) => g.id === discussion.groupId);
@@ -436,7 +447,7 @@ export default function DiscussionDetailScreen() {
   const canEngageInThread = !!isMember && !!userId && !isEventDiscussionReadOnly;
   const canReact = canEngageInThread;
   const isCreator = !!discussion && !!userId && discussion.userId === userId;
-  const isGroupAdmin = !!discussion && !!userId && groupAdmins.some((a) => a.userId === userId);
+  const isGroupAdmin = !!discussion && !!userId && isCurrentUserGroupAdmin;
   const canEdit =
     !!discussion &&
     !!userId &&
@@ -491,6 +502,17 @@ export default function DiscussionDetailScreen() {
       return () => api.realtime.unsubscribe(channelId);
     }, [id, qc])
   );
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const canPost = composeText.trim().length > 0 || attachedImageUrls.length > 0;
   const isEditing = !!editingPost;
@@ -724,139 +746,162 @@ export default function DiscussionDetailScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+    <View {...parentContainerProps} style={styles.screenRoot}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={iosKeyboardVerticalOffset}
       >
-        <OriginalPostRow
-          discussion={discussion}
-          onAuthorPress={() => router.push(`/profile/${discussion.userId}`)}
-        />
-
-        <View style={styles.repliesSection}>
-          {isEventDiscussionReadOnly ? (
-            <View style={styles.readOnlyBanner} accessibilityRole="text">
-              <Ionicons name="lock-closed-outline" size={18} color={colors.onSurfaceVariant} />
-              <View style={styles.readOnlyBannerText}>
-                <Text style={styles.readOnlyBannerTitle}>
-                  {t('groupEvents.discussionReadOnlyBanner')}
-                </Text>
-                <Text style={styles.readOnlyBannerSub}>
-                  {t('groupEvents.discussionDisabledCancelled')}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-          <Text style={styles.repliesHeading}>
-            {posts.length} {posts.length === 1 ? 'Reply' : 'Replies'}
-          </Text>
-          {posts.map((p) => {
-            const outboundStatus = (p as DiscussionReplyPost).outboundStatus;
-            const canReactOnPost = canReact && !outboundStatus;
-            return (
-              <ReplyRow
-                key={p.id}
-                post={p as DiscussionReplyPost}
-                parentPost={
-                  p.parentPostId ? (posts.find((x) => x.id === p.parentPostId) ?? null) : null
-                }
-                onImagePress={(url) => setPreviewImageUrl(url)}
-                onLongPress={() => setReactionPost(p)}
-                onSwipeRight={
-                  canEngageInThread && !outboundStatus
-                    ? () => (setEditingPost(null), setReplyingToPost(p))
-                    : undefined
-                }
-                onSwipeLeft={
-                  canEngageInThread && userId && p.userId === userId && !outboundStatus
-                    ? () => handleStartEditReply(p)
-                    : undefined
-                }
-                onAddReaction={(type) => handleAddReaction(p, type)}
-                onRemoveReaction={(type) => handleRemoveReaction(p, type)}
-                onAuthorPress={() => router.push(`/profile/${p.userId}`)}
-                onRetryOutbound={
-                  outboundStatus === 'failed'
-                    ? () => handleRetryOutboundDiscussionPost(p)
-                    : undefined
-                }
-                canReact={canReactOnPost}
-                currentUserId={userId}
-              />
-            );
-          })}
-        </View>
-      </ScrollView>
-
-      {!isMember ? (
-        <View style={styles.bottomBar}>
-          <Pressable
-            onPress={handleJoinToReply}
-            style={({ pressed }) => [
-              styles.joinPrompt,
-              pressed && styles.joinPromptPressed,
-              joinMutation.isPending && styles.joinPromptDisabled,
-            ]}
-            disabled={joinMutation.isPending}
-            accessibilityLabel={t('discussions.joinToReply')}
-            accessibilityHint="Join the group to participate"
-            accessibilityRole="button"
-          >
-            {joinMutation.isPending ? (
-              <ActivityIndicator size="small" color={colors.ink300} />
-            ) : (
-              <>
-                <Ionicons name="lock-closed-outline" size={18} color={colors.ink300} />
-                <Text style={styles.joinPromptText}>{t('discussions.joinToReply')}</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
-      ) : isEventDiscussionReadOnly ? (
-        <View style={styles.bottomBar}>
-          <View style={styles.readOnlyBottomBar} accessibilityRole="text">
-            <Ionicons name="lock-closed-outline" size={20} color={colors.onSurfaceVariant} />
-            <Text style={styles.readOnlyBottomText}>
-              {t('groupEvents.discussionReadOnlyBanner')}
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.bottomBar}>
-          <ComposeBar
-            text={composeText}
-            onChangeText={setComposeText}
-            onSend={handlePostReply}
-            canSend={canPost}
-            isSending={!!editingPost && updatePostMutation.isPending}
-            sendLabel={isEditing ? t('discussions.updateReply') : t('discussions.postReply')}
-            attachedImageUrls={attachedImageUrls}
-            onRemoveImage={removeAttachedImage}
-            onPickImage={pickImage}
-            isUploadingImage={uploadImageMutation.isPending}
-            editingContext={
-              editingPost ? { preview: editingPost.body ?? '', onCancel: handleCancelEdit } : null
-            }
-            replyingToContext={
-              replyingToPost
-                ? {
-                    authorName: replyingToPost.authorDisplayName ?? t('common.loading'),
-                    preview: replyingToPost.body ?? '',
-                    onCancel: () => setReplyingToPost(null),
-                  }
-                : null
-            }
-            variant="discussion"
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+        >
+          <OriginalPostRow
+            discussion={discussion}
+            onAuthorPress={() => router.push(`/profile/${discussion.userId}`)}
           />
-        </View>
-      )}
+
+          <View style={styles.repliesSection}>
+            {isEventDiscussionReadOnly ? (
+              <View style={styles.readOnlyBanner} accessibilityRole="text">
+                <Ionicons name="lock-closed-outline" size={18} color={colors.onSurfaceVariant} />
+                <View style={styles.readOnlyBannerText}>
+                  <Text style={styles.readOnlyBannerTitle}>
+                    {t('groupEvents.discussionReadOnlyBanner')}
+                  </Text>
+                  <Text style={styles.readOnlyBannerSub}>
+                    {t('groupEvents.discussionDisabledCancelled')}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            <Text style={styles.repliesHeading}>
+              {posts.length} {posts.length === 1 ? 'Reply' : 'Replies'}
+            </Text>
+            {posts.map((p) => {
+              const outboundStatus = (p as DiscussionReplyPost).outboundStatus;
+              const canReactOnPost = canReact && !outboundStatus;
+              return (
+                <ReplyRow
+                  key={p.id}
+                  post={p as DiscussionReplyPost}
+                  parentPost={
+                    p.parentPostId ? (posts.find((x) => x.id === p.parentPostId) ?? null) : null
+                  }
+                  onImagePress={(url) => setPreviewImageUrl(url)}
+                  onLongPress={() => setReactionPost(p)}
+                  onSwipeRight={
+                    canEngageInThread && !outboundStatus
+                      ? () => (setEditingPost(null), setReplyingToPost(p))
+                      : undefined
+                  }
+                  onSwipeLeft={
+                    canEngageInThread && userId && p.userId === userId && !outboundStatus
+                      ? () => handleStartEditReply(p)
+                      : undefined
+                  }
+                  onAddReaction={(type) => handleAddReaction(p, type)}
+                  onRemoveReaction={(type) => handleRemoveReaction(p, type)}
+                  onAuthorPress={() => router.push(`/profile/${p.userId}`)}
+                  onRetryOutbound={
+                    outboundStatus === 'failed'
+                      ? () => handleRetryOutboundDiscussionPost(p)
+                      : undefined
+                  }
+                  canReact={canReactOnPost}
+                  currentUserId={userId}
+                />
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        {!isMember ? (
+          <View
+            style={[
+              styles.bottomBar,
+              styles.bottomBarAux,
+              { paddingBottom: spacing.md + insets.bottom },
+            ]}
+          >
+            <Pressable
+              onPress={handleJoinToReply}
+              style={({ pressed }) => [
+                styles.joinPrompt,
+                pressed && styles.joinPromptPressed,
+                joinMutation.isPending && styles.joinPromptDisabled,
+              ]}
+              disabled={joinMutation.isPending}
+              accessibilityLabel={t('discussions.joinToReply')}
+              accessibilityHint="Join the group to participate"
+              accessibilityRole="button"
+            >
+              {joinMutation.isPending ? (
+                <ActivityIndicator size="small" color={colors.ink300} />
+              ) : (
+                <>
+                  <Ionicons name="lock-closed-outline" size={18} color={colors.ink300} />
+                  <Text style={styles.joinPromptText}>{t('discussions.joinToReply')}</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        ) : isEventDiscussionReadOnly ? (
+          <View
+            style={[
+              styles.bottomBar,
+              styles.bottomBarAux,
+              { paddingBottom: spacing.md + insets.bottom },
+            ]}
+          >
+            <View style={styles.readOnlyBottomBar} accessibilityRole="text">
+              <Ionicons name="lock-closed-outline" size={20} color={colors.onSurfaceVariant} />
+              <Text style={styles.readOnlyBottomText}>
+                {t('groupEvents.discussionReadOnlyBanner')}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.bottomBar,
+              styles.bottomBarComposer,
+              { paddingBottom: spacing.xxs + (keyboardOpen ? 0 : insets.bottom) },
+            ]}
+            collapsable={false}
+          >
+            <ComposeBar
+              text={composeText}
+              onChangeText={setComposeText}
+              onSend={handlePostReply}
+              canSend={canPost}
+              isSending={!!editingPost && updatePostMutation.isPending}
+              sendLabel={isEditing ? t('discussions.updateReply') : t('discussions.postReply')}
+              attachedImageUrls={attachedImageUrls}
+              onRemoveImage={removeAttachedImage}
+              onPickImage={pickImage}
+              isUploadingImage={uploadImageMutation.isPending}
+              editingContext={
+                editingPost ? { preview: editingPost.body ?? '', onCancel: handleCancelEdit } : null
+              }
+              replyingToContext={
+                replyingToPost
+                  ? {
+                      authorName: replyingToPost.authorDisplayName ?? t('common.loading'),
+                      preview: replyingToPost.body ?? '',
+                      onCancel: () => setReplyingToPost(null),
+                    }
+                  : null
+              }
+              variant="discussion"
+            />
+          </View>
+        )}
+      </KeyboardAvoidingView>
       <ReactionSheet
         visible={!!reactionPost}
         onClose={() => setReactionPost(null)}
@@ -915,14 +960,17 @@ export default function DiscussionDetailScreen() {
           ) : null}
         </Pressable>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screenRoot: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  keyboardAvoiding: {
+    flex: 1,
   },
   scroll: {
     flex: 1,
@@ -1184,9 +1232,15 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     paddingHorizontal: spacing.screenHorizontal,
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.lg + (Platform.OS === 'ios' ? 24 : spacing.md),
     backgroundColor: colors.surfaceContainerLow,
+  },
+  bottomBarComposer: {
+    paddingTop: spacing.xs,
+    flexShrink: 0,
+  },
+  bottomBarAux: {
+    paddingTop: spacing.md,
+    flexShrink: 0,
   },
   joinPrompt: {
     flexDirection: 'row',

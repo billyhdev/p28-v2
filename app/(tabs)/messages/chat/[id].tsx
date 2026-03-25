@@ -3,11 +3,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -27,6 +28,7 @@ import { ComposeBar } from '@/components/patterns/ComposeBar';
 import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
 import { ReactionSheet } from '@/components/patterns/ReactionSheet';
 import { useAuth } from '@/hooks/useAuth';
+import { useIosKeyboardAvoidingParentOffset } from '@/hooks/useIosKeyboardAvoidingParentOffset';
 import {
   useChatMessageReactionsQuery,
   useChatMessagesQuery,
@@ -45,7 +47,7 @@ import type { ChatMessage, CreateChatMessageInput, PostReactionType } from '@/li
 import { formatDateHeader, isSameDay } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 
-import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
+import { colors, fontFamily, spacing, typography } from '@/theme/tokens';
 
 export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -57,6 +59,8 @@ export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const { iosKeyboardVerticalOffset, parentContainerProps } = useIosKeyboardAvoidingParentOffset();
   const [composeText, setComposeText] = useState('');
   const [attachedImageUrls, setAttachedImageUrls] = useState<string[]>([]);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -85,6 +89,17 @@ export default function ChatDetailScreen() {
   const reactMutation = useReactToChatMessageMutation();
   const removeReactionMutation = useRemoveChatMessageReactionMutation();
   const markReadMutation = useMarkChatReadMutation();
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -394,13 +409,8 @@ export default function ChatDetailScreen() {
   const firstOtherMember = otherMembers[0];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-    >
-      {/* Custom chat header */}
-      <View style={[styles.chatHeader, { paddingTop: spacing.xs }]}>
+    <View {...parentContainerProps} style={styles.container}>
+      <View style={[styles.chatHeader, { paddingTop: insets.top }]}>
         <Pressable
           onPress={() => router.back()}
           style={styles.backButton}
@@ -450,119 +460,128 @@ export default function ChatDetailScreen() {
         </View>
       </View>
 
-      {/* Divider */}
       <View style={styles.headerDivider} />
 
-      {/* Messages */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={iosKeyboardVerticalOffset}
       >
-        {messages.map((msg, idx) => {
-          const prevMsg = idx > 0 ? messages[idx - 1] : null;
-          const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null;
-          const showDateSeparator = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+        >
+          {messages.map((msg, idx) => {
+            const prevMsg = idx > 0 ? messages[idx - 1] : null;
+            const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null;
+            const showDateSeparator = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
 
-          const isFirstInGroup = !prevMsg || prevMsg.userId !== msg.userId || showDateSeparator;
-          const nextIsDifferentDay =
-            nextMsg != null && !isSameDay(msg.createdAt, nextMsg.createdAt);
-          const isLastInGroup = !nextMsg || nextMsg.userId !== msg.userId || nextIsDifferentDay;
-          const outboundStatus = (msg as ChatMessage & { outboundStatus?: 'sending' | 'failed' })
-            .outboundStatus;
-          const canReactToMessage = !!userId && !outboundStatus;
+            const isFirstInGroup = !prevMsg || prevMsg.userId !== msg.userId || showDateSeparator;
+            const nextIsDifferentDay =
+              nextMsg != null && !isSameDay(msg.createdAt, nextMsg.createdAt);
+            const isLastInGroup = !nextMsg || nextMsg.userId !== msg.userId || nextIsDifferentDay;
+            const outboundStatus = (msg as ChatMessage & { outboundStatus?: 'sending' | 'failed' })
+              .outboundStatus;
+            const canReactToMessage = !!userId && !outboundStatus;
 
-          return (
-            <View key={msg.id}>
-              {showDateSeparator ? (
-                <View style={styles.dateSeparator}>
-                  <View style={styles.dateSeparatorLine} />
-                  <Text style={styles.dateSeparatorText}>{formatDateHeader(msg.createdAt)}</Text>
-                  <View style={styles.dateSeparatorLine} />
-                </View>
-              ) : null}
-              <MessageRow
-                post={msg}
-                parentPost={
-                  msg.parentMessageId
-                    ? (messages.find((m) => m.id === msg.parentMessageId) ?? null)
-                    : null
-                }
-                isFirstInGroup={isFirstInGroup}
-                isLastInGroup={isLastInGroup}
-                onImagePress={(url) => setPreviewImageUrl(url)}
-                onLongPress={() => setReactionMessage(msg)}
-                onSwipeRight={
-                  canReactToMessage
-                    ? () => (setEditingMessage(null), setReplyingTo(msg))
-                    : undefined
-                }
-                onSwipeLeft={
-                  userId && msg.userId === userId && !outboundStatus
-                    ? () => handleStartEdit(msg)
-                    : undefined
-                }
-                onAddReaction={(reactionType) =>
-                  reactMutation.mutate({
-                    messageId: msg.id,
-                    chatId: id,
-                    userId: userId!,
-                    reactionType,
-                  })
-                }
-                onRemoveReaction={(reactionType) =>
-                  removeReactionMutation.mutate({
-                    messageId: msg.id,
-                    chatId: id,
-                    userId: userId!,
-                    reactionType,
-                  })
-                }
-                onAuthorPress={() => router.push(`/profile/${msg.userId}`)}
-                canReact={canReactToMessage}
-                currentUserId={userId}
-                onRetrySend={
-                  outboundStatus === 'failed' ? () => handleRetryOutboundMessage(msg) : undefined
-                }
-              />
-            </View>
-          );
-        })}
-      </ScrollView>
+            return (
+              <View key={msg.id}>
+                {showDateSeparator ? (
+                  <View style={styles.dateSeparator}>
+                    <View style={styles.dateSeparatorLine} />
+                    <Text style={styles.dateSeparatorText}>{formatDateHeader(msg.createdAt)}</Text>
+                    <View style={styles.dateSeparatorLine} />
+                  </View>
+                ) : null}
+                <MessageRow
+                  post={msg}
+                  parentPost={
+                    msg.parentMessageId
+                      ? (messages.find((m) => m.id === msg.parentMessageId) ?? null)
+                      : null
+                  }
+                  isFirstInGroup={isFirstInGroup}
+                  isLastInGroup={isLastInGroup}
+                  onImagePress={(url) => setPreviewImageUrl(url)}
+                  onLongPress={() => setReactionMessage(msg)}
+                  onSwipeRight={
+                    canReactToMessage
+                      ? () => (setEditingMessage(null), setReplyingTo(msg))
+                      : undefined
+                  }
+                  onSwipeLeft={
+                    userId && msg.userId === userId && !outboundStatus
+                      ? () => handleStartEdit(msg)
+                      : undefined
+                  }
+                  onAddReaction={(reactionType) =>
+                    reactMutation.mutate({
+                      messageId: msg.id,
+                      chatId: id,
+                      userId: userId!,
+                      reactionType,
+                    })
+                  }
+                  onRemoveReaction={(reactionType) =>
+                    removeReactionMutation.mutate({
+                      messageId: msg.id,
+                      chatId: id,
+                      userId: userId!,
+                      reactionType,
+                    })
+                  }
+                  onAuthorPress={() => router.push(`/profile/${msg.userId}`)}
+                  canReact={canReactToMessage}
+                  currentUserId={userId}
+                  onRetrySend={
+                    outboundStatus === 'failed' ? () => handleRetryOutboundMessage(msg) : undefined
+                  }
+                />
+              </View>
+            );
+          })}
+        </ScrollView>
 
-      {/* Compose area */}
-      <View style={[styles.composeArea, { paddingBottom: spacing.xxs + insets.bottom }]}>
-        <ComposeBar
-          text={composeText}
-          onChangeText={setComposeText}
-          onSend={handlePost}
-          canSend={canPost}
-          isSending={!!editingMessage && updateMessageMutation.isPending}
-          sendLabel={editingMessage ? t('discussions.updateReply') : t('discussions.postReply')}
-          attachedImageUrls={attachedImageUrls}
-          onRemoveImage={removeAttachedImage}
-          onPickImage={pickImage}
-          isUploadingImage={uploadImageMutation.isPending}
-          editingContext={
-            editingMessage
-              ? { preview: editingMessage.body ?? '', onCancel: handleCancelEdit }
-              : null
-          }
-          replyingToContext={
-            replyingTo
-              ? {
-                  authorName: replyingTo.authorDisplayName ?? t('common.loading'),
-                  preview: replyingTo.body ?? '',
-                  onCancel: () => setReplyingTo(null),
-                }
-              : null
-          }
-          variant="chat"
-        />
-      </View>
+        <View
+          collapsable={false}
+          style={[
+            styles.composeArea,
+            { paddingBottom: spacing.xxs + (keyboardOpen ? 0 : insets.bottom) },
+          ]}
+        >
+          <ComposeBar
+            text={composeText}
+            onChangeText={setComposeText}
+            onSend={handlePost}
+            canSend={canPost}
+            isSending={!!editingMessage && updateMessageMutation.isPending}
+            sendLabel={editingMessage ? t('discussions.updateReply') : t('discussions.postReply')}
+            attachedImageUrls={attachedImageUrls}
+            onRemoveImage={removeAttachedImage}
+            onPickImage={pickImage}
+            isUploadingImage={uploadImageMutation.isPending}
+            editingContext={
+              editingMessage
+                ? { preview: editingMessage.body ?? '', onCancel: handleCancelEdit }
+                : null
+            }
+            replyingToContext={
+              replyingTo
+                ? {
+                    authorName: replyingTo.authorDisplayName ?? t('common.loading'),
+                    preview: replyingTo.body ?? '',
+                    onCancel: () => setReplyingTo(null),
+                  }
+                : null
+            }
+            variant="chat"
+          />
+        </View>
+      </KeyboardAvoidingView>
 
       {/* Sheets and modals */}
       <FriendPickerSheet
@@ -637,7 +656,7 @@ export default function ChatDetailScreen() {
           ) : null}
         </Pressable>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -645,6 +664,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  keyboardAvoiding: {
+    flex: 1,
   },
 
   centered: {
@@ -663,7 +685,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.screenHorizontal,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     backgroundColor: colors.background,
     gap: spacing.sm,
   },
@@ -725,15 +747,15 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.screenHorizontal,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
 
   /* ── Date separator ─────────────────────────────────── */
   dateSeparator: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: spacing.lg,
+    marginVertical: spacing.md,
     gap: spacing.sm,
   },
   dateSeparatorLine: {
@@ -755,6 +777,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.xs,
     backgroundColor: colors.surfaceContainerLow,
+    flexShrink: 0,
   },
 
   /* ── Image preview ──────────────────────────────────── */

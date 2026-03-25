@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ImageSourcePropType } from 'react-native';
 import { Image } from 'expo-image';
+import { avatarFallbackInitial } from '@/lib/avatarFallbackInitial';
 import { colors, typography, avatarSizes } from '@/theme/tokens';
 
 export interface AvatarProps {
@@ -51,7 +52,7 @@ export function Avatar({
     );
   }
 
-  const initial = fallbackText ? fallbackText.trim().charAt(0).toUpperCase() : '?';
+  const initial = avatarFallbackInitial(fallbackText);
   return (
     <View
       style={[containerStyle, styles.fallback]}
@@ -59,7 +60,7 @@ export function Avatar({
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
     >
-      <Text style={textStyle}>{initial}</Text>
+      {initial ? <Text style={textStyle}>{initial}</Text> : null}
     </View>
   );
 }

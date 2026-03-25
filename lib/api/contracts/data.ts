@@ -11,8 +11,11 @@ import type {
   CreateDiscussionPostInput,
   Announcement,
   CreateAnnouncementInput,
+  CreateGlobalAnnouncementInput,
+  GlobalAnnouncement,
   CreateGroupDiscussionInput,
   CreateGroupEventInput,
+  CreateGroupRecurringMeetingInput,
   CreateGroupInput,
   Discussion,
   DiscussionPost,
@@ -24,6 +27,7 @@ import type {
   GroupAdmin,
   GroupDiscussion,
   GroupEvent,
+  GroupRecurringMeeting,
   GroupMember,
   GroupMemberSettings,
   GroupMemberSettingsUpdates,
@@ -38,6 +42,7 @@ import type {
   UpdateDiscussionInput,
   UpdateDiscussionPostInput,
   UpdateGroupEventInput,
+  UpdateGroupRecurringMeetingInput,
   UpdateGroupInput,
   PushToken,
   InAppNotification,
@@ -91,7 +96,7 @@ export interface DataContract {
   updateGroup(id: string, params: UpdateGroupInput): Promise<Group | ApiError>;
   deleteGroup(id: string): Promise<void | ApiError>;
 
-  // Group membership
+  // Group membership (community roster; omits platform super_admins already shown as leaders — see lib/groupCommunityDisplay.ts)
   getGroupMembers(groupId: string): Promise<GroupMember[] | ApiError>;
   joinGroup(groupId: string, userId: string): Promise<void | ApiError>;
   leaveGroup(groupId: string, userId: string): Promise<void | ApiError>;
@@ -127,13 +132,34 @@ export interface DataContract {
   ): Promise<number | ApiError>;
   markInAppNotificationsRead(input: MarkInAppNotificationsReadInput): Promise<void | ApiError>;
 
-  // Group admins
+  /** Total app-icon badge: unread chats + pending friend requests + in-app unread (respects notifications_badge_cleared_at). */
+  getAppBadgeCount(userId: string): Promise<number | ApiError>;
+  /** Persist Notifications-tab visit time (RLS: own profile only). */
+  setNotificationsBadgeClearedAt(userId: string, clearedAtIso: string): Promise<void | ApiError>;
+
+  // Group admins (community leaders; omits platform super_admins unless creator or also a member — see lib/groupCommunityDisplay.ts)
   getGroupAdmins(groupId: string): Promise<GroupAdmin[] | ApiError>;
+  /** All `group_admins` rows (e.g. super-admin assign UI). Not filtered for community display. */
+  getGroupAdminsAll(groupId: string): Promise<GroupAdmin[] | ApiError>;
+  /**
+   * Whether `userId` may act as a group admin for this group: `group_admins` row **or**
+   * platform `app_roles.super_admin` (effective admin in every group).
+   */
+  isUserGroupAdmin(groupId: string, userId: string): Promise<boolean | ApiError>;
   /** Group creator or super admin (RLS). Adds user as a group admin. */
   addGroupAdmin(groupId: string, userId: string): Promise<void | ApiError>;
+  /** Group creator or super admin (RLS). Removes a row from `group_admins` (does not remove group membership). */
+  removeGroupAdmin(groupId: string, userId: string): Promise<void | ApiError>;
 
   // Group announcements
-  getAnnouncements(groupId: string): Promise<Announcement[] | ApiError>;
+  /**
+   * @param options.discover When true, returns published announcements without meeting links (for non-members).
+   *   `status` / `limit` are ignored when discover is true.
+   */
+  getAnnouncements(
+    groupId: string,
+    options?: { discover?: boolean; status?: 'published'; limit?: number }
+  ): Promise<Announcement[] | ApiError>;
   getAnnouncement(id: string): Promise<Announcement | ApiError>;
   createAnnouncement(
     groupId: string,
@@ -143,14 +169,28 @@ export interface DataContract {
   /** Invokes Edge Function to send push notifications for a published announcement (idempotent). */
   publishAnnouncement(announcementId: string): Promise<void | ApiError>;
 
+  /** Newest global (platform) announcements for the home feed. */
+  listGlobalAnnouncements(options?: { limit?: number }): Promise<GlobalAnnouncement[] | ApiError>;
+  /** Super admins only (RLS). */
+  createGlobalAnnouncement(
+    userId: string,
+    input: CreateGlobalAnnouncementInput
+  ): Promise<GlobalAnnouncement | ApiError>;
+
   // Group events
-  getGroupEvents(groupId: string): Promise<GroupEvent[] | ApiError>;
+  /** @param options.discover When true, returns events without meeting links (for non-members). */
+  getGroupEvents(
+    groupId: string,
+    options?: { discover?: boolean }
+  ): Promise<GroupEvent[] | ApiError>;
   getGroupEvent(id: string): Promise<GroupEvent | ApiError>;
   createGroupEvent(
     groupId: string,
     userId: string,
     input: CreateGroupEventInput
   ): Promise<GroupEvent | ApiError>;
+  /** Invokes Edge Function to send push notifications for a newly created group event. */
+  notifyGroupEventCreated(eventId: string): Promise<void | ApiError>;
   updateGroupEvent(
     eventId: string,
     userId: string,
@@ -168,6 +208,23 @@ export interface DataContract {
     response: EventRsvpResponse
   ): Promise<void | ApiError>;
   removeEventRsvp(eventId: string, userId: string): Promise<void | ApiError>;
+
+  /** @param options.discover When true, returns rows without meeting links (for non-members). */
+  getGroupRecurringMeetings(
+    groupId: string,
+    options?: { discover?: boolean }
+  ): Promise<GroupRecurringMeeting[] | ApiError>;
+  createGroupRecurringMeeting(
+    groupId: string,
+    userId: string,
+    input: CreateGroupRecurringMeetingInput
+  ): Promise<GroupRecurringMeeting | ApiError>;
+  updateGroupRecurringMeeting(
+    meetingId: string,
+    userId: string,
+    input: UpdateGroupRecurringMeetingInput
+  ): Promise<GroupRecurringMeeting | ApiError>;
+  deleteGroupRecurringMeeting(meetingId: string): Promise<void | ApiError>;
 
   getGroupMemberSettings(groupId: string, userId: string): Promise<GroupMemberSettings | ApiError>;
   updateGroupMemberSettings(
@@ -244,6 +301,12 @@ export interface DataContract {
     chatId: string,
     addedByUserId: string,
     memberUserIds: string[]
+  ): Promise<void | ApiError>;
+  /** Remove another user from the chat. Only the chat creator may call this (see RLS). */
+  removeChatMember(
+    chatId: string,
+    memberUserId: string,
+    removedByUserId: string
   ): Promise<void | ApiError>;
   /** Mark a chat as read by updating last_read_at for the current user. */
   markChatRead(chatId: string, userId: string): Promise<void | ApiError>;

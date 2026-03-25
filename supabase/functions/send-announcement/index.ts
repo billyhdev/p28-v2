@@ -2,22 +2,20 @@
  * Sends Expo push notifications for a published group announcement and records deliveries.
  * Service role is used for DB reads/writes (RLS blocks broad client access to deliveries).
  *
- * Invoke (user JWT): POST { announcementId } — caller must be a group admin for that announcement's group.
+ * Invoke (user JWT): POST { announcementId } — caller must be an effective group admin, platform
+ * super_admin, or the announcement author (see user_is_effective_group_admin_by_id RPC).
  * Idempotent per user: skips users who already have an announcement_deliveries row; retries can complete partial sends.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.95.3';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.95.3';
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-function json(obj: unknown, status = 200): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+import { getAppBadgeCountForUser } from '../_shared/app-badge.ts';
+import {
+  json,
+  optionsResponse,
+  sendExpoPushInChunks,
+  verifyUserFromAuthorizationHeader,
+} from './_shared/push-gateway.ts';
 
 type AnnouncementRow = {
   id: string;
@@ -27,11 +25,20 @@ type AnnouncementRow = {
   meeting_link?: string | null;
 };
 
-type ExpoPushResult = { status?: string; id?: string; message?: string };
+type AnnouncementExpoMessage = {
+  to: string;
+  userId: string;
+  sound: 'default';
+  title: string;
+  body: string;
+  data: { groupId: string; announcementId: string; meetingLink?: string };
+  channelId: string;
+  badge: number;
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return optionsResponse();
   }
 
   try {
@@ -52,36 +59,17 @@ Deno.serve(async (req) => {
       return json({ error: 'announcementId required' }, 400);
     }
 
-    const authHeader = req.headers.get('Authorization');
-    const jwt = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (!jwt) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-
-    // Validate JWT via GoTrue (works with JWT signing keys). Gateway verify_jwt is disabled for this
-    // function because Supabase edge verify_jwt can 401 asymmetric / rotated user tokens.
-    const apikey = anonKey ?? serviceKey;
-    const authUserUrl = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`;
-    const userRes = await fetch(authUserUrl, {
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        apikey,
-        Accept: 'application/json',
-        'X-Supabase-Api-Version': '2024-01-01',
-      },
+    const verified = await verifyUserFromAuthorizationHeader({
+      supabaseUrl,
+      anonKey: anonKey ?? serviceKey,
+      serviceKey,
+      authHeader: req.headers.get('Authorization'),
     });
-    if (!userRes.ok) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-    const userPayload = (await userRes.json().catch(() => null)) as { id?: string } | null;
-    const userId = userPayload?.id;
-    if (!userId || typeof userId !== 'string') {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    if (!verified.ok) return verified.response;
 
     const { data: annMeta, error: metaErr } = await supabase
       .from('announcements')
-      .select('id, group_id, status')
+      .select('id, group_id, status, created_by_user_id')
       .eq('id', announcementId)
       .maybeSingle();
     if (metaErr || !annMeta) {
@@ -91,13 +79,19 @@ Deno.serve(async (req) => {
       return json({ error: 'Announcement is not published' }, 400);
     }
 
-    const { data: adminRow, error: adminErr } = await supabase
-      .from('group_admins')
-      .select('user_id')
-      .eq('group_id', annMeta.group_id)
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (adminErr || !adminRow) {
+    const { data: isEffectiveAdmin, error: effErr } = await supabase.rpc(
+      'user_is_effective_group_admin_by_id',
+      {
+        p_user_id: verified.userId,
+        p_group_id: annMeta.group_id,
+      }
+    );
+    if (effErr) {
+      console.error('user_is_effective_group_admin_by_id', effErr);
+      return json({ error: 'Authorization check failed' }, 500);
+    }
+    const isAnnouncementCreator = annMeta.created_by_user_id === verified.userId;
+    if (isEffectiveAdmin !== true && !isAnnouncementCreator) {
       return json({ error: 'Forbidden' }, 403);
     }
 
@@ -109,10 +103,7 @@ Deno.serve(async (req) => {
   }
 });
 
-async function sendAnnouncementPushes(
-  supabase: ReturnType<typeof createClient>,
-  announcementId: string
-): Promise<string | null> {
+async function sendAnnouncementPushes(supabase: SupabaseClient, announcementId: string) {
   const { data: ann, error: fetchErr } = await supabase
     .from('announcements')
     .select('id, group_id, title, body, meeting_link')
@@ -139,12 +130,11 @@ async function sendAnnouncementPushes(
     .select('user_id, announcements_enabled')
     .in('user_id', userIds);
 
-  const prefMap = new Map<string, boolean>(
-    (prefs ?? []).map((p: { user_id: string; announcements_enabled: boolean }) => [
-      p.user_id,
-      p.announcements_enabled,
-    ])
-  );
+  const prefMap: { [uid: string]: boolean } = {};
+  for (const p of prefs ?? []) {
+    const pr = p as { user_id: string; announcements_enabled: boolean };
+    prefMap[pr.user_id] = pr.announcements_enabled;
+  }
 
   const { data: gmSettings } = await supabase
     .from('group_member_settings')
@@ -152,16 +142,15 @@ async function sendAnnouncementPushes(
     .eq('group_id', row.group_id)
     .in('user_id', userIds);
 
-  const gmsMap = new Map<string, boolean>(
-    (gmSettings ?? []).map((r: { user_id: string; announcements_enabled: boolean }) => [
-      r.user_id,
-      r.announcements_enabled,
-    ])
-  );
+  const gmsMap: { [uid: string]: boolean } = {};
+  for (const r of gmSettings ?? []) {
+    const gr = r as { user_id: string; announcements_enabled: boolean };
+    gmsMap[gr.user_id] = gr.announcements_enabled;
+  }
 
   const eligible = userIds.filter((uid) => {
-    const globalOn = prefMap.get(uid) ?? true;
-    const groupOn = gmsMap.get(uid) ?? true;
+    const globalOn = prefMap[uid] ?? true;
+    const groupOn = gmsMap[uid] ?? true;
     return globalOn && groupOn;
   });
 
@@ -183,25 +172,17 @@ async function sendAnnouncementPushes(
     (deliveredRows ?? []).map((d: { user_id: string }) => d.user_id)
   );
 
-  /** One Expo message per token; track user for delivery rows. */
-  const messages: Array<{
-    to: string;
-    userId: string;
-    sound: 'default';
-    title: string;
-    body: string;
-    data: { groupId: string; announcementId: string; meetingLink?: string };
-    channelId: string;
-  }> = [];
+  const messages: AnnouncementExpoMessage[] = [];
 
-  const seenToken = new Set<string>();
+  const seenToken: { [token: string]: true } = {};
   for (const tr of tokenRows ?? []) {
     const uid = tr.user_id as string;
     const to = tr.token as string;
     if (alreadyDelivered.has(uid)) continue;
-    if (!to || seenToken.has(to)) continue;
-    seenToken.add(to);
+    if (!to || seenToken[to]) continue;
+    seenToken[to] = true;
     const link = row.meeting_link?.trim();
+    const badge = await getAppBadgeCountForUser(supabase, uid);
     messages.push({
       to,
       userId: uid,
@@ -214,6 +195,7 @@ async function sendAnnouncementPushes(
         ...(link ? { meetingLink: link } : {}),
       },
       channelId: 'announcements',
+      badge,
     });
   }
 
@@ -222,55 +204,15 @@ async function sendAnnouncementPushes(
   }
 
   const now = new Date().toISOString();
-  const sentUserIds = new Set<string>();
-  const chunkSize = 99;
+  const { successfulUserIds: sentUserIds } = await sendExpoPushInChunks(messages);
 
-  for (let i = 0; i < messages.length; i += chunkSize) {
-    const chunk = messages.slice(i, i + chunkSize);
-    const payload = chunk.map(({ userId: _u, ...rest }) => rest);
-
-    const res = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    const rawText = await res.text();
-    let parsed: { data?: ExpoPushResult[] } = {};
-    try {
-      parsed = JSON.parse(rawText) as { data?: ExpoPushResult[] };
-    } catch {
-      console.error('Expo push non-JSON response', res.status, rawText);
-      continue;
-    }
-
-    if (!res.ok) {
-      console.error('Expo push error', res.status, rawText);
-      continue;
-    }
-
-    const results = parsed.data;
-    if (!Array.isArray(results)) {
-      console.error('Expo push missing data array', rawText);
-      continue;
-    }
-
-    chunk.forEach((msg, idx) => {
-      const r = results[idx];
-      if (r && r.status === 'ok') {
-        sentUserIds.add(msg.userId);
-      } else if (r && r.status === 'error') {
-        console.error('Expo ticket error', msg.to.slice(0, 24), r.message ?? r);
-      }
-    });
-  }
-
-  if (sentUserIds.size === 0) {
+  const sentIdsList = [...sentUserIds];
+  if (sentIdsList.length === 0) {
     console.error('send-announcement: no successful Expo tickets for', announcementId);
     return null;
   }
 
-  const deliveryRows = [...sentUserIds].map((user_id) => ({
+  const deliveryRows = sentIdsList.map((user_id) => ({
     announcement_id: row.id,
     user_id,
     status: 'sent' as const,

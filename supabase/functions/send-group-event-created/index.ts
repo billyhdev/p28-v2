@@ -1,22 +1,20 @@
 /**
  * Sends Expo push notifications when a group event is created.
- * Service role is used for DB reads. Caller must be a group admin for the event's group.
+ * Service role is used for DB reads. Caller must be an effective group admin, platform super_admin,
+ * or the event creator (see user_is_effective_group_admin_by_id RPC).
  *
  * Invoke (user JWT): POST { eventId } — best-effort Expo send; no delivery log (v1).
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.95.3';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.95.3';
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-function json(obj: unknown, status = 200): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+import { getAppBadgeCountForUser } from '../_shared/app-badge.ts';
+import {
+  json,
+  optionsResponse,
+  sendExpoPushInChunks,
+  verifyUserFromAuthorizationHeader,
+} from './_shared/push-gateway.ts';
 
 type GroupEventRow = {
   id: string;
@@ -27,7 +25,16 @@ type GroupEventRow = {
   status: string;
 };
 
-type ExpoPushResult = { status?: string; id?: string; message?: string };
+type GroupEventExpoMessage = {
+  to: string;
+  userId: string;
+  sound: 'default';
+  title: string;
+  body: string;
+  priority: 'high';
+  data: { [key: string]: string };
+  badge: number;
+};
 
 function formatEventStart(iso: string): string {
   try {
@@ -46,7 +53,7 @@ function formatEventStart(iso: string): string {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return optionsResponse();
   }
 
   try {
@@ -66,34 +73,17 @@ Deno.serve(async (req) => {
       return json({ error: 'eventId required' }, 400);
     }
 
-    const authHeader = req.headers.get('Authorization');
-    const jwt = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (!jwt) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-
-    const apikey = anonKey ?? serviceKey;
-    const authUserUrl = `${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`;
-    const userRes = await fetch(authUserUrl, {
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        apikey,
-        Accept: 'application/json',
-        'X-Supabase-Api-Version': '2024-01-01',
-      },
+    const verified = await verifyUserFromAuthorizationHeader({
+      supabaseUrl,
+      anonKey: anonKey ?? serviceKey,
+      serviceKey,
+      authHeader: req.headers.get('Authorization'),
     });
-    if (!userRes.ok) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-    const userPayload = (await userRes.json().catch(() => null)) as { id?: string } | null;
-    const userId = userPayload?.id;
-    if (!userId || typeof userId !== 'string') {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    if (!verified.ok) return verified.response;
 
     const { data: evMeta, error: metaErr } = await supabase
       .from('group_events')
-      .select('id, group_id, status')
+      .select('id, group_id, status, created_by_user_id')
       .eq('id', eventId)
       .maybeSingle();
     if (metaErr || !evMeta) {
@@ -103,13 +93,19 @@ Deno.serve(async (req) => {
       return json({ error: 'Event is not active' }, 400);
     }
 
-    const { data: adminRow, error: adminErr } = await supabase
-      .from('group_admins')
-      .select('user_id')
-      .eq('group_id', evMeta.group_id)
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (adminErr || !adminRow) {
+    const { data: isEffectiveAdmin, error: effErr } = await supabase.rpc(
+      'user_is_effective_group_admin_by_id',
+      {
+        p_user_id: verified.userId,
+        p_group_id: evMeta.group_id,
+      }
+    );
+    if (effErr) {
+      console.error('user_is_effective_group_admin_by_id', effErr);
+      return json({ error: 'Authorization check failed' }, 500);
+    }
+    const isEventCreator = evMeta.created_by_user_id === verified.userId;
+    if (isEffectiveAdmin !== true && !isEventCreator) {
       return json({ error: 'Forbidden' }, 403);
     }
 
@@ -121,21 +117,7 @@ Deno.serve(async (req) => {
   }
 });
 
-type PushSendResult =
-  | { error: string }
-  | {
-      stats: {
-        eligibleMembers: number;
-        messagesQueued: number;
-        ticketsOk: number;
-        ticketErrors: string[];
-      };
-    };
-
-async function sendGroupEventCreatedPushes(
-  supabase: ReturnType<typeof createClient>,
-  eventId: string
-): Promise<PushSendResult> {
+async function sendGroupEventCreatedPushes(supabase: SupabaseClient, eventId: string) {
   const { data: row, error: fetchErr } = await supabase
     .from('group_events')
     .select('id, group_id, title, starts_at, created_by_user_id, status')
@@ -154,7 +136,6 @@ async function sendGroupEventCreatedPushes(
     .eq('group_id', ev.group_id);
   if (mErr) return { error: mErr.message };
 
-  /** Include creator so the admin's device still gets a push when testing solo. */
   const userIds = (members ?? []).map((m: { user_id: string }) => m.user_id);
   if (userIds.length === 0) {
     return {
@@ -172,14 +153,29 @@ async function sendGroupEventCreatedPushes(
     .select('user_id, events_enabled')
     .in('user_id', userIds);
 
-  const prefMap = new Map<string, boolean>(
-    (prefs ?? []).map((p: { user_id: string; events_enabled: boolean }) => [
-      p.user_id,
-      p.events_enabled,
-    ])
-  );
+  const prefMap: { [uid: string]: boolean } = {};
+  for (const p of prefs ?? []) {
+    const row = p as { user_id: string; events_enabled: boolean };
+    prefMap[row.user_id] = row.events_enabled;
+  }
 
-  const eligible = userIds.filter((uid) => prefMap.get(uid) ?? true);
+  const { data: gmSettings } = await supabase
+    .from('group_member_settings')
+    .select('user_id, events_enabled')
+    .eq('group_id', ev.group_id)
+    .in('user_id', userIds);
+
+  const gmsMap: { [uid: string]: boolean } = {};
+  for (const r of gmSettings ?? []) {
+    const row = r as { user_id: string; events_enabled: boolean };
+    gmsMap[row.user_id] = row.events_enabled;
+  }
+
+  const eligible = userIds.filter((uid) => {
+    const globalOn = prefMap[uid] ?? true;
+    const groupOn = gmsMap[uid] ?? true;
+    return globalOn && groupOn;
+  });
   if (eligible.length === 0) {
     return {
       stats: {
@@ -211,22 +207,15 @@ async function sendGroupEventCreatedPushes(
     groupId: ev.group_id,
   } as const;
 
-  const messages: Array<{
-    to: string;
-    userId: string;
-    sound: 'default';
-    title: string;
-    body: string;
-    priority: 'high';
-    data: Record<string, string>;
-  }> = [];
+  const messages: GroupEventExpoMessage[] = [];
 
-  const seenToken = new Set<string>();
+  const seenToken: { [token: string]: true } = {};
   for (const tr of tokenRows ?? []) {
     const uid = tr.user_id as string;
     const to = tr.token as string;
-    if (!to || seenToken.has(to)) continue;
-    seenToken.add(to);
+    if (!to || seenToken[to]) continue;
+    seenToken[to] = true;
+    const badge = await getAppBadgeCountForUser(supabase, uid);
     messages.push({
       to,
       userId: uid,
@@ -239,6 +228,7 @@ async function sendGroupEventCreatedPushes(
         eventId: String(dataPayload.eventId),
         groupId: String(dataPayload.groupId),
       },
+      badge,
     });
   }
 
@@ -253,51 +243,7 @@ async function sendGroupEventCreatedPushes(
     };
   }
 
-  let ticketsOk = 0;
-  const ticketErrors: string[] = [];
-  const chunkSize = 99;
-
-  for (let i = 0; i < messages.length; i += chunkSize) {
-    const chunk = messages.slice(i, i + chunkSize);
-    const payload = chunk.map(({ userId: _u, ...rest }) => rest);
-
-    const res = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    const rawText = await res.text();
-    let parsed: { data?: ExpoPushResult[] } = {};
-    try {
-      parsed = JSON.parse(rawText) as { data?: ExpoPushResult[] };
-    } catch {
-      console.error('Expo push non-JSON response', res.status, rawText);
-      continue;
-    }
-
-    if (!res.ok) {
-      console.error('Expo push error', res.status, rawText);
-      continue;
-    }
-
-    const results = parsed.data;
-    if (!Array.isArray(results)) {
-      console.error('Expo push missing data array', rawText);
-      continue;
-    }
-
-    chunk.forEach((msg, idx) => {
-      const r = results[idx];
-      if (r && r.status === 'ok') {
-        ticketsOk += 1;
-      } else if (r && r.status === 'error') {
-        const line = r.message ?? JSON.stringify(r.details ?? r);
-        console.error('Expo ticket error', msg.to.slice(0, 24), line);
-        if (ticketErrors.length < 5) ticketErrors.push(line);
-      }
-    });
-  }
+  const { ticketsOk, ticketErrors } = await sendExpoPushInChunks(messages);
 
   return {
     stats: {

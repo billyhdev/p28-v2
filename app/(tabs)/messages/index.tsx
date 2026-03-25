@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { StackedAvatars } from '@/components/primitives';
+import { avatarFallbackInitial, StackedAvatars } from '@/components/primitives';
 import { FriendPickerSheet } from '@/components/messages';
 import { EmptyState } from '@/components/patterns/EmptyState';
 import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
@@ -40,7 +40,7 @@ function ChatAvatar({
   imageUrl?: string | null;
   fallbackText: string;
 }) {
-  const initial = fallbackText ? fallbackText.trim().charAt(0).toUpperCase() : '?';
+  const initial = avatarFallbackInitial(fallbackText);
 
   return (
     <View style={avatarStyles.wrapper}>
@@ -53,7 +53,7 @@ function ChatAvatar({
         />
       ) : (
         <View style={[avatarStyles.image, avatarStyles.fallback]}>
-          <Text style={avatarStyles.fallbackText}>{initial}</Text>
+          {initial ? <Text style={avatarStyles.fallbackText}>{initial}</Text> : null}
         </View>
       )}
     </View>
@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: spacing.lg,
   },
 

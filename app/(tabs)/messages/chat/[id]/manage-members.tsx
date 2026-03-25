@@ -20,6 +20,7 @@ import {
   useCreateChatMutation,
   useFriendIdsQuery,
   useProfilesQuery,
+  useRemoveChatMemberMutation,
 } from '@/hooks/useApiQueries';
 import { api, getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
@@ -40,11 +41,26 @@ export default function ManageChatMembersScreen() {
     enabled: friendIds.length > 0,
   });
   const createChatMutation = useCreateChatMutation();
+  const removeMemberMutation = useRemoveChatMemberMutation();
 
   const memberUserIds = useMemo(
     () => new Set((chat?.members ?? []).map((m) => m.userId).filter(Boolean)),
     [chat?.members]
   );
+
+  const isChatCreator = chat?.createdByUserId === userId;
+
+  const sortedMembers = useMemo(() => {
+    const list = [...(chat?.members ?? [])];
+    list.sort((a, b) => {
+      if (a.userId === userId) return -1;
+      if (b.userId === userId) return 1;
+      const na = (a.displayName ?? '').toLowerCase();
+      const nb = (b.displayName ?? '').toLowerCase();
+      return na.localeCompare(nb);
+    });
+    return list;
+  }, [chat?.members, userId]);
 
   const profileMap = useMemo(() => new Map(profiles.map((p) => [p.userId, p])), [profiles]);
 
@@ -67,6 +83,34 @@ export default function ManageChatMembersScreen() {
       return next;
     });
   }, []);
+
+  const handleConfirmRemoveMember = useCallback(
+    (memberUserId: string, memberDisplayName: string) => {
+      if (!id || !userId) return;
+      Alert.alert(
+        t('messages.removeMemberConfirmTitle'),
+        t('messages.removeMemberConfirmMessage', { name: memberDisplayName }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('messages.remove'),
+            style: 'destructive',
+            onPress: () => {
+              removeMemberMutation.mutate(
+                { chatId: id, memberUserId, removedByUserId: userId },
+                {
+                  onError: (err) => {
+                    Alert.alert(t('common.error'), getUserFacingError(err));
+                  },
+                }
+              );
+            },
+          },
+        ]
+      );
+    },
+    [id, userId, removeMemberMutation]
+  );
 
   const insets = useSafeAreaInsets();
 
@@ -105,6 +149,9 @@ export default function ManageChatMembersScreen() {
   if (!userId || !id) return null;
 
   const isSaving = createChatMutation.isPending;
+  const removingMemberId = removeMemberMutation.isPending
+    ? removeMemberMutation.variables?.memberUserId
+    : undefined;
   const bottomPadding = insets.bottom + spacing.xl;
 
   if (loadingChat && !chat) {
@@ -122,7 +169,51 @@ export default function ManageChatMembersScreen() {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator
     >
-      <Text style={styles.subtitle}>{t('messages.selectPeopleToAddSubtitle')}</Text>
+      <Text style={styles.sectionTitle}>{t('messages.peopleInChat')}</Text>
+      <View style={styles.memberList}>
+        {sortedMembers.map((m) => {
+          const isSelf = m.userId === userId;
+          const displayName = isSelf
+            ? t('messages.you')
+            : m.displayName?.trim() || t('notifications.unknownUser');
+          const showRemove = isChatCreator && !isSelf;
+          const isRemoving = removingMemberId === m.userId;
+          return (
+            <View key={m.userId} style={styles.memberRow}>
+              <Avatar
+                source={m.avatarUrl ? { uri: m.avatarUrl } : null}
+                fallbackText={displayName}
+                size="md"
+              />
+              <Text style={styles.memberName} numberOfLines={1}>
+                {displayName}
+              </Text>
+              {showRemove ? (
+                <Pressable
+                  onPress={() => handleConfirmRemoveMember(m.userId, displayName)}
+                  disabled={!!removingMemberId}
+                  style={styles.removeButton}
+                  accessibilityLabel={t('messages.removeMemberFromChat')}
+                  accessibilityHint={t('messages.removeMemberFromChatHint')}
+                  accessibilityRole="button"
+                >
+                  {isRemoving ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <Text style={styles.removeButtonText}>
+                      {t('messages.removeMemberFromChat')}
+                    </Text>
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+
+      <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>
+        {t('messages.selectPeopleToAddSubtitle')}
+      </Text>
       <TextInput
         style={styles.searchInput}
         placeholder={t('messages.searchFriends')}
@@ -202,10 +293,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
   },
-  subtitle: {
-    ...typography.body,
+  sectionTitle: {
+    ...typography.label,
     color: colors.textSecondary,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  sectionTitleSpaced: {
+    marginTop: spacing.lg,
+  },
+  memberList: { gap: spacing.sm, marginBottom: spacing.md },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.surface100,
+    borderRadius: radius.card,
+    gap: spacing.md,
+  },
+  memberName: {
+    flex: 1,
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  removeButton: {
+    minWidth: spacing.xxl,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  removeButtonText: {
+    ...typography.label,
+    color: colors.error,
   },
   searchInput: {
     ...typography.body,

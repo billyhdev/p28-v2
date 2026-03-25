@@ -1,40 +1,52 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Avatar, StackedAvatars } from '@/components/primitives';
+import { Avatar, StackedAvatars, type StackedAvatarMember } from '@/components/primitives';
 import { EmptyState } from '@/components/patterns/EmptyState';
+import { LatestAnnouncementRow } from '@/components/patterns/LatestAnnouncementRow';
+import { GroupLeaderRows } from '@/components/patterns/GroupLeaderRows';
 import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
 import { GroupEventFormSheet } from '@/components/patterns/GroupEventFormSheet';
+import { GroupRecurringMeetingFormSheet } from '@/components/patterns/GroupRecurringMeetingFormSheet';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useAnnouncementsQuery,
   useCreateGroupEventMutation,
+  useCreateGroupRecurringMeetingMutation,
+  useDeleteGroupRecurringMeetingMutation,
   useDiscussionsQuery,
   useGroupAdminsQuery,
   useGroupEventsQuery,
+  useUserIsGroupAdminQuery,
+  useGroupRecurringMeetingsQuery,
   useGroupMembersQuery,
   useGroupQuery,
   useGroupsForUserQuery,
   useIsSuperAdminQuery,
   useJoinGroupMutation,
   useLeaveGroupMutation,
+  useUpdateGroupRecurringMeetingMutation,
 } from '@/hooks/useApiQueries';
 import { getUserFacingError, isApiError } from '@/lib/api';
+import type { CreateGroupRecurringMeetingInput, GroupRecurringMeeting } from '@/lib/api';
 import { formatGroupEventDateTime, formatRelativeTime } from '@/lib/dates';
 import { compareGroupEventsByStartThenCreated } from '@/lib/groupEventsSort';
 import { t } from '@/lib/i18n';
+import { formatRecurringMeetingSummary } from '@/lib/recurringMeetingSummary';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/theme/tokens';
 
 function getLanguageName(code: string): string {
@@ -62,8 +74,11 @@ export default function GroupDetailScreen() {
   const { data: memberGroups = [], refetch: refetchMembership } = useGroupsForUserQuery(userId);
   const isMember = !!id && memberGroups.some((g) => g.id === id);
   const { data: groupEvents = [], refetch: refetchGroupEvents } = useGroupEventsQuery(id, {
-    enabled: !!id && isMember,
+    enabled: !!id,
+    discover: !isMember,
   });
+  // Member + leader lists: filtered RPCs (lib/groupCommunityDisplay.ts). “Am I admin?” uses
+  // isUserGroupAdmin — not the filtered list (see migration 00057).
   const { data: members = [], refetch: refetchMembers } = useGroupMembersQuery(id, {
     enabled: !!id,
   });
@@ -74,11 +89,28 @@ export default function GroupDetailScreen() {
   } = useDiscussionsQuery({ groupId: id, enabled: !!id });
   const { data: announcements = [], refetch: refetchAnnouncements } = useAnnouncementsQuery(id, {
     enabled: !!id,
+    discover: !isMember,
   });
+  const { data: recurringMeetings = [], refetch: refetchRecurringMeetings } =
+    useGroupRecurringMeetingsQuery(id, {
+      enabled: !!id && group?.type === 'ministry',
+      discover: !isMember,
+    });
   const { data: groupAdmins = [] } = useGroupAdminsQuery(id, { enabled: !!id });
+  const { data: isCurrentUserGroupAdmin = false } = useUserIsGroupAdminQuery(id, userId, {
+    enabled: !!id && !!userId,
+  });
   const { data: isSuperAdmin = false } = useIsSuperAdminQuery(userId, { enabled: !!userId });
   const createEventMutation = useCreateGroupEventMutation();
-  const isGroupAdmin = !!userId && groupAdmins.some((a) => a.userId === userId);
+  const createRecurringMutation = useCreateGroupRecurringMeetingMutation();
+  const updateRecurringMutation = useUpdateGroupRecurringMeetingMutation();
+  const deleteRecurringMutation = useDeleteGroupRecurringMeetingMutation();
+  const isGroupAdmin = isCurrentUserGroupAdmin;
+  /** Group admins are usually members; platform super_admins may moderate without joining. */
+  const canModerateAsAdmin = useMemo(
+    () => isGroupAdmin && (isMember || isSuperAdmin),
+    [isGroupAdmin, isMember, isSuperAdmin]
+  );
   const joinMutation = useJoinGroupMutation();
   const leaveMutation = useLeaveGroupMutation();
   const isJoining = joinMutation.isPending || leaveMutation.isPending;
@@ -116,6 +148,7 @@ export default function GroupDetailScreen() {
       refetchDiscussions();
       refetchAnnouncements();
       refetchGroupEvents();
+      refetchRecurringMeetings();
     }, [
       refetchGroup,
       refetchMembership,
@@ -123,6 +156,7 @@ export default function GroupDetailScreen() {
       refetchDiscussions,
       refetchAnnouncements,
       refetchGroupEvents,
+      refetchRecurringMeetings,
     ])
   );
 
@@ -154,6 +188,13 @@ export default function GroupDetailScreen() {
     router.push(`/group/members?groupId=${id}`);
   }, [router, id]);
 
+  const handleLeaderProfilePress = useCallback(
+    (memberId: string) => {
+      router.push(`/profile/${memberId}`);
+    },
+    [router]
+  );
+
   const [joinedSheetVisible, setJoinedSheetVisible] = useState(false);
 
   const handleOpenJoinedSheet = useCallback(() => {
@@ -178,6 +219,116 @@ export default function GroupDetailScreen() {
 
   const [eventSheetOpen, setEventSheetOpen] = useState(false);
   const [eventFormError, setEventFormError] = useState<string | null>(null);
+
+  const [recurringSheetOpen, setRecurringSheetOpen] = useState(false);
+  const [recurringFormError, setRecurringFormError] = useState<string | null>(null);
+  const [recurringEdit, setRecurringEdit] = useState<GroupRecurringMeeting | null>(null);
+
+  const viewerTimeZone =
+    typeof Intl !== 'undefined'
+      ? (Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC')
+      : 'UTC';
+
+  const { width: windowWidth } = useWindowDimensions();
+  /** Horizontal strip: first card aligns with content inset; next card peeks. */
+  const recurringCarouselCardWidth = useMemo(() => {
+    const inset = spacing.lg;
+    const gap = spacing.md;
+    const peek = spacing.md;
+    return Math.max(260, windowWidth - inset - gap - peek);
+  }, [windowWidth]);
+
+  const handleOpenRecurringCreate = useCallback(() => {
+    setRecurringEdit(null);
+    setRecurringFormError(null);
+    setRecurringSheetOpen(true);
+  }, []);
+
+  const handleOpenRecurringEdit = useCallback((m: GroupRecurringMeeting) => {
+    setRecurringEdit(m);
+    setRecurringFormError(null);
+    setRecurringSheetOpen(true);
+  }, []);
+
+  const handleCloseRecurringSheet = useCallback(() => {
+    setRecurringSheetOpen(false);
+    setRecurringEdit(null);
+    setRecurringFormError(null);
+  }, []);
+
+  const handleRecurringDeleteRequest = useCallback(() => {
+    if (!recurringEdit) return;
+    Alert.alert(
+      t('recurringMeetings.deleteRecurring'),
+      t('recurringMeetings.deleteRecurringConfirm'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('recurringMeetings.deleteRecurring'),
+          style: 'destructive',
+          onPress: () => {
+            setRecurringFormError(null);
+            deleteRecurringMutation.mutate(
+              { meetingId: recurringEdit.id, groupId: recurringEdit.groupId },
+              {
+                onSuccess: () => {
+                  handleCloseRecurringSheet();
+                  refetchRecurringMeetings();
+                },
+                onError: (err) => {
+                  setRecurringFormError(
+                    isApiError(err) ? getUserFacingError(err) : t('common.error')
+                  );
+                },
+              }
+            );
+          },
+        },
+      ]
+    );
+  }, [recurringEdit, deleteRecurringMutation, handleCloseRecurringSheet, refetchRecurringMeetings]);
+
+  const handleSubmitRecurring = useCallback(
+    (payload: CreateGroupRecurringMeetingInput) => {
+      if (!userId || !id) return;
+      if (recurringEdit) {
+        updateRecurringMutation.mutate(
+          { meetingId: recurringEdit.id, userId, input: payload },
+          {
+            onSuccess: () => {
+              handleCloseRecurringSheet();
+              refetchRecurringMeetings();
+            },
+            onError: (err) => {
+              setRecurringFormError(isApiError(err) ? getUserFacingError(err) : t('common.error'));
+            },
+          }
+        );
+        return;
+      }
+      createRecurringMutation.mutate(
+        { groupId: id, userId, input: payload },
+        {
+          onSuccess: () => {
+            handleCloseRecurringSheet();
+            refetchRecurringMeetings();
+          },
+          onError: (err) => {
+            setRecurringFormError(isApiError(err) ? getUserFacingError(err) : t('common.error'));
+          },
+        }
+      );
+    },
+    [
+      userId,
+      id,
+      recurringEdit,
+      createRecurringMutation,
+      updateRecurringMutation,
+      refetchRecurringMeetings,
+      handleCloseRecurringSheet,
+    ]
+  );
 
   const handleOpenCreateEvent = useCallback(() => {
     setEventFormError(null);
@@ -224,6 +375,26 @@ export default function GroupDetailScreen() {
     },
     [userId, id, createEventMutation, refetchGroupEvents]
   );
+
+  /** Hero stack: leaders first, then other members (deduped by userId). */
+  const heroStackMembers = useMemo((): StackedAvatarMember[] => {
+    const byId = new Map<string, StackedAvatarMember>();
+    const add = (userId: string, avatarUrl?: string | null, displayName?: string | null) => {
+      if (byId.has(userId)) return;
+      byId.set(userId, {
+        userId,
+        avatarUrl: avatarUrl ?? null,
+        displayName: displayName ?? null,
+      });
+    };
+    for (const a of groupAdmins) {
+      add(a.userId, a.avatarUrl, a.displayName);
+    }
+    for (const m of members) {
+      add(m.userId, m.avatarUrl, m.displayName);
+    }
+    return Array.from(byId.values());
+  }, [groupAdmins, members]);
 
   const publishedAnnouncements = announcements.filter((a) => a.status === 'published');
   const latestPublished =
@@ -348,14 +519,29 @@ export default function GroupDetailScreen() {
                   )}
                 </Pressable>
               )}
-              <View style={styles.heroMemberCount}>
+              <Pressable
+                onPress={handleSeeAllMembers}
+                style={({ pressed }) => [styles.heroMembersTapRow, pressed && { opacity: 0.85 }]}
+                accessibilityRole="button"
+                accessibilityLabel={memberCountLabel}
+                accessibilityHint={t('groups.viewAllMembersHint')}
+              >
                 <Ionicons name="people" size={14} color="rgba(255,255,255,0.7)" />
                 <Text style={styles.heroMemberCountText}>{memberCountLabel}</Text>
-              </View>
+                {heroStackMembers.length > 0 ? (
+                  <StackedAvatars
+                    members={heroStackMembers}
+                    maxCount={3}
+                    size="sm"
+                    ringed
+                    accessibilityLabel={t('groups.heroStackedAvatarsA11y')}
+                  />
+                ) : null}
+              </Pressable>
             </View>
-            {(isGroupAdmin && isMember) || (isSuperAdmin && id) ? (
+            {canModerateAsAdmin || (isSuperAdmin && id) ? (
               <View style={styles.heroLeaderRow}>
-                {isGroupAdmin && isMember ? (
+                {canModerateAsAdmin ? (
                   <>
                     <Pressable
                       onPress={handleCreateAnnouncement}
@@ -420,158 +606,245 @@ export default function GroupDetailScreen() {
           </View>
         ) : null}
 
-        {/* ── Community section ── */}
-        <View style={styles.section}>
+        {/* ── Leaders (group admins) — Stitch: Ministry leaders editorial block ── */}
+        <View style={styles.leadersSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t('groups.people')}</Text>
-            <Text style={styles.sectionCount}>{memberCountLabel}</Text>
+            <Text style={styles.sectionTitle}>
+              {group.type === 'ministry'
+                ? t('groups.ministryLeadersTitle')
+                : t('groups.forumLeadersTitle')}
+            </Text>
           </View>
-          <View style={styles.memberCard}>
-            <Pressable
-              onPress={handleSeeAllMembers}
-              style={({ pressed }) => [styles.memberRow, pressed && { opacity: 0.8 }]}
-              accessibilityLabel={t('groups.seeAll')}
-              accessibilityHint={t('groups.viewAllMembersHint')}
-            >
-              <StackedAvatars members={members} maxCount={4} size="md" ringed />
-              <View style={styles.memberRowRight}>
-                <Text style={styles.viewAllText}>{t('groups.seeAll')}</Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-              </View>
-            </Pressable>
-          </View>
+          {groupAdmins.length === 0 ? (
+            <Text style={styles.leadersEmptyInline} accessibilityRole="text">
+              {t('groups.noLeadersYet')}
+            </Text>
+          ) : (
+            <GroupLeaderRows
+              items={groupAdmins.map((a) => ({
+                userId: a.userId,
+                displayName: a.displayName,
+                avatarUrl: a.avatarUrl ?? null,
+              }))}
+              currentUserId={userId ?? ''}
+              leaderSubtitle={t('groups.leaderListSubtitle')}
+              yourselfSubtitle={t('groups.yourself')}
+              onLeaderPress={handleLeaderProfilePress}
+              edgeToEdge
+              listAccessibilityLabel={
+                group.type === 'ministry'
+                  ? t('groups.ministryLeadersTitle')
+                  : t('groups.forumLeadersTitle')
+              }
+            />
+          )}
         </View>
 
-        {/* ── Announcements section (members) ── */}
-        {isMember ? (
+        {/* ── Recurring meetings (ministry only) ── */}
+        {group.type === 'ministry' ? (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t('announcements.sectionTitle')}</Text>
-              {announcements.length > 0 ? (
+            <View style={styles.recurringSacredHeader}>
+              <View style={styles.recurringSacredHeaderText}>
+                <Text style={styles.recurringSacredTitle}>
+                  {t('recurringMeetings.sectionTitle')}
+                </Text>
+                <Text style={styles.recurringSacredSubtitle}>
+                  {t('recurringMeetings.sectionSubtitle')}
+                </Text>
+              </View>
+              {canModerateAsAdmin && recurringMeetings.length > 0 ? (
                 <Pressable
-                  onPress={handleSeeAllAnnouncements}
-                  style={styles.addTopicButton}
-                  accessibilityLabel={t('announcements.seeAll')}
-                  accessibilityHint={t('announcements.seeAll')}
+                  onPress={handleOpenRecurringCreate}
+                  style={styles.recurringSacredAdd}
+                  accessibilityLabel={t('recurringMeetings.addMeeting')}
+                  accessibilityHint={t('recurringMeetings.addMeetingHint')}
                 >
-                  <Text style={styles.addTopicText}>{t('announcements.seeAll')}</Text>
-                  <Ionicons name="chevron-forward" size={14} color={colors.secondary} />
+                  <Ionicons name="add-circle" size={18} color={colors.secondary} />
+                  <Text style={styles.recurringSacredAddLabel}>
+                    {t('recurringMeetings.addMeeting')}
+                  </Text>
                 </Pressable>
               ) : null}
             </View>
-            {latestPublished ? (
-              <View style={styles.announcementCard}>
-                <Pressable
-                  onPress={handleOpenLatestAnnouncementDetail}
-                  style={({ pressed }) => [
-                    styles.announcementCardPressable,
-                    pressed && { opacity: 0.92 },
-                  ]}
-                  accessibilityLabel={latestPublished.title}
-                  accessibilityHint={t('announcements.openDetailHint')}
-                >
-                  <Text style={styles.announcementCardTitle}>{latestPublished.title}</Text>
-                  <Text style={styles.announcementPreview} numberOfLines={3}>
-                    {latestPublished.body}
-                  </Text>
-                  <Text style={styles.announcementMeta}>
-                    {latestPublished.authorDisplayName ?? t('groups.groupMember')}
-                    {' \u00B7 '}
-                    {formatRelativeTime(latestPublished.createdAt)}
-                  </Text>
-                </Pressable>
-                {latestPublished.meetingLink?.trim() ? (
-                  <Pressable
-                    onPress={() => {
-                      void WebBrowser.openBrowserAsync(latestPublished.meetingLink.trim());
-                    }}
-                    style={styles.announcementMeetingLinkRow}
-                    accessibilityLabel={t('groupEvents.joinMeeting')}
-                    accessibilityHint={t('groupEvents.joinMeetingHint')}
-                    accessibilityRole="link"
-                  >
-                    <Ionicons name="videocam-outline" size={18} color={colors.primary} />
-                    <Text style={styles.announcementMeetingLinkText}>
-                      {t('groupEvents.joinMeeting')}
-                    </Text>
-                    <Ionicons name="open-outline" size={16} color={colors.primary} />
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-            {!latestPublished ? (
-              <EmptyState
-                iconName="megaphone-outline"
-                title={t('announcements.noAnnouncements')}
-                subtitle={t('announcements.noAnnouncementsHint')}
-              />
-            ) : null}
+            <View style={styles.recurringSectionWrap}>
+              {recurringMeetings.length > 0 ? (
+                <RecurringMeetingsList
+                  meetings={recurringMeetings}
+                  viewerTimeZone={viewerTimeZone}
+                  canModerateAsAdmin={canModerateAsAdmin}
+                  isMember={isMember}
+                  screenWidth={windowWidth}
+                  carouselCardWidth={recurringCarouselCardWidth}
+                  onEdit={handleOpenRecurringEdit}
+                />
+              ) : (
+                <EmptyState
+                  iconName="repeat-outline"
+                  title={t('recurringMeetings.noMeetings')}
+                  subtitle={t('recurringMeetings.noMeetingsHint')}
+                  actionLabel={canModerateAsAdmin ? t('recurringMeetings.createLink') : undefined}
+                  onAction={canModerateAsAdmin ? handleOpenRecurringCreate : undefined}
+                  actionVariant="link"
+                  actionAccessibilityHint={t('recurringMeetings.createLinkHint')}
+                />
+              )}
+            </View>
           </View>
         ) : null}
 
-        {/* ── Events section (members) ── */}
-        {isMember ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t('groupEvents.sectionTitle')}</Text>
-              {groupEvents.length > 0 ? (
-                <Pressable
-                  onPress={handleSeeAllEvents}
-                  style={styles.addTopicButton}
-                  accessibilityLabel={t('groupEvents.seeAll')}
-                  accessibilityHint={t('groupEvents.seeAll')}
-                >
-                  <Text style={styles.addTopicText}>{t('groupEvents.seeAll')}</Text>
-                  <Ionicons name="chevron-forward" size={14} color={colors.secondary} />
-                </Pressable>
-              ) : null}
-            </View>
-            {(() => {
-              const now = Date.now();
-              const upcoming = groupEvents
-                .filter((e) => e.status === 'active' && new Date(e.startsAt).getTime() > now)
-                .sort(compareGroupEventsByStartThenCreated)
-                .slice(0, 3);
-              if (upcoming.length === 0) {
-                return (
-                  <EmptyState
-                    iconName="calendar-outline"
-                    title={t('groupEvents.noEvents')}
-                    subtitle={t('groupEvents.noEventsHint')}
-                  />
-                );
-              }
-              return (
-                <View style={styles.eventList}>
-                  {upcoming.map((ev) => (
-                    <Pressable
-                      key={ev.id}
-                      onPress={() => router.push(`/group/event/${ev.id}`)}
-                      style={({ pressed }) => [styles.eventCard, pressed && { opacity: 0.92 }]}
-                      accessibilityLabel={ev.title}
-                      accessibilityHint={t('groupEvents.eventTitle')}
-                    >
-                      <Text style={styles.eventCardTitle}>{ev.title}</Text>
-                      <Text style={styles.eventCardMeta}>
-                        {formatGroupEventDateTime(ev.startsAt)}
-                      </Text>
-                      {ev.requiresRsvp ? (
-                        <Text style={styles.eventRsvpLine}>
-                          {t('groupEvents.goingCount', {
-                            count: ev.goingCount ?? 0,
-                          })}
-                          {typeof ev.maybeCount === 'number' && ev.maybeCount > 0
-                            ? ` · ${t('groupEvents.maybeCount', { count: ev.maybeCount })}`
-                            : ''}
-                        </Text>
-                      ) : null}
-                    </Pressable>
-                  ))}
-                </View>
-              );
-            })()}
+        {/* ── Events (cards + RSVP CTA) ── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t('groupEvents.sectionTitle')}</Text>
+            {groupEvents.length > 0 ? (
+              <Pressable
+                onPress={handleSeeAllEvents}
+                style={styles.addTopicButton}
+                accessibilityLabel={t('groupEvents.seeAll')}
+                accessibilityHint={t('groupEvents.seeAll')}
+              >
+                <Text style={styles.addTopicText}>{t('groupEvents.seeAll')}</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.secondary} />
+              </Pressable>
+            ) : null}
           </View>
-        ) : null}
+          {(() => {
+            const now = Date.now();
+            const upcoming = groupEvents
+              .filter((e) => e.status === 'active' && new Date(e.startsAt).getTime() > now)
+              .sort(compareGroupEventsByStartThenCreated)
+              .slice(0, 3);
+            if (upcoming.length === 0) {
+              return (
+                <EmptyState
+                  iconName="calendar-outline"
+                  title={t('groupEvents.noEvents')}
+                  subtitle={t('groupEvents.noEventsHint')}
+                />
+              );
+            }
+            return (
+              <View style={[styles.recurringCarouselBleed, { width: windowWidth }]}>
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  style={{ width: windowWidth }}
+                  showsHorizontalScrollIndicator={Platform.OS === 'android'}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.recurringListHorizontal}
+                  accessibilityLabel={t('groupEvents.sectionTitle')}
+                >
+                  {upcoming.map((ev) => {
+                    const openEvent = () =>
+                      router.push({
+                        pathname: '/group/event/[id]',
+                        params: { id: ev.id, fromGroup: '1' },
+                      });
+                    const ctaLabel = ev.requiresRsvp
+                      ? t('groupEvents.rsvpNow')
+                      : t('groupEvents.viewDetailsCta');
+                    const a11yHint = ev.requiresRsvp
+                      ? t('groupEvents.rsvpNowHint')
+                      : t('home.opensEventDetail');
+                    return (
+                      <Pressable
+                        key={ev.id}
+                        onPress={openEvent}
+                        style={({ pressed }) => [
+                          styles.eventCard,
+                          { width: recurringCarouselCardWidth },
+                          pressed && { opacity: 0.92 },
+                        ]}
+                        accessibilityLabel={`${ev.title}, ${formatGroupEventDateTime(ev.startsAt)}`}
+                        accessibilityHint={a11yHint}
+                        accessibilityRole="button"
+                      >
+                        <View style={styles.eventCardContent}>
+                          <Text style={styles.eventCardTitle}>{ev.title}</Text>
+                          <Text style={styles.eventCardMeta}>
+                            {formatGroupEventDateTime(ev.startsAt)}
+                          </Text>
+                          {ev.requiresRsvp ? (
+                            <Text style={styles.eventRsvpLine}>
+                              {t('groupEvents.goingCount', {
+                                count: ev.goingCount ?? 0,
+                              })}
+                              {typeof ev.maybeCount === 'number' && ev.maybeCount > 0
+                                ? ` · ${t('groupEvents.maybeCount', { count: ev.maybeCount })}`
+                                : ''}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View
+                          style={[
+                            styles.eventCardCta,
+                            ev.requiresRsvp ? styles.eventCardCtaRsvp : styles.eventCardCtaMuted,
+                          ]}
+                          accessibilityElementsHidden
+                          importantForAccessibility="no-hide-descendants"
+                        >
+                          <Text
+                            style={
+                              ev.requiresRsvp
+                                ? styles.eventCardCtaTextRsvp
+                                : styles.eventCardCtaTextMuted
+                            }
+                          >
+                            {ctaLabel}
+                          </Text>
+                          <Ionicons
+                            name={ev.requiresRsvp ? 'calendar-outline' : 'chevron-forward'}
+                            size={18}
+                            color={ev.requiresRsvp ? colors.onSecondaryContainer : colors.primary}
+                          />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            );
+          })()}
+        </View>
+
+        {/* ── Announcements (Stitch “Latest Updates” layout) ── */}
+        <View style={styles.section}>
+          <View style={styles.latestUpdatesHeader}>
+            <Text style={styles.latestUpdatesTitle}>
+              {t('announcements.latestUpdatesSectionTitle')}
+            </Text>
+            {announcements.length > 0 ? (
+              <Pressable
+                onPress={handleSeeAllAnnouncements}
+                style={styles.addTopicButton}
+                accessibilityLabel={t('announcements.seeAll')}
+                accessibilityHint={t('announcements.seeAll')}
+              >
+                <Text style={styles.addTopicText}>{t('announcements.seeAll')}</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.secondary} />
+              </Pressable>
+            ) : null}
+          </View>
+          {latestPublished ? (
+            <View style={styles.latestUpdatesList}>
+              <LatestAnnouncementRow
+                title={latestPublished.title}
+                body={latestPublished.body}
+                createdAt={latestPublished.createdAt}
+                onPress={handleOpenLatestAnnouncementDetail}
+                meetingLink={latestPublished.meetingLink ?? undefined}
+                showMeetingLink={isMember && !!latestPublished.meetingLink?.trim()}
+              />
+            </View>
+          ) : null}
+          {!latestPublished ? (
+            <EmptyState
+              iconName="megaphone-outline"
+              title={t('announcements.noAnnouncements')}
+              subtitle={t('announcements.noAnnouncementsHint')}
+            />
+          ) : null}
+        </View>
 
         {/* ── Discussions section ── */}
         <View style={styles.section}>
@@ -673,10 +946,10 @@ export default function GroupDetailScreen() {
         onRequestClose={handleCloseJoinedSheet}
         options={[
           {
-            icon: 'notifications-outline',
-            label: t('groups.manageNotifications'),
+            icon: 'settings-outline',
+            label: t('groups.settingsTitle'),
             onPress: handleManageSettings,
-            accessibilityHint: t('groups.opensNotificationSettings'),
+            accessibilityHint: t('groups.opensGroupSettings'),
           },
           {
             icon: 'exit-outline',
@@ -695,6 +968,18 @@ export default function GroupDetailScreen() {
         onSubmit={handleSubmitCreateEvent}
         isSubmitting={createEventMutation.isPending}
         errorMessage={eventFormError}
+      />
+
+      <GroupRecurringMeetingFormSheet
+        visible={recurringSheetOpen}
+        onRequestClose={handleCloseRecurringSheet}
+        mode={recurringEdit ? 'edit' : 'create'}
+        initialMeeting={recurringEdit ?? undefined}
+        onSubmit={handleSubmitRecurring}
+        isSubmitting={createRecurringMutation.isPending || updateRecurringMutation.isPending}
+        onRequestDelete={recurringEdit ? handleRecurringDeleteRequest : undefined}
+        isDeleting={deleteRecurringMutation.isPending}
+        errorMessage={recurringFormError}
       />
     </ScrollView>
   );
@@ -841,10 +1126,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.onSecondaryContainer,
   },
-  heroMemberCount: {
+  heroMembersTapRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xxs,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    maxWidth: '100%',
   },
   heroMemberCountText: {
     fontFamily: fontFamily.sans,
@@ -879,6 +1166,14 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.sectionGap,
   },
+  leadersSection: {
+    marginBottom: spacing.sectionGap,
+  },
+  leadersEmptyInline: {
+    ...typography.bodyMd,
+    color: colors.onSurfaceVariant,
+    paddingVertical: spacing.sm,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -899,27 +1194,209 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
   },
 
-  /* ── Community / members ── */
-  memberCard: {
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: radius.card,
-    padding: spacing.lg,
+  recurringSectionWrap: {
+    backgroundColor: 'transparent',
   },
-  memberRow: {
+  recurringSacredHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    gap: spacing.md,
   },
-  memberRowRight: {
+  recurringSacredHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  recurringSacredTitle: {
+    fontFamily: fontFamily.serifBold,
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 32,
+    letterSpacing: -0.35,
+    color: colors.primary,
+  },
+  recurringSacredSubtitle: {
+    fontFamily: fontFamily.sansMedium,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+    color: colors.onSurfaceVariant,
+    marginTop: spacing.xxs,
+  },
+  recurringSacredAdd: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xxs,
+    paddingBottom: 2,
   },
-  viewAllText: {
+  recurringSacredAddLabel: {
     fontFamily: fontFamily.sansBold,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  recurringListHorizontal: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.md,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.lg,
+  },
+  recurringCarouselBleed: {
+    marginLeft: -spacing.lg,
+  },
+  recurringCard: {
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+  },
+  recurringCardLight: {
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  recurringCardDark: {
+    backgroundColor: colors.primaryContainer,
+  },
+  recurringCardInner: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm + spacing.xxs,
+  },
+  recurringCardInnerWithFooter: {
+    justifyContent: 'space-between',
+  },
+  recurringCardBodyPressable: {
+    flexGrow: 0,
+  },
+  recurringCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  recurringIconTileLight: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recurringIconTileDark: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recurringFreqBadge: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  recurringFreqBadgeLight: {
+    color: colors.onSurfaceVariant,
+  },
+  recurringFreqBadgeDark: {
+    color: colors.onPrimaryContainer,
+  },
+  recurringCardTitleLight: {
+    fontFamily: fontFamily.serifBold,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+    letterSpacing: -0.15,
+    color: colors.primary,
+    marginBottom: spacing.xxs,
+  },
+  recurringCardTitleDark: {
+    fontFamily: fontFamily.serifBold,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+    letterSpacing: -0.15,
+    color: colors.onPrimary,
+    marginBottom: spacing.xxs,
+  },
+  recurringMetaBlock: {
+    gap: spacing.xxs,
+    marginBottom: spacing.sm,
+  },
+  recurringMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  recurringMetaTextLight: {
+    fontFamily: fontFamily.sansMedium,
     fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    color: colors.onSurfaceVariant,
+    flex: 1,
+  },
+  recurringMetaTextDark: {
+    fontFamily: fontFamily.sansMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    color: colors.onPrimaryContainer,
+    flex: 1,
+  },
+  recurringPreviewLight: {
+    fontFamily: fontFamily.sans,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.xs,
+  },
+  recurringPreviewDark: {
+    fontFamily: fontFamily.sans,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.onPrimaryContainer,
+    marginBottom: spacing.xs,
+  },
+  recurringCtaLight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.button,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 32, 70, 0.05)',
+  },
+  recurringCtaDark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.button,
+    backgroundColor: colors.secondaryContainer,
+  },
+  recurringCtaTextLight: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.primary,
+  },
+  recurringCtaTextDark: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.onSecondaryContainer,
   },
 
   /* ── Discussions ── */
@@ -936,59 +1413,36 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  announcementCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radius.card,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...editorialShadow,
-  },
-  announcementCardPressable: {
-    width: '100%',
-  },
-  announcementMeetingLinkRow: {
+  /** Stitch “Latest Updates” row layout (announcements) */
+  latestUpdatesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.secondaryContainer,
-    borderRadius: radius.md,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xl,
   },
-  announcementMeetingLinkText: {
-    ...typography.bodyMd,
-    fontFamily: fontFamily.sansSemiBold,
+  latestUpdatesTitle: {
+    fontFamily: fontFamily.serifBold,
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.primary,
+    letterSpacing: -0.1,
     flex: 1,
+    marginRight: spacing.md,
   },
-  announcementCardTitle: {
-    fontFamily: fontFamily.serif,
-    fontSize: 18,
-    fontWeight: '400',
-    color: colors.primary,
-    marginBottom: spacing.xs,
-  },
-  announcementPreview: {
-    ...typography.bodyMd,
-    color: colors.onSurface,
-    lineHeight: 22,
-    marginBottom: spacing.xs,
-  },
-  announcementMeta: {
-    ...typography.caption,
-    color: colors.onSurfaceVariant,
-  },
-  eventList: {
-    gap: spacing.md,
+  latestUpdatesList: {
+    gap: spacing.xxs,
   },
   eventCard: {
+    alignSelf: 'stretch',
     backgroundColor: colors.surfaceContainerLowest,
     borderRadius: radius.card,
-    padding: spacing.lg,
+    overflow: 'hidden',
     ...editorialShadow,
+    borderCurve: 'continuous',
+  },
+  eventCardContent: {
+    flex: 1,
+    padding: spacing.lg,
   },
   eventCardTitle: {
     fontFamily: fontFamily.serif,
@@ -1007,6 +1461,35 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     fontFamily: fontFamily.sansSemiBold,
     fontWeight: '600',
+  },
+  eventCardCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderCurve: 'continuous',
+  },
+  eventCardCtaRsvp: {
+    backgroundColor: colors.secondaryContainer,
+  },
+  eventCardCtaMuted: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.recurringMeetingCardDivider,
+  },
+  eventCardCtaTextRsvp: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.onSecondaryContainer,
+  },
+  eventCardCtaTextMuted: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
   },
   loadingWrap: {
     paddingVertical: spacing.xl,
@@ -1102,3 +1585,204 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+
+function recurringFrequencyLabel(freq: GroupRecurringMeeting['recurrenceFrequency']): string {
+  switch (freq) {
+    case 'weekly':
+      return t('recurringMeetings.frequencyWeekly');
+    case 'biweekly':
+      return t('recurringMeetings.frequencyBiweekly');
+    case 'monthly_nth':
+      return t('recurringMeetings.frequencyMonthlyNth');
+    default:
+      return t('recurringMeetings.frequencyWeekly');
+  }
+}
+
+function recurringKindIcon(
+  freq: GroupRecurringMeeting['recurrenceFrequency']
+): keyof typeof Ionicons.glyphMap {
+  switch (freq) {
+    case 'weekly':
+      return 'home-outline';
+    case 'biweekly':
+      return 'repeat-outline';
+    case 'monthly_nth':
+      return 'people-outline';
+    default:
+      return 'calendar-outline';
+  }
+}
+
+/** Match Stitch schedule copy: middle dot → bullet. */
+function formatSacredScheduleLine(primaryLine: string): string {
+  return primaryLine.replace(/\s*·\s*/g, ' • ');
+}
+
+interface RecurringMeetingsListProps {
+  meetings: GroupRecurringMeeting[];
+  viewerTimeZone: string;
+  canModerateAsAdmin: boolean;
+  isMember: boolean;
+  screenWidth: number;
+  carouselCardWidth: number;
+  onEdit: (meeting: GroupRecurringMeeting) => void;
+}
+
+function RecurringMeetingsList({
+  meetings,
+  viewerTimeZone,
+  canModerateAsAdmin,
+  isMember,
+  screenWidth,
+  carouselCardWidth,
+  onEdit,
+}: RecurringMeetingsListProps) {
+  return (
+    <View style={[styles.recurringCarouselBleed, { width: screenWidth }]}>
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
+        style={{ width: screenWidth }}
+        showsHorizontalScrollIndicator={Platform.OS === 'android'}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.recurringListHorizontal}
+        accessibilityLabel={t('recurringMeetings.sectionTitle')}
+      >
+        {meetings.map((rm, index) => {
+          const { primaryLine } = formatRecurringMeetingSummary(rm, viewerTimeZone);
+          const scheduleLine = formatSacredScheduleLine(primaryLine);
+          const canEditRecurring = canModerateAsAdmin;
+          const isDark = index % 2 === 1;
+          const freqLabel = recurringFrequencyLabel(rm.recurrenceFrequency);
+          const kindIcon = recurringKindIcon(rm.recurrenceFrequency);
+          const meetingUrl = rm.meetingLink?.trim();
+          const hasLink = isMember && !!meetingUrl;
+          const metaIconColor = isDark ? colors.onPrimaryContainer : colors.onSurfaceVariant;
+          const iconTileColor = isDark ? colors.onPrimary : colors.onSecondaryContainer;
+
+          return (
+            <View
+              key={rm.id}
+              style={[
+                styles.recurringCard,
+                isDark ? styles.recurringCardDark : styles.recurringCardLight,
+                editorialShadow,
+                { width: carouselCardWidth },
+              ]}
+            >
+              <View
+                style={[
+                  styles.recurringCardInner,
+                  hasLink ? styles.recurringCardInnerWithFooter : null,
+                ]}
+              >
+                <Pressable
+                  onPress={() => {
+                    if (canEditRecurring) onEdit(rm);
+                  }}
+                  disabled={!canEditRecurring}
+                  style={({ pressed }) => [
+                    styles.recurringCardBodyPressable,
+                    canEditRecurring && pressed ? { opacity: 0.92 } : null,
+                  ]}
+                  accessibilityLabel={rm.title}
+                  accessibilityHint={
+                    canEditRecurring ? t('recurringMeetings.sheetEdit') : scheduleLine
+                  }
+                >
+                  <View style={styles.recurringCardTopRow}>
+                    <View
+                      style={isDark ? styles.recurringIconTileDark : styles.recurringIconTileLight}
+                    >
+                      <Ionicons name={kindIcon} size={22} color={iconTileColor} />
+                    </View>
+                    <Text
+                      style={[
+                        styles.recurringFreqBadge,
+                        isDark ? styles.recurringFreqBadgeDark : styles.recurringFreqBadgeLight,
+                      ]}
+                    >
+                      {freqLabel}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={isDark ? styles.recurringCardTitleDark : styles.recurringCardTitleLight}
+                  >
+                    {rm.title}
+                  </Text>
+
+                  <View style={styles.recurringMetaBlock}>
+                    <View style={styles.recurringMetaRow}>
+                      <Ionicons name="calendar-outline" size={16} color={metaIconColor} />
+                      <Text
+                        style={
+                          isDark ? styles.recurringMetaTextDark : styles.recurringMetaTextLight
+                        }
+                      >
+                        {scheduleLine}
+                      </Text>
+                    </View>
+                    {rm.location?.trim() ? (
+                      <View style={styles.recurringMetaRow}>
+                        <Ionicons name="location-outline" size={16} color={metaIconColor} />
+                        <Text
+                          style={
+                            isDark ? styles.recurringMetaTextDark : styles.recurringMetaTextLight
+                          }
+                          numberOfLines={2}
+                        >
+                          {rm.location}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {rm.description?.trim() ? (
+                    <Text
+                      style={isDark ? styles.recurringPreviewDark : styles.recurringPreviewLight}
+                      numberOfLines={1}
+                    >
+                      {rm.description}
+                    </Text>
+                  ) : null}
+                </Pressable>
+
+                {hasLink && meetingUrl ? (
+                  <Pressable
+                    onPress={() => {
+                      void WebBrowser.openBrowserAsync(meetingUrl);
+                    }}
+                    style={({ pressed }) => [
+                      isDark ? styles.recurringCtaDark : styles.recurringCtaLight,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                    accessibilityLabel={t('groupEvents.joinMeeting')}
+                    accessibilityHint={t('groupEvents.joinMeetingHint')}
+                    accessibilityRole="link"
+                  >
+                    <Text
+                      style={isDark ? styles.recurringCtaTextDark : styles.recurringCtaTextLight}
+                    >
+                      {t('groupEvents.joinMeeting')}
+                    </Text>
+                    {isDark ? (
+                      <Ionicons
+                        name="videocam-outline"
+                        size={16}
+                        color={colors.onSecondaryContainer}
+                      />
+                    ) : (
+                      <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}

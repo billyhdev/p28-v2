@@ -2,16 +2,20 @@
  * React Query hooks wrapping api.data calls. All server state flows through these hooks.
  * Keeps the facade as the boundary; hooks add caching, deduplication, and invalidation.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, isApiError } from '@/lib/api';
 import { queryKeys } from '@/lib/api/queryKeys';
 import type {
+  Announcement,
   ChatMessage,
   CreateChatMessageInput,
   CreateDiscussionPostInput,
   CreateGroupInput,
   DiscussionPost,
+  EventRsvpResponse,
+  Group,
   GroupType,
   NotificationPreferencesUpdates,
   OnboardingProfileData,
@@ -20,6 +24,7 @@ import type {
   ProfileUpdates,
   UpdateGroupInput,
 } from '@/lib/api';
+import { mergeUpcomingJoinedGroupEvents } from '@/lib/upcomingJoinedGroupEvents';
 
 /** Throws on ApiError so useQuery gets error state. Returns data otherwise. */
 async function queryFn<T>(promise: Promise<T | import('@/lib/api').ApiError>): Promise<T> {
@@ -304,6 +309,33 @@ export function useInAppUnreadNotificationCountQuery(
   });
 }
 
+export function useAppBadgeCountQuery(userId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.appBadgeCount(userId ?? ''),
+    queryFn: () => queryFn(api.data.getAppBadgeCount(userId!)) as Promise<number>,
+    enabled: !!userId && (options?.enabled ?? true),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useSetNotificationsBadgeClearedAtMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, clearedAtIso }: { userId: string; clearedAtIso: string }) =>
+      queryFn(api.data.setNotificationsBadgeClearedAt(userId, clearedAtIso)),
+    onSuccess: (_, { userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.profile(userId) });
+      qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'inAppUnreadNotificationCount' &&
+          q.queryKey[1] === userId,
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
+    },
+  });
+}
+
 export function useMarkInAppNotificationsReadMutation() {
   const qc = useQueryClient();
   return useMutation({
@@ -317,6 +349,7 @@ export function useMarkInAppNotificationsReadMutation() {
           q.queryKey[0] === 'inAppUnreadNotificationCount' &&
           q.queryKey[1] === userId,
       });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
     },
   });
 }
@@ -333,6 +366,7 @@ export function useSendFriendRequestMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(receiverId) });
     },
   });
 }
@@ -354,6 +388,7 @@ export function useCancelFriendRequestMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(receiverId) });
     },
   });
 }
@@ -377,6 +412,7 @@ export function useAcceptFriendRequestMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.friendIds(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.friendIds(receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.areFriends(senderId, receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(receiverId) });
     },
   });
 }
@@ -397,6 +433,7 @@ export function useDeclineFriendRequestMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.receivedFriendRequests(receiverId) });
       qc.invalidateQueries({ queryKey: queryKeys.sentFriendRequests(senderId) });
       qc.invalidateQueries({ queryKey: queryKeys.pendingFriendRequestCount(receiverId) });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(receiverId) });
     },
   });
 }
@@ -410,26 +447,112 @@ export function useGroupAdminsQuery(groupId: string | undefined, options?: { ena
   });
 }
 
+/** Full `group_admins` table (e.g. super-admin assign). Prefer {@link useGroupAdminsQuery} for community UI. */
+export function useGroupAdminsAllQuery(
+  groupId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.groupAdminsAll(groupId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getGroupAdminsAll(groupId!)) as Promise<import('@/lib/api').GroupAdmin[]>,
+    enabled: !!groupId && (options?.enabled ?? true),
+  });
+}
+
+/** True if user has a `group_admins` row or is platform `super_admin` (effective admin in every group). */
+export function useUserIsGroupAdminQuery(
+  groupId: string | undefined,
+  userId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.userIsGroupAdmin(groupId ?? '', userId ?? ''),
+    queryFn: () => queryFn(api.data.isUserGroupAdmin(groupId!, userId!)) as Promise<boolean>,
+    enabled: !!groupId && !!userId && (options?.enabled ?? true),
+  });
+}
+
 export function useAddGroupAdminMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ groupId, userId }: { groupId: string; userId: string }) =>
       queryFn(api.data.addGroupAdmin(groupId, userId)),
-    onSuccess: (_data, { groupId }) => {
+    onSuccess: (_data, { groupId, userId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.groupAdmins(groupId) });
+      qc.invalidateQueries({ queryKey: queryKeys.groupAdminsAll(groupId) });
+      qc.invalidateQueries({ queryKey: ['userIsGroupAdmin', groupId] });
+      qc.invalidateQueries({ queryKey: queryKeys.userIsGroupAdmin(groupId, userId) });
+    },
+  });
+}
+
+export function useRemoveGroupAdminMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, userId }: { groupId: string; userId: string }) =>
+      queryFn(api.data.removeGroupAdmin(groupId, userId)),
+    onSuccess: (_data, { groupId, userId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.groupAdmins(groupId) });
+      qc.invalidateQueries({ queryKey: queryKeys.groupAdminsAll(groupId) });
+      qc.invalidateQueries({ queryKey: ['userIsGroupAdmin', groupId] });
+      qc.invalidateQueries({ queryKey: queryKeys.userIsGroupAdmin(groupId, userId) });
     },
   });
 }
 
 export function useAnnouncementsQuery(
   groupId: string | undefined,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; discover?: boolean }
 ) {
+  const enabled = options?.enabled ?? true;
+  const discover = options?.discover === true;
   return useQuery({
-    queryKey: queryKeys.announcements(groupId ?? ''),
+    queryKey: queryKeys.announcements(groupId ?? '', discover),
     queryFn: () =>
-      queryFn(api.data.getAnnouncements(groupId!)) as Promise<import('@/lib/api').Announcement[]>,
-    enabled: !!groupId && (options?.enabled ?? true),
+      queryFn(api.data.getAnnouncements(groupId!, { discover })) as Promise<
+        import('@/lib/api').Announcement[]
+      >,
+    enabled: !!groupId && enabled,
+  });
+}
+
+/** One most recent published announcement per joined group (newest first in the list). */
+export interface HomeLatestAnnouncementRow extends Announcement {
+  groupName: string;
+}
+
+export function useLatestPublishedAnnouncementsPerJoinedGroupQuery(
+  groups: Group[] | undefined,
+  userId: string | undefined
+) {
+  const groupIds = useMemo(() => [...new Set((groups ?? []).map((g) => g.id))].sort(), [groups]);
+  const groupNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of groups ?? []) {
+      m.set(g.id, g.name);
+    }
+    return m;
+  }, [groups]);
+  const groupIdsKey = groupIds.join(',');
+
+  return useQuery({
+    queryKey: queryKeys.latestPublishedAnnouncementsPerJoinedGroup(userId ?? '', groupIdsKey),
+    queryFn: async () => {
+      const rows: HomeLatestAnnouncementRow[] = [];
+      for (const gid of groupIds) {
+        const list = (await queryFn(
+          api.data.getAnnouncements(gid, { status: 'published', limit: 1 })
+        )) as Announcement[];
+        const ann = list[0];
+        if (ann) {
+          rows.push({ ...ann, groupName: groupNameById.get(gid) ?? '' });
+        }
+      }
+      rows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return rows;
+    },
+    enabled: !!userId && groupIds.length > 0,
   });
 }
 
@@ -444,6 +567,37 @@ export function useAnnouncementQuery(
         import('@/lib/api').Announcement
       >,
     enabled: !!announcementId && (options?.enabled ?? true),
+  });
+}
+
+export function useGlobalAnnouncementsQuery(
+  userId: string | undefined,
+  options?: { enabled?: boolean; limit?: number }
+) {
+  const limit = options?.limit ?? 10;
+  return useQuery({
+    queryKey: queryKeys.globalAnnouncements(),
+    queryFn: () =>
+      queryFn(api.data.listGlobalAnnouncements({ limit })) as Promise<
+        import('@/lib/api').GlobalAnnouncement[]
+      >,
+    enabled: !!userId && (options?.enabled ?? true),
+  });
+}
+
+export function useCreateGlobalAnnouncementMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      input,
+    }: {
+      userId: string;
+      input: import('@/lib/api').CreateGlobalAnnouncementInput;
+    }) => queryFn(api.data.createGlobalAnnouncement(userId, input)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.globalAnnouncements() });
+    },
   });
 }
 
@@ -467,17 +621,54 @@ export function useCreateAnnouncementMutation() {
       return created;
     },
     onSuccess: (_data, { groupId }) => {
-      qc.invalidateQueries({ queryKey: queryKeys.announcements(groupId) });
+      qc.invalidateQueries({ queryKey: ['announcements', groupId] });
+      qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'latestPublishedAnnouncementsPerJoinedGroup',
+      });
     },
   });
 }
 
-export function useGroupEventsQuery(groupId: string | undefined, options?: { enabled?: boolean }) {
+export function useGroupEventsQuery(
+  groupId: string | undefined,
+  options?: { enabled?: boolean; discover?: boolean }
+) {
+  const enabled = options?.enabled ?? true;
+  const discover = options?.discover === true;
   return useQuery({
-    queryKey: queryKeys.groupEvents(groupId ?? ''),
+    queryKey: queryKeys.groupEvents(groupId ?? '', discover),
     queryFn: () =>
-      queryFn(api.data.getGroupEvents(groupId!)) as Promise<import('@/lib/api').GroupEvent[]>,
-    enabled: !!groupId && (options?.enabled ?? true),
+      queryFn(api.data.getGroupEvents(groupId!, { discover })) as Promise<
+        import('@/lib/api').GroupEvent[]
+      >,
+    enabled: !!groupId && enabled,
+  });
+}
+
+/** Active future events across `groups`, merged and sorted soonest first (for Home). */
+export function useUpcomingJoinedGroupEventsQuery(
+  groups: Group[] | undefined,
+  userId: string | undefined
+) {
+  const groupIds = useMemo(() => [...new Set((groups ?? []).map((g) => g.id))].sort(), [groups]);
+  const groupById = useMemo(() => {
+    const m = new Map<string, Pick<Group, 'name' | 'bannerImageUrl'>>();
+    for (const g of groups ?? []) {
+      m.set(g.id, { name: g.name, bannerImageUrl: g.bannerImageUrl });
+    }
+    return m;
+  }, [groups]);
+  const groupIdsKey = groupIds.join(',');
+
+  return useQuery({
+    queryKey: queryKeys.upcomingJoinedGroupEvents(userId ?? '', groupIdsKey),
+    queryFn: async () => {
+      const lists = await Promise.all(groupIds.map((id) => queryFn(api.data.getGroupEvents(id))));
+      return mergeUpcomingJoinedGroupEvents(groupIds, lists, groupById);
+    },
+    enabled: !!userId && groupIds.length > 0,
   });
 }
 
@@ -515,6 +706,115 @@ export function useMyEventRsvpQuery(
   });
 }
 
+/**
+ * Map of event id → the current user's RSVP for events that require RSVP (e.g. home carousel).
+ */
+export function useMyEventRsvpsMapForEventsQuery(
+  userId: string | undefined,
+  events: { id: string; requiresRsvp: boolean }[]
+) {
+  const targets = useMemo(() => events.filter((e) => e.requiresRsvp), [events]);
+  const queries = useQueries({
+    queries: targets.map((e) => ({
+      queryKey: queryKeys.myEventRsvp(e.id, userId ?? ''),
+      queryFn: () =>
+        queryFn(api.data.getMyEventRsvp(e.id, userId!)) as Promise<{
+          response: EventRsvpResponse;
+          updatedAt: string;
+        } | null>,
+      enabled: !!userId && targets.length > 0,
+    })),
+  });
+  const dataSignature = queries.map((q) => q.data?.response ?? '').join('\0');
+  return useMemo(() => {
+    const m = new Map<string, EventRsvpResponse>();
+    for (let i = 0; i < targets.length; i++) {
+      const d = queries[i]?.data;
+      if (d?.response) m.set(targets[i].id, d.response);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuild when RSVP payloads change (dataSignature); queries omitted to avoid unstable ref churn
+  }, [targets, dataSignature]);
+}
+
+export function useGroupRecurringMeetingsQuery(
+  groupId: string | undefined,
+  options?: { enabled?: boolean; discover?: boolean }
+) {
+  const enabled = options?.enabled ?? true;
+  const discover = options?.discover === true;
+  return useQuery({
+    queryKey: queryKeys.groupRecurringMeetings(groupId ?? '', discover),
+    queryFn: () =>
+      queryFn(api.data.getGroupRecurringMeetings(groupId!, { discover })) as Promise<
+        import('@/lib/api').GroupRecurringMeeting[]
+      >,
+    enabled: !!groupId && enabled,
+  });
+}
+
+export function useCreateGroupRecurringMeetingMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      groupId,
+      userId,
+      input,
+    }: {
+      groupId: string;
+      userId: string;
+      input: import('@/lib/api').CreateGroupRecurringMeetingInput;
+    }) => queryFn(api.data.createGroupRecurringMeeting(groupId, userId, input)),
+    onSuccess: (row) => {
+      qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'groupRecurringMeetings' &&
+          q.queryKey[1] === row.groupId,
+      });
+    },
+  });
+}
+
+export function useUpdateGroupRecurringMeetingMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      meetingId,
+      userId,
+      input,
+    }: {
+      meetingId: string;
+      userId: string;
+      input: import('@/lib/api').UpdateGroupRecurringMeetingInput;
+    }) => queryFn(api.data.updateGroupRecurringMeeting(meetingId, userId, input)),
+    onSuccess: (row) => {
+      qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'groupRecurringMeetings' &&
+          q.queryKey[1] === row.groupId,
+      });
+    },
+  });
+}
+
+export function useDeleteGroupRecurringMeetingMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ meetingId }: { meetingId: string; groupId: string }) =>
+      queryFn(api.data.deleteGroupRecurringMeeting(meetingId)),
+    onSuccess: (_void, { groupId }) => {
+      qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === 'groupRecurringMeetings' &&
+          q.queryKey[1] === groupId,
+      });
+    },
+  });
+}
+
 export function useCreateGroupEventMutation() {
   const qc = useQueryClient();
   return useMutation({
@@ -526,10 +826,18 @@ export function useCreateGroupEventMutation() {
       groupId: string;
       userId: string;
       input: import('@/lib/api').CreateGroupEventInput;
-    }) => queryFn(api.data.createGroupEvent(groupId, userId, input)),
+    }) => {
+      const created = await queryFn(api.data.createGroupEvent(groupId, userId, input));
+      const notifyResult = await api.data.notifyGroupEventCreated(created.id);
+      if (isApiError(notifyResult)) {
+        console.warn('[groupEvents] notifyGroupEventCreated after create', notifyResult.message);
+      }
+      return created;
+    },
     onSuccess: (event) => {
-      qc.invalidateQueries({ queryKey: queryKeys.groupEvents(event.groupId) });
+      qc.invalidateQueries({ queryKey: ['groupEvents', event.groupId] });
       qc.invalidateQueries({ queryKey: queryKeys.discussions({ groupId: event.groupId }) });
+      qc.invalidateQueries({ queryKey: ['upcomingJoinedGroupEvents'] });
     },
   });
 }
@@ -547,10 +855,11 @@ export function useUpdateGroupEventMutation() {
       input: import('@/lib/api').UpdateGroupEventInput;
     }) => queryFn(api.data.updateGroupEvent(eventId, userId, input)),
     onSuccess: (event) => {
-      qc.invalidateQueries({ queryKey: queryKeys.groupEvents(event.groupId) });
+      qc.invalidateQueries({ queryKey: ['groupEvents', event.groupId] });
       qc.invalidateQueries({ queryKey: queryKeys.groupEvent(event.id) });
       qc.invalidateQueries({ queryKey: queryKeys.discussions({ groupId: event.groupId }) });
       qc.invalidateQueries({ queryKey: queryKeys.discussion(event.discussionId) });
+      qc.invalidateQueries({ queryKey: ['upcomingJoinedGroupEvents'] });
     },
   });
 }
@@ -561,8 +870,9 @@ export function useCancelGroupEventMutation() {
     mutationFn: async ({ eventId, groupId }: { eventId: string; groupId: string }) =>
       queryFn(api.data.cancelGroupEvent(eventId)),
     onSuccess: (_void, { eventId, groupId }) => {
-      qc.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
+      qc.invalidateQueries({ queryKey: ['groupEvents', groupId] });
       qc.invalidateQueries({ queryKey: queryKeys.groupEvent(eventId) });
+      qc.invalidateQueries({ queryKey: ['upcomingJoinedGroupEvents'] });
     },
   });
 }
@@ -584,6 +894,7 @@ export function useUpsertEventRsvpMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.myEventRsvp(eventId, userId) });
       qc.invalidateQueries({ queryKey: ['groupEvents'] });
       qc.invalidateQueries({ queryKey: queryKeys.groupEvent(eventId) });
+      qc.invalidateQueries({ queryKey: ['upcomingJoinedGroupEvents'] });
     },
   });
 }
@@ -598,6 +909,7 @@ export function useRemoveEventRsvpMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.myEventRsvp(eventId, userId) });
       qc.invalidateQueries({ queryKey: ['groupEvents'] });
       qc.invalidateQueries({ queryKey: queryKeys.groupEvent(eventId) });
+      qc.invalidateQueries({ queryKey: ['upcomingJoinedGroupEvents'] });
     },
   });
 }
@@ -1188,6 +1500,7 @@ export function useMarkChatReadMutation() {
       queryFn(api.data.markChatRead(chatId, userId)) as Promise<void>,
     onSuccess: (_data, { userId }) => {
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
     },
   });
 }
@@ -1205,6 +1518,7 @@ export function useCreateChatMutation() {
     onSuccess: (chat, { userId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.chatsForUser(userId) });
       qc.invalidateQueries({ queryKey: queryKeys.chat(chat.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
     },
   });
 }
@@ -1224,6 +1538,29 @@ export function useAddChatMembersMutation() {
     onSuccess: (_, { chatId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.chat(chatId) });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'appBadgeCount' });
+    },
+  });
+}
+
+export function useRemoveChatMemberMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      chatId,
+      memberUserId,
+      removedByUserId,
+    }: {
+      chatId: string;
+      memberUserId: string;
+      removedByUserId: string;
+    }) =>
+      queryFn(api.data.removeChatMember(chatId, memberUserId, removedByUserId)) as Promise<void>,
+    onSuccess: (_, { chatId, removedByUserId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.chat(chatId) });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, removedByUserId) });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'appBadgeCount' });
     },
   });
 }
@@ -1241,6 +1578,7 @@ export function useUpdateChatMutation() {
     onSuccess: (chat) => {
       qc.invalidateQueries({ queryKey: queryKeys.chat(chat.id) });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'appBadgeCount' });
     },
   });
 }
@@ -1320,6 +1658,7 @@ export function useCreateChatMessageMutation() {
       });
       qc.invalidateQueries({ queryKey: queryKeys.chat(variables.chatId) });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'appBadgeCount' });
     },
   });
 }
@@ -1474,6 +1813,7 @@ export function useDeleteChatFolderMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.chatFolders(userId) });
       qc.invalidateQueries({ queryKey: queryKeys.chatFolderItems(folderId) });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
     },
   });
 }
@@ -1499,6 +1839,7 @@ export function useAddChatToFolderMutation() {
       qc.invalidateQueries({
         queryKey: queryKeys.chatsForUser(userId, folderId),
       });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
     },
   });
 }
@@ -1521,6 +1862,7 @@ export function useRemoveChatFromFolderMutation() {
       qc.invalidateQueries({
         queryKey: queryKeys.chatsForUser(userId, folderId),
       });
+      qc.invalidateQueries({ queryKey: queryKeys.appBadgeCount(userId) });
     },
   });
 }

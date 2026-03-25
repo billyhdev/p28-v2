@@ -244,13 +244,28 @@ function BirthDateField({
               />
             </View>
           )}
-          <DateTimePicker
-            value={pickerDate}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleChange}
-            maximumDate={new Date()}
-          />
+          {Platform.OS === 'ios' ? (
+            // Match GroupEventFormSheet: spinner wheels can render invisible in dark mode without shell + theme props.
+            <View style={styles.iosPickerShell} collapsable={false}>
+              <DateTimePicker
+                value={pickerDate}
+                mode="date"
+                display="spinner"
+                onChange={handleChange}
+                maximumDate={new Date()}
+                themeVariant="light"
+                textColor={colors.textPrimary}
+              />
+            </View>
+          ) : (
+            <DateTimePicker
+              value={pickerDate}
+              mode="date"
+              display="default"
+              onChange={handleChange}
+              maximumDate={new Date()}
+            />
+          )}
         </>
       )}
     </View>
@@ -661,9 +676,18 @@ const styles = StyleSheet.create({
 
   datePickerRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
+  },
+  iosPickerShell: {
+    marginTop: spacing.xs,
+    minHeight: 216,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerHigh,
+    overflow: 'hidden',
   },
 
   sheetOverlay: {

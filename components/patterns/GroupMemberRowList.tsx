@@ -38,11 +38,12 @@ export function GroupMemberRowList({
     <View style={styles.list}>
       {sorted.map((m) => {
         const isSelf = m.userId === currentUserId;
+        const displayLabel = (m.displayName && m.displayName.trim()) || m.userId;
         const rowContent = (
           <>
             <Avatar
               source={m.avatarUrl ? { uri: m.avatarUrl } : null}
-              fallbackText={m.displayName}
+              fallbackText={displayLabel}
               size="md"
               accessibilityLabel={
                 m.displayName
@@ -52,7 +53,7 @@ export function GroupMemberRowList({
             />
             <View style={styles.memberInfo}>
               <Text style={isSelf ? styles.memberNameMuted : styles.memberName} numberOfLines={1}>
-                {m.displayName ?? t('common.loading')}
+                {m.displayName?.trim() ? m.displayName.trim() : t('groups.groupMember')}
               </Text>
               {isSelf ? (
                 <Text style={styles.friendLabel}>{t('groups.yourself')}</Text>

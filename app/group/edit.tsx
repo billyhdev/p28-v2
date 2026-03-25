@@ -22,7 +22,7 @@ import { COUNTRIES } from '@/constants/countries';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useDeleteGroupMutation,
-  useGroupAdminsQuery,
+  useUserIsGroupAdminQuery,
   useGroupQuery,
   useIsAdminQuery,
   useUpdateGroupMutation,
@@ -42,9 +42,12 @@ export default function EditGroupScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const { session } = useAuth();
   const router = useRouter();
+  const userId = session?.user?.id;
   const { data: group, isLoading: groupLoading, isError: isGroupError } = useGroupQuery(groupId);
-  const { data: groupAdmins = [] } = useGroupAdminsQuery(groupId);
-  const { data: isAppAdmin } = useIsAdminQuery(session?.user?.id);
+  const { data: isCurrentUserGroupAdmin = false } = useUserIsGroupAdminQuery(groupId, userId, {
+    enabled: !!groupId && !!userId,
+  });
+  const { data: isAppAdmin } = useIsAdminQuery(userId);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -66,9 +69,8 @@ export default function EditGroupScreen() {
 
   const mutationError = updateMutation.error ?? deleteMutation.error ?? uploadMutation.error;
 
-  const userId = session?.user?.id;
   const isCreator = !!userId && group?.createdByUserId === userId;
-  const isGroupAdmin = !!userId && groupAdmins.some((a) => a.userId === userId);
+  const isGroupAdmin = !!userId && isCurrentUserGroupAdmin;
   const canDeleteGroup = isCreator || isGroupAdmin || isAppAdmin;
 
   const handleDeleteConfirm = () => {

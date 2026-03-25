@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/patterns/EmptyState';
 import { GroupMemberRowList } from '@/components/patterns/GroupMemberRowList';
 import { useAuth } from '@/hooks/useAuth';
 import { useFriendIdsQuery, useGroupMembersQuery, useGroupQuery } from '@/hooks/useApiQueries';
+// useGroupMembersQuery → getGroupMembers (RPC group_members_for_display; lib/groupCommunityDisplay.ts)
 import { t } from '@/lib/i18n';
 import { colors, spacing, typography } from '@/theme/tokens';
 

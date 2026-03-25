@@ -70,6 +70,17 @@ export function formatGroupEventDateTime(isoDate: string): string {
   return eventDateTimeFormatter.format(new Date(isoDate));
 }
 
+const eventListMonthFormatter = new Intl.DateTimeFormat(undefined, { month: 'short' });
+
+/** Month abbreviation + day-of-month for event list rows (e.g. Stitch “Latest Updates”). */
+export function formatGroupEventCalendarBlock(isoDate: string): { month: string; day: string } {
+  const d = new Date(isoDate);
+  return {
+    month: eventListMonthFormatter.format(d),
+    day: String(d.getDate()),
+  };
+}
+
 /** True when the event start time is on or before now (events have no separate end time in the model). */
 export function isGroupEventPast(startsAt: string): boolean {
   return new Date(startsAt).getTime() <= Date.now();

@@ -93,6 +93,48 @@ describe('Supabase data adapter', () => {
     });
   });
 
+  describe('getAppBadgeCount', () => {
+    it('returns count from rpc', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: 5, error: null });
+      const getClient = (() => ({ rpc })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.getAppBadgeCount('user-1');
+      expect(isApiError(result)).toBe(false);
+      expect(result).toBe(5);
+      expect(rpc).toHaveBeenCalledWith('get_app_badge_count', { p_user_id: 'user-1' });
+    });
+
+    it('parses string rpc result', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: '12', error: null });
+      const getClient = (() => ({ rpc })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.getAppBadgeCount('user-1');
+      expect(result).toBe(12);
+    });
+  });
+
+  describe('setNotificationsBadgeClearedAt', () => {
+    it('updates notifications_badge_cleared_at', async () => {
+      const eq = jest.fn().mockResolvedValue({ error: null });
+      const update = jest.fn().mockReturnValue({ eq });
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({ update }),
+      })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.setNotificationsBadgeClearedAt(
+        'user-1',
+        '2025-01-01T00:00:00.000Z'
+      );
+      expect(isApiError(result)).toBe(false);
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notifications_badge_cleared_at: '2025-01-01T00:00:00.000Z',
+        })
+      );
+      expect(eq).toHaveBeenCalledWith('user_id', 'user-1');
+    });
+  });
+
   describe('updateProfile', () => {
     it('returns Profile on success', async () => {
       const existingRow = {
@@ -254,6 +296,7 @@ describe('Supabase data adapter', () => {
         user_id: 'user-1',
         events_enabled: true,
         announcements_enabled: false,
+        recurring_meetings_enabled: true,
         messages_enabled: true,
         updated_at: '2024-01-01T00:00:00Z',
       };
@@ -274,6 +317,7 @@ describe('Supabase data adapter', () => {
         expect(prefs.userId).toBe('user-1');
         expect(prefs.eventsEnabled).toBe(true);
         expect(prefs.announcementsEnabled).toBe(false);
+        expect(prefs.recurringMeetingsEnabled).toBe(true);
         expect(prefs.messagesEnabled).toBe(true);
       }
     });
@@ -283,6 +327,7 @@ describe('Supabase data adapter', () => {
         user_id: 'user-new',
         events_enabled: true,
         announcements_enabled: true,
+        recurring_meetings_enabled: true,
         messages_enabled: true,
         updated_at: '2024-01-02T00:00:00Z',
       };
@@ -315,6 +360,7 @@ describe('Supabase data adapter', () => {
         expect(prefs.userId).toBe('user-new');
         expect(prefs.eventsEnabled).toBe(true);
         expect(prefs.announcementsEnabled).toBe(true);
+        expect(prefs.recurringMeetingsEnabled).toBe(true);
         expect(prefs.messagesEnabled).toBe(true);
       }
     });
@@ -379,6 +425,7 @@ describe('Supabase data adapter', () => {
         user_id: 'user-1',
         events_enabled: true,
         announcements_enabled: true,
+        recurring_meetings_enabled: true,
         messages_enabled: true,
         updated_at: '2024-01-01T00:00:00Z',
       };
@@ -386,6 +433,7 @@ describe('Supabase data adapter', () => {
         user_id: 'user-1',
         events_enabled: true,
         announcements_enabled: false,
+        recurring_meetings_enabled: true,
         messages_enabled: true,
         updated_at: '2024-01-02T00:00:00Z',
       };
@@ -422,6 +470,7 @@ describe('Supabase data adapter', () => {
         const prefs = result as NotificationPreferences;
         expect(prefs.announcementsEnabled).toBe(false);
         expect(prefs.eventsEnabled).toBe(true);
+        expect(prefs.recurringMeetingsEnabled).toBe(true);
         expect(prefs.messagesEnabled).toBe(true);
       }
     });
@@ -431,6 +480,7 @@ describe('Supabase data adapter', () => {
         user_id: 'user-1',
         events_enabled: true,
         announcements_enabled: true,
+        recurring_meetings_enabled: true,
         messages_enabled: true,
         updated_at: null,
       };
@@ -460,6 +510,74 @@ describe('Supabase data adapter', () => {
       expect(isApiError(result)).toBe(true);
       if (isApiError(result)) {
         expect((result as ApiError).message).toBe('Update failed');
+      }
+    });
+  });
+
+  describe('publishAnnouncement and notifyGroupEventCreated', () => {
+    function makeEdgeInvokeClient(options: {
+      invokeResult?: { data: unknown; error: Error | null };
+      noSession?: boolean;
+    }) {
+      const refreshSession = jest.fn().mockResolvedValue({ data: {}, error: null });
+      const getSession = jest.fn().mockResolvedValue(
+        options.noSession
+          ? { data: { session: null }, error: null }
+          : {
+              data: { session: { access_token: 'tok' } },
+              error: null,
+            }
+      );
+      const invoke = jest
+        .fn()
+        .mockResolvedValue(options.invokeResult ?? { data: { ok: true }, error: null });
+      const client = {
+        auth: { refreshSession, getSession },
+        functions: { invoke },
+      };
+      return { getClient: (() => client) as unknown as GetClient, invoke };
+    }
+
+    it('publishAnnouncement invokes send-announcement', async () => {
+      const { getClient, invoke } = makeEdgeInvokeClient({});
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.publishAnnouncement('ann-1');
+      expect(isApiError(result)).toBe(false);
+      expect(invoke).toHaveBeenCalledWith('send-announcement', {
+        body: { announcementId: 'ann-1' },
+      });
+    });
+
+    it('notifyGroupEventCreated invokes send-group-event-created', async () => {
+      const { getClient, invoke } = makeEdgeInvokeClient({});
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.notifyGroupEventCreated('evt-1');
+      expect(isApiError(result)).toBe(false);
+      expect(invoke).toHaveBeenCalledWith('send-group-event-created', {
+        body: { eventId: 'evt-1' },
+      });
+    });
+
+    it('returns REMOTE_ERROR when edge JSON body includes error string', async () => {
+      const { getClient } = makeEdgeInvokeClient({
+        invokeResult: { data: { error: 'not published' }, error: null },
+      });
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.publishAnnouncement('ann-1');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect(result.code).toBe('REMOTE_ERROR');
+        expect(result.message).toBe('not published');
+      }
+    });
+
+    it('returns UNAUTHORIZED when there is no session', async () => {
+      const { getClient } = makeEdgeInvokeClient({ noSession: true });
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.notifyGroupEventCreated('evt-1');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) {
+        expect(result.code).toBe('UNAUTHORIZED');
       }
     });
   });
@@ -883,6 +1001,71 @@ describe('Supabase data adapter', () => {
           expect(result[0].groupName).toBe('Forum 1');
         }
       });
+
+      it('excludes event shadow discussion ids for a group via discovery_group_event_discussion_ids', async () => {
+        const allRows = [
+          {
+            id: 'd-forum',
+            group_id: 'grp-1',
+            user_id: 'u1',
+            title: 'Forum topic',
+            body: 'Body',
+            created_at: '2024-01-02T10:00:00Z',
+            groups: { name: 'Forum 1' },
+            discussion_posts: [{ count: 1 }],
+          },
+          {
+            id: 'd-event-shadow',
+            group_id: 'grp-1',
+            user_id: 'u1',
+            title: 'Event title',
+            body: 'Event body',
+            created_at: '2024-01-01T10:00:00Z',
+            groups: { name: 'Forum 1' },
+            discussion_posts: [{ count: 0 }],
+          },
+        ];
+        const client = {
+          rpc: jest.fn().mockImplementation((name: string) => {
+            if (name === 'discovery_group_event_discussion_ids') {
+              return Promise.resolve({ data: ['d-event-shadow'], error: null });
+            }
+            return Promise.resolve({ data: null, error: { message: 'unknown rpc' } });
+          }),
+          from: jest.fn().mockImplementation((table: string) => {
+            if (table === 'discussions') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  order: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockResolvedValue({ data: allRows, error: null }),
+                  }),
+                }),
+              };
+            }
+            if (table === 'profiles') {
+              return {
+                select: jest.fn().mockReturnValue({
+                  eq: jest.fn().mockReturnValue({
+                    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        };
+        const getClient = (() => client) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.getDiscussions({ groupId: 'grp-1' });
+        expect(isApiError(result)).toBe(false);
+        if (!isApiError(result)) {
+          expect(result).toHaveLength(1);
+          expect(result[0].id).toBe('d-forum');
+        }
+        expect(client.rpc).toHaveBeenCalledWith('discovery_group_event_discussion_ids', {
+          p_group_id: 'grp-1',
+        });
+      });
     });
 
     describe('createDiscussion', () => {
@@ -1156,6 +1339,110 @@ describe('Supabase data adapter', () => {
         }
       });
     });
+
+    describe('removeGroupAdmin', () => {
+      it('returns void on success', async () => {
+        const eqUser = jest.fn().mockResolvedValue({ error: null });
+        const eqGroup = jest.fn().mockReturnValue({ eq: eqUser });
+        const deleteFn = jest.fn().mockReturnValue({ eq: eqGroup });
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            delete: deleteFn,
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.removeGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(false);
+        expect(eqGroup).toHaveBeenCalledWith('group_id', 'g1');
+        expect(eqUser).toHaveBeenCalledWith('user_id', 'u1');
+      });
+
+      it('returns ApiError when delete fails', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            delete: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockResolvedValue({ error: { message: 'Denied' } }),
+              }),
+            }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.removeGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(true);
+        if (isApiError(result)) {
+          expect((result as ApiError).message).toBe('Denied');
+        }
+      });
+    });
+
+    describe('isUserGroupAdmin', () => {
+      it('returns true when group_admins row exists', async () => {
+        const getClient = (() => ({
+          from: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnThis(),
+            eq: jest.fn().mockReturnThis(),
+            maybeSingle: jest.fn().mockResolvedValue({ data: { user_id: 'u1' }, error: null }),
+          }),
+        })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.isUserGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(false);
+        expect(result).toBe(true);
+      });
+
+      it('returns true for super_admin without group_admins row', async () => {
+        const from = jest.fn((table: string) => {
+          if (table === 'group_admins') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+            };
+          }
+          if (table === 'app_roles') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest
+                .fn()
+                .mockResolvedValue({ data: { role: 'super_admin' }, error: null }),
+            };
+          }
+          return {};
+        });
+        const getClient = (() => ({ from })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.isUserGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(false);
+        expect(result).toBe(true);
+      });
+
+      it('returns false when not in group_admins and not super_admin', async () => {
+        const from = jest.fn((table: string) => {
+          if (table === 'group_admins') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+            };
+          }
+          if (table === 'app_roles') {
+            return {
+              select: jest.fn().mockReturnThis(),
+              eq: jest.fn().mockReturnThis(),
+              maybeSingle: jest.fn().mockResolvedValue({ data: { role: 'admin' }, error: null }),
+            };
+          }
+          return {};
+        });
+        const getClient = (() => ({ from })) as unknown as GetClient;
+        const adapter = createSupabaseDataAdapter(getClient);
+        const result = await adapter.isUserGroupAdmin('g1', 'u1');
+        expect(isApiError(result)).toBe(false);
+        expect(result).toBe(false);
+      });
+    });
   });
 
   describe('markInAppNotificationsRead', () => {
@@ -1202,6 +1489,67 @@ describe('Supabase data adapter', () => {
         p_announcement_id: 'a1',
         p_group_event_id: null,
       });
+    });
+  });
+
+  describe('removeChatMember', () => {
+    it('returns VALIDATION_ERROR when removing self', async () => {
+      const from = jest.fn();
+      const getClient = (() => ({ from })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.removeChatMember('c1', 'u1', 'u1');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) expect(result.code).toBe('VALIDATION_ERROR');
+      expect(from).not.toHaveBeenCalled();
+    });
+
+    it('returns FORBIDDEN when caller is not chat creator', async () => {
+      const single = jest.fn().mockResolvedValue({
+        data: { created_by_user_id: 'creator' },
+        error: null,
+      });
+      const getClient = (() => ({
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({ single }),
+          }),
+        }),
+      })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.removeChatMember('c1', 'other', 'not-creator');
+      expect(isApiError(result)).toBe(true);
+      if (isApiError(result)) expect(result.code).toBe('FORBIDDEN');
+    });
+
+    it('deletes membership when caller is creator', async () => {
+      const secondEq = jest.fn().mockResolvedValue({ error: null });
+      const firstEq = jest.fn().mockReturnValue({ eq: secondEq });
+      const del = jest.fn().mockReturnValue({ eq: firstEq });
+      const single = jest.fn().mockResolvedValue({
+        data: { created_by_user_id: 'creator' },
+        error: null,
+      });
+      const getClient = (() => ({
+        from: jest.fn().mockImplementation((table: string) => {
+          if (table === 'chats') {
+            return {
+              select: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({ single }),
+              }),
+            };
+          }
+          if (table === 'chat_members') {
+            return { delete: del };
+          }
+          throw new Error(`unexpected table ${table}`);
+        }),
+      })) as unknown as GetClient;
+      const adapter = createSupabaseDataAdapter(getClient);
+      const result = await adapter.removeChatMember('c1', 'other', 'creator');
+      expect(isApiError(result)).toBe(false);
+      expect(del).toHaveBeenCalled();
+      expect(firstEq).toHaveBeenCalledWith('chat_id', 'c1');
+      expect(secondEq).toHaveBeenCalledWith('user_id', 'other');
     });
   });
 });
