@@ -82,6 +82,28 @@ export interface DataContract {
     base64Data?: string | null,
     options?: { chatId?: string }
   ): Promise<string | ApiError>;
+  /** Upload chat message file/video (or thumbnail JPEG under messages/{userId}/thumbs/). */
+  uploadChatMessageAttachment(
+    userId: string,
+    localUri: string,
+    options: {
+      contentType: string;
+      fileName: string;
+      base64Data?: string | null;
+      objectKind: 'message' | 'thumbnail';
+    }
+  ): Promise<string | ApiError>;
+  /** Upload discussion post file/video (or thumbnail under {userId}/thumbs/). */
+  uploadDiscussionPostAttachment(
+    userId: string,
+    localUri: string,
+    options: {
+      contentType: string;
+      fileName: string;
+      base64Data?: string | null;
+      objectKind: 'post' | 'thumbnail';
+    }
+  ): Promise<string | ApiError>;
 
   getNotificationPreferences(userId: string): Promise<NotificationPreferences | ApiError>;
   updateNotificationPreferences(

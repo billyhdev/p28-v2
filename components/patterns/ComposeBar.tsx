@@ -6,6 +6,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { t } from '@/lib/i18n';
 import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
+export interface PendingComposeAttachment {
+  id: string;
+  kind: 'image' | 'video' | 'file';
+  fileName?: string;
+  mimeType?: string;
+  /** Local or remote URI shown in preview */
+  displayUri: string;
+  uploadedUrl?: string;
+  uploadedThumbnailUrl?: string;
+  uploading: boolean;
+}
+
 interface ContextBanner {
   preview: string;
   onCancel: () => void;
@@ -24,11 +36,11 @@ export interface ComposeBarProps {
   placeholder?: string;
   sendLabel?: string;
 
-  attachedImageUrls: string[];
-  onRemoveImage: (url: string) => void;
-  onPickImage: () => void;
-  isUploadingImage: boolean;
-  maxImages?: number;
+  pendingAttachments: PendingComposeAttachment[];
+  onRemoveAttachment: (id: string) => void;
+  onOpenAttachmentMenu: () => void;
+  isUploadingAttachment: boolean;
+  maxAttachments?: number;
 
   editingContext?: ContextBanner | null;
   replyingToContext?: ReplyContextBanner | null;
@@ -44,17 +56,17 @@ export function ComposeBar({
   isSending,
   placeholder,
   sendLabel,
-  attachedImageUrls,
-  onRemoveImage,
-  onPickImage,
-  isUploadingImage,
-  maxImages = 5,
+  pendingAttachments,
+  onRemoveAttachment,
+  onOpenAttachmentMenu,
+  isUploadingAttachment,
+  maxAttachments = 5,
   editingContext,
   replyingToContext,
   variant = 'discussion',
 }: ComposeBarProps) {
   const isChat = variant === 'chat';
-  const atLimit = attachedImageUrls.length >= maxImages;
+  const atLimit = pendingAttachments.length >= maxAttachments;
 
   return (
     <View>
@@ -117,19 +129,81 @@ export function ComposeBar({
         </View>
       ) : null}
 
-      {attachedImageUrls.length > 0 ? (
+      {pendingAttachments.length > 0 ? (
         <View style={isChat ? chatStyles.attachedImagesRow : styles.attachedImagesRow}>
-          {attachedImageUrls.map((url) => (
-            <View key={url} style={styles.attachedImageWrap}>
-              <Image
-                source={{ uri: url }}
-                style={isChat ? chatStyles.attachedImage : styles.attachedImage}
-                contentFit="cover"
-                accessibilityLabel={t('discussions.attachImage')}
-              />
+          {pendingAttachments.map((att) => (
+            <View key={att.id} style={styles.attachedImageWrap}>
+              {att.kind === 'file' ? (
+                <View
+                  style={isChat ? chatStyles.filePreview : styles.filePreview}
+                  accessibilityLabel={att.fileName ?? t('attachments.file')}
+                >
+                  <Ionicons
+                    name="document-text-outline"
+                    size={22}
+                    color={isChat ? colors.onSurfaceVariant : colors.primary}
+                  />
+                  <Text
+                    style={isChat ? chatStyles.filePreviewName : styles.filePreviewName}
+                    numberOfLines={2}
+                  >
+                    {att.fileName ?? t('attachments.file')}
+                  </Text>
+                  {att.uploading ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.primary}
+                      style={styles.previewSpinner}
+                    />
+                  ) : null}
+                </View>
+              ) : att.kind === 'video' && !att.displayUri.trim() ? (
+                <View
+                  style={[
+                    styles.thumbWrap,
+                    isChat ? chatStyles.videoPosterPlaceholder : styles.videoPosterPlaceholder,
+                  ]}
+                >
+                  <Ionicons
+                    name="videocam-outline"
+                    size={isChat ? 26 : 28}
+                    color={isChat ? colors.onSurfaceVariant : colors.textSecondary}
+                    accessibilityLabel={t('attachments.videoPreview')}
+                  />
+                  <View style={styles.playIconOverlay}>
+                    <Ionicons name="play-circle" size={28} color={colors.onPrimary} />
+                  </View>
+                  {att.uploading ? (
+                    <View style={styles.uploadingOverlay}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                <View style={styles.thumbWrap}>
+                  <Image
+                    source={{ uri: att.displayUri }}
+                    style={isChat ? chatStyles.attachedImage : styles.attachedImage}
+                    contentFit="cover"
+                    accessibilityLabel={
+                      att.kind === 'video' ? t('attachments.videoPreview') : t('attachments.image')
+                    }
+                  />
+                  {att.kind === 'video' ? (
+                    <View style={styles.playIconOverlay}>
+                      <Ionicons name="play-circle" size={28} color={colors.onPrimary} />
+                    </View>
+                  ) : null}
+                  {att.uploading ? (
+                    <View style={styles.uploadingOverlay}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    </View>
+                  ) : null}
+                </View>
+              )}
               <Pressable
                 style={styles.removeAttachedButton}
-                onPress={() => onRemoveImage(url)}
+                onPress={() => onRemoveAttachment(att.id)}
                 accessibilityLabel={t('discussions.removeImage')}
                 accessibilityRole="button"
               >
@@ -147,20 +221,22 @@ export function ComposeBar({
       <View style={isChat ? chatStyles.inputRow : styles.inputRow}>
         <Pressable
           style={isChat ? chatStyles.attachButton : styles.attachButton}
-          onPress={onPickImage}
-          disabled={isSending || isUploadingImage || atLimit}
-          accessibilityLabel={t('discussions.attachImage')}
+          onPress={onOpenAttachmentMenu}
+          disabled={isSending || isUploadingAttachment || atLimit}
+          accessibilityLabel={t('attachments.addAttachment')}
           accessibilityHint={
-            isUploadingImage ? t('discussions.uploadingImages') : t('discussions.attachImageHint')
+            isUploadingAttachment
+              ? t('discussions.uploadingImages')
+              : t('attachments.addAttachmentHint')
           }
           accessibilityRole="button"
         >
-          {isUploadingImage ? (
+          {isUploadingAttachment ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
             <Ionicons
-              name="image-outline"
-              size={isChat ? 24 : 22}
+              name="add"
+              size={isChat ? 26 : 24}
               color={
                 atLimit
                   ? isChat
@@ -191,7 +267,7 @@ export function ComposeBar({
           <Pressable
             style={[chatStyles.sendButton, canSend && !isSending && chatStyles.sendButtonActive]}
             onPress={onSend}
-            disabled={!canSend || isSending || isUploadingImage}
+            disabled={!canSend || isSending || isUploadingAttachment}
             accessibilityLabel={sendLabel ?? t('discussions.postReply')}
           >
             <Ionicons
@@ -204,7 +280,7 @@ export function ComposeBar({
           <Pressable
             style={[styles.sendButton, (!canSend || isSending) && styles.sendButtonDisabled]}
             onPress={onSend}
-            disabled={!canSend || isSending || isUploadingImage}
+            disabled={!canSend || isSending || isUploadingAttachment}
             accessibilityLabel={sendLabel ?? t('discussions.postReply')}
             accessibilityHint={sendLabel ? `Posts your message` : 'Posts your reply'}
           >
@@ -264,11 +340,53 @@ const styles = StyleSheet.create({
   attachedImageWrap: {
     position: 'relative',
   },
+  thumbWrap: {
+    position: 'relative',
+  },
   attachedImage: {
     width: 56,
     height: 56,
     borderRadius: radius.sm,
     backgroundColor: colors.surface100,
+  },
+  videoPosterPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filePreview: {
+    width: 100,
+    minHeight: 56,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface100,
+    padding: spacing.xs,
+    flexDirection: 'column',
+    gap: spacing.xxs,
+    justifyContent: 'center',
+  },
+  filePreviewName: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  previewSpinner: {
+    marginTop: spacing.xxs,
+  },
+  playIconOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.65)',
   },
   removeAttachedButton: {
     position: 'absolute',
@@ -361,6 +479,30 @@ const chatStyles = StyleSheet.create({
     height: 52,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceContainer,
+  },
+  videoPosterPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filePreview: {
+    width: 96,
+    minHeight: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainer,
+    padding: spacing.xs,
+    flexDirection: 'column',
+    gap: spacing.xxs,
+    justifyContent: 'center',
+  },
+  filePreviewName: {
+    fontFamily: fontFamily.sans,
+    fontSize: 10,
+    lineHeight: 13,
+    color: colors.onSurface,
   },
 
   inputRow: {

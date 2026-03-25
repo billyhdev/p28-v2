@@ -49,6 +49,8 @@ export type {
   InAppNotification,
   InAppNotificationKind,
   MarkInAppNotificationsReadInput,
+  MessageAttachment,
+  MessageAttachmentKind,
   Profile,
   ProfileUpdates,
   UpdateChatInput,

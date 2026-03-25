@@ -1,7 +1,7 @@
 /**
  * Shared types for message/post display. DiscussionPost and ChatMessage both satisfy this.
  */
-import type { PostReactionCounts, PostReactionType } from '@/lib/api';
+import type { MessageAttachment, PostReactionCounts, PostReactionType } from '@/lib/api';
 
 /** Client-only lifecycle for optimistic outbound messages (cache-only rows). */
 export type OutboundMessageStatus = 'sending' | 'failed';
@@ -10,6 +10,7 @@ export type OutboundMessageStatus = 'sending' | 'failed';
 export interface OutboundRetryPayload {
   body: string;
   imageUrls?: string[];
+  attachments?: MessageAttachment[];
   parentPostId?: string;
   parentMessageId?: string;
 }
@@ -23,6 +24,7 @@ export interface MessageLike {
   authorDisplayName?: string;
   authorAvatarUrl?: string;
   imageUrls?: string[];
+  attachments?: MessageAttachment[];
   reactionCounts?: PostReactionCounts;
   userReactionTypes?: PostReactionType[];
   outboundStatus?: OutboundMessageStatus;

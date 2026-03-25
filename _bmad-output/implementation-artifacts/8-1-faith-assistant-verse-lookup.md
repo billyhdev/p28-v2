@@ -1,6 +1,6 @@
 # Story 8.1: Faith Assistant entry point and verse lookup by address
 
-Status: ready-for-dev
+Status: backlog
 
 <!-- Ultimate context engine analysis completed - comprehensive developer guide created -->
 

@@ -2,6 +2,7 @@ import {
   formatGroupEventCalendarBlock,
   isGroupEventDiscussionReadOnly,
   isGroupEventPast,
+  messageLocalMinuteKey,
 } from '@/lib/dates';
 
 describe('isGroupEventDiscussionReadOnly', () => {
@@ -34,6 +35,20 @@ describe('formatGroupEventCalendarBlock', () => {
     const { month, day } = formatGroupEventCalendarBlock('2025-10-24T15:00:00.000Z');
     expect(day).toMatch(/^\d{1,2}$/);
     expect(month.length).toBeGreaterThan(0);
+  });
+});
+
+describe('messageLocalMinuteKey', () => {
+  it('matches for two instants in the same local minute', () => {
+    const a = '2024-06-15T14:30:10.000Z';
+    const b = '2024-06-15T14:30:59.000Z';
+    expect(messageLocalMinuteKey(a)).toBe(messageLocalMinuteKey(b));
+  });
+
+  it('differs across minute boundaries', () => {
+    const a = '2024-06-15T14:30:59.000Z';
+    const b = '2024-06-15T14:31:00.000Z';
+    expect(messageLocalMinuteKey(a)).not.toBe(messageLocalMinuteKey(b));
   });
 });
 

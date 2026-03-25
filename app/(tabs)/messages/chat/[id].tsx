@@ -1,4 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,10 +24,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/primitives';
-import { FriendPickerSheet, MessageRow } from '@/components/messages';
-import { ComposeBar } from '@/components/patterns/ComposeBar';
-import { FadeActionSheet } from '@/components/patterns/FadeActionSheet';
-import { ReactionSheet } from '@/components/patterns/ReactionSheet';
+import {
+  FileAttachmentModal,
+  FriendPickerSheet,
+  MessageRow,
+  VideoAttachmentModal,
+} from '@/components/messages';
+import { ComposeBar, type PendingComposeAttachment } from '@/components/patterns/ComposeBar';
+import { FadeActionSheet, FADE_SHEET_PICKER_DEFER_MS } from '@/components/patterns/FadeActionSheet';
+import {
+  ReactionSheet,
+  type ReactionSheetPrimaryAction,
+} from '@/components/patterns/ReactionSheet';
 import { useAuth } from '@/hooks/useAuth';
 import { useIosKeyboardAvoidingParentOffset } from '@/hooks/useIosKeyboardAvoidingParentOffset';
 import {
@@ -40,11 +49,25 @@ import {
   useRemoveChatMessageReactionMutation,
   useUpdateChatMessageMutation,
   useUploadChatImageMutation,
+  useUploadChatMessageAttachmentMutation,
 } from '@/hooks/useApiQueries';
 import { api, getUserFacingError } from '@/lib/api';
+import { enqueueDocumentPick } from '@/lib/documentPickerLock';
+import {
+  DOCUMENT_PICKER_MIME_WHITELIST,
+  newComposeAttachmentId,
+  pendingToMessageAttachments,
+  storedMessageToPendingAttachments,
+} from '@/lib/composeAttachments';
+import { tryGetVideoPosterUri } from '@/lib/videoPoster';
+import {
+  isAllowedMessageAttachmentMimeType,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  normalizeMimeTypeForAllowlist,
+} from '@/lib/api/messageAttachments';
 import { queryKeys } from '@/lib/api/queryKeys';
 import type { ChatMessage, CreateChatMessageInput, PostReactionType } from '@/lib/api';
-import { formatDateHeader, isSameDay } from '@/lib/dates';
+import { formatDateHeader, isSameDay, messageLocalMinuteKey } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 
 import { colors, fontFamily, spacing, typography } from '@/theme/tokens';
@@ -58,18 +81,26 @@ export default function ChatDetailScreen() {
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
+  const messagesScrollFingerprintRef = useRef<string | null>(null);
 
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const { iosKeyboardVerticalOffset, parentContainerProps } = useIosKeyboardAvoidingParentOffset();
   const [composeText, setComposeText] = useState('');
-  const [attachedImageUrls, setAttachedImageUrls] = useState<string[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingComposeAttachment[]>([]);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<{
+    url: string;
+    fileName: string;
+    mimeType?: string;
+  } | null>(null);
   const [reactionMessage, setReactionMessage] = useState<ChatMessage | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [addFriendsVisible, setAddFriendsVisible] = useState(false);
   const [chatMenuVisible, setChatMenuVisible] = useState(false);
+  const [attachmentMenuVisible, setAttachmentMenuVisible] = useState(false);
 
   const { data: chat, isLoading, isError, error, refetch } = useChatQuery(id);
   const { data: messages = [], refetch: refetchMessages } = useChatMessagesQuery(id, {
@@ -86,9 +117,20 @@ export default function ChatDetailScreen() {
   const updateMessageMutation = useUpdateChatMessageMutation();
   const createChatMutation = useCreateChatMutation();
   const uploadImageMutation = useUploadChatImageMutation();
+  const uploadChatAttachmentMutation = useUploadChatMessageAttachmentMutation();
   const reactMutation = useReactToChatMessageMutation();
   const removeReactionMutation = useRemoveChatMessageReactionMutation();
   const markReadMutation = useMarkChatReadMutation();
+
+  const onChatMessagesContentSizeChange = useCallback(() => {
+    const msgs = messages;
+    if (msgs.length === 0) return;
+    const last = msgs[msgs.length - 1];
+    const fp = `${msgs.length}:${last.id}`;
+    if (fp === messagesScrollFingerprintRef.current) return;
+    messagesScrollFingerprintRef.current = fp;
+    scrollViewRef.current?.scrollToEnd({ animated: false });
+  }, [messages]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -212,7 +254,18 @@ export default function ChatDetailScreen() {
     [userId, id, memberUserIds, createChatMutation, router]
   );
 
-  const canPost = composeText.trim().length > 0 || attachedImageUrls.length > 0;
+  const MAX_ATTACHMENTS = 5;
+  const isUploadingAttachment =
+    uploadImageMutation.isPending || uploadChatAttachmentMutation.isPending;
+
+  const allPendingReady =
+    pendingAttachments.length === 0 ||
+    pendingAttachments.every((a) => !a.uploading && !!a.uploadedUrl);
+
+  const canPost =
+    !isUploadingAttachment &&
+    allPendingReady &&
+    (composeText.trim().length > 0 || pendingAttachments.length > 0);
 
   const handlePost = useCallback(() => {
     if (!userId || !id || !canPost) return;
@@ -225,25 +278,28 @@ export default function ChatDetailScreen() {
           userId,
           input: {
             body,
-            imageUrls: attachedImageUrls.length > 0 ? attachedImageUrls : undefined,
+            attachments: pendingToMessageAttachments(pendingAttachments),
           },
         },
         {
           onSuccess: () => {
             setComposeText('');
-            setAttachedImageUrls([]);
+            setPendingAttachments([]);
             setEditingMessage(null);
           },
         }
       );
     } else {
-      const input = {
+      const input: CreateChatMessageInput = {
         body,
-        imageUrls: attachedImageUrls.length > 0 ? attachedImageUrls : undefined,
+        attachments:
+          pendingAttachments.length > 0
+            ? pendingToMessageAttachments(pendingAttachments)
+            : undefined,
         parentMessageId: replyingTo?.id,
       };
       setComposeText('');
-      setAttachedImageUrls([]);
+      setPendingAttachments([]);
       setReplyingTo(null);
       createMessageMutation.mutate({
         chatId: id,
@@ -256,7 +312,7 @@ export default function ChatDetailScreen() {
     id,
     canPost,
     composeText,
-    attachedImageUrls,
+    pendingAttachments,
     replyingTo,
     editingMessage,
     createMessageMutation,
@@ -275,6 +331,7 @@ export default function ChatDetailScreen() {
         input: {
           body: payload.body,
           imageUrls: payload.imageUrls,
+          attachments: payload.attachments,
           parentMessageId: payload.parentMessageId,
         },
         optimisticId: msg.id,
@@ -283,10 +340,13 @@ export default function ChatDetailScreen() {
     [userId, id, createMessageMutation]
   );
 
-  const pickImage = useCallback(async () => {
+  const pickPhotos = useCallback(async () => {
     if (!userId) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
+    if (status !== 'granted') {
+      Alert.alert(t('common.error'), t('profile.photoPermissionRequired'));
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
@@ -294,26 +354,186 @@ export default function ChatDetailScreen() {
       base64: true,
     });
     if (result.canceled || !result.assets.length) return;
-    const maxImages = 5;
-    const toUpload = result.assets.slice(0, maxImages - attachedImageUrls.length);
+    const slotsLeft = MAX_ATTACHMENTS - pendingAttachments.length;
+    const toUpload = result.assets.slice(0, Math.max(0, slotsLeft));
     for (const asset of toUpload) {
       if (!asset.uri) continue;
+      const attId = newComposeAttachmentId();
+      setPendingAttachments((prev) => [
+        ...prev,
+        {
+          id: attId,
+          kind: 'image',
+          displayUri: asset.uri,
+          uploading: true,
+        },
+      ]);
       try {
         const url = await uploadImageMutation.mutateAsync({
           userId,
           imageUri: asset.uri,
           base64Data: asset.base64 ?? undefined,
         });
-        setAttachedImageUrls((prev) => (prev.length < maxImages ? [...prev, url] : prev));
+        setPendingAttachments((prev) =>
+          prev.map((p) => (p.id === attId ? { ...p, uploadedUrl: url, uploading: false } : p))
+        );
       } catch {
-        // skip failed
+        setPendingAttachments((prev) => prev.filter((p) => p.id !== attId));
       }
     }
-  }, [userId, attachedImageUrls.length, uploadImageMutation]);
+  }, [userId, pendingAttachments.length, uploadImageMutation]);
 
-  const removeAttachedImage = useCallback((url: string) => {
-    setAttachedImageUrls((prev) => prev.filter((u) => u !== url));
+  const pickVideo = useCallback(async () => {
+    if (!userId) return;
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('common.error'), t('profile.photoPermissionRequired'));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      allowsMultipleSelection: false,
+      videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return;
+    const asset = result.assets[0];
+    const attachmentId = newComposeAttachmentId();
+    const posterUri = await tryGetVideoPosterUri(asset.uri);
+    const fileName = asset.fileName ?? `video-${Date.now()}.mp4`;
+    const mime = asset.mimeType ?? 'video/mp4';
+    setPendingAttachments((prev) => [
+      ...prev,
+      {
+        id: attachmentId,
+        kind: 'video',
+        displayUri: posterUri ?? '',
+        fileName,
+        mimeType: mime,
+        uploading: true,
+      },
+    ]);
+    try {
+      const videoUrl = await uploadChatAttachmentMutation.mutateAsync({
+        userId,
+        localUri: asset.uri,
+        contentType: normalizeMimeTypeForAllowlist(mime),
+        fileName,
+        objectKind: 'message',
+      });
+      let uploadedThumbnailUrl: string | undefined;
+      if (posterUri) {
+        uploadedThumbnailUrl = await uploadChatAttachmentMutation.mutateAsync({
+          userId,
+          localUri: posterUri,
+          contentType: 'image/jpeg',
+          fileName: 'thumb.jpg',
+          objectKind: 'thumbnail',
+        });
+      }
+      setPendingAttachments((prev) =>
+        prev.map((p) =>
+          p.id === attachmentId
+            ? {
+                ...p,
+                uploadedUrl: videoUrl,
+                uploadedThumbnailUrl,
+                uploading: false,
+              }
+            : p
+        )
+      );
+    } catch {
+      setPendingAttachments((prev) => prev.filter((p) => p.id !== attachmentId));
+    }
+  }, [userId, pendingAttachments.length, uploadChatAttachmentMutation]);
+
+  const pickDocument = useCallback(async () => {
+    if (!userId) return;
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) return;
+    let result: Awaited<ReturnType<typeof DocumentPicker.getDocumentAsync>>;
+    try {
+      result = await enqueueDocumentPick(() =>
+        DocumentPicker.getDocumentAsync({
+          type: DOCUMENT_PICKER_MIME_WHITELIST,
+          multiple: false,
+          copyToCacheDirectory: true,
+        })
+      );
+    } catch (e) {
+      Alert.alert(t('common.error'), e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (result.canceled || !result.assets?.[0]) return;
+    const doc = result.assets[0];
+    const mime = normalizeMimeTypeForAllowlist(doc.mimeType ?? 'application/octet-stream');
+    if (!isAllowedMessageAttachmentMimeType(mime)) {
+      Alert.alert(t('common.error'), t('attachments.unsupportedFileType'));
+      return;
+    }
+    if (doc.size != null && doc.size > MAX_MESSAGE_ATTACHMENT_BYTES) {
+      Alert.alert(t('common.error'), t('attachments.fileTooLarge'));
+      return;
+    }
+    const attachmentId = newComposeAttachmentId();
+    const name = doc.name || 'file';
+    setPendingAttachments((prev) => [
+      ...prev,
+      {
+        id: attachmentId,
+        kind: 'file',
+        fileName: name,
+        mimeType: mime,
+        displayUri: doc.uri,
+        uploading: true,
+      },
+    ]);
+    try {
+      const url = await uploadChatAttachmentMutation.mutateAsync({
+        userId,
+        localUri: doc.uri,
+        contentType: mime,
+        fileName: name,
+        objectKind: 'message',
+      });
+      setPendingAttachments((prev) =>
+        prev.map((p) => (p.id === attachmentId ? { ...p, uploadedUrl: url, uploading: false } : p))
+      );
+    } catch {
+      setPendingAttachments((prev) => prev.filter((p) => p.id !== attachmentId));
+    }
+  }, [userId, pendingAttachments.length, uploadChatAttachmentMutation]);
+
+  const removePendingAttachment = useCallback((attachmentId: string) => {
+    setPendingAttachments((prev) => prev.filter((p) => p.id !== attachmentId));
   }, []);
+
+  const attachmentMenuOptions = useMemo(
+    () => [
+      {
+        icon: 'image-outline' as const,
+        label: t('attachments.photo'),
+        onPress: () => {
+          void pickPhotos();
+        },
+      },
+      {
+        icon: 'videocam-outline' as const,
+        label: t('attachments.video'),
+        onPress: () => {
+          void pickVideo();
+        },
+      },
+      {
+        icon: 'document-outline' as const,
+        label: t('attachments.file'),
+        onPress: () => {
+          void pickDocument();
+        },
+      },
+    ],
+    [pickPhotos, pickVideo, pickDocument]
+  );
 
   const handleDownloadImage = useCallback(async () => {
     if (!previewImageUrl || isDownloading) return;
@@ -373,14 +593,50 @@ export default function ChatDetailScreen() {
     setReplyingTo(null);
     setEditingMessage(msg);
     setComposeText(msg.body ?? '');
-    setAttachedImageUrls(msg.imageUrls ?? []);
+    setPendingAttachments(storedMessageToPendingAttachments(msg));
   }, []);
 
   const handleCancelEdit = useCallback(() => {
     setEditingMessage(null);
     setComposeText('');
-    setAttachedImageUrls([]);
+    setPendingAttachments([]);
   }, []);
+
+  const reactionSheetPrimaryActions = useMemo((): ReactionSheetPrimaryAction[] => {
+    const msg = reactionMessage;
+    if (!msg || !userId) return [];
+    const outbound = (msg as ChatMessage & { outboundStatus?: 'sending' | 'failed' })
+      .outboundStatus;
+    if (outbound) return [];
+    const actions: ReactionSheetPrimaryAction[] = [
+      {
+        key: 'reply',
+        label: t('discussions.sheetReply'),
+        icon: 'arrow-undo-outline',
+        accessibilityLabel: t('discussions.sheetReply'),
+        accessibilityHint: t('discussions.sheetReplyHint'),
+        onPress: () => {
+          setReactionMessage(null);
+          setEditingMessage(null);
+          setReplyingTo(msg);
+        },
+      },
+    ];
+    if (msg.userId === userId) {
+      actions.push({
+        key: 'edit',
+        label: t('discussions.sheetEdit'),
+        icon: 'pencil-outline',
+        accessibilityLabel: t('discussions.sheetEdit'),
+        accessibilityHint: t('discussions.sheetEditHint'),
+        onPress: () => {
+          setReactionMessage(null);
+          handleStartEdit(msg);
+        },
+      });
+    }
+    return actions;
+  }, [reactionMessage, userId, handleStartEdit]);
 
   if (!id) {
     router.back();
@@ -473,7 +729,7 @@ export default function ChatDetailScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={onChatMessagesContentSizeChange}
         >
           {messages.map((msg, idx) => {
             const prevMsg = idx > 0 ? messages[idx - 1] : null;
@@ -487,6 +743,13 @@ export default function ChatDetailScreen() {
             const outboundStatus = (msg as ChatMessage & { outboundStatus?: 'sending' | 'failed' })
               .outboundStatus;
             const canReactToMessage = !!userId && !outboundStatus;
+            const showSentClockTime =
+              !nextMsg ||
+              messageLocalMinuteKey(nextMsg.createdAt) !== messageLocalMinuteKey(msg.createdAt);
+            const prevIsOwn = !!prevMsg && !!userId && prevMsg.userId === userId;
+            const thisIsOwn = !!userId && msg.userId === userId;
+            const extraGapAfterPeerChange =
+              !!prevMsg && !!userId && !showDateSeparator && prevIsOwn !== thisIsOwn;
 
             return (
               <View key={msg.id}>
@@ -507,17 +770,15 @@ export default function ChatDetailScreen() {
                   isFirstInGroup={isFirstInGroup}
                   isLastInGroup={isLastInGroup}
                   onImagePress={(url) => setPreviewImageUrl(url)}
+                  onVideoPress={(att) => setPreviewVideoUrl(att.url)}
+                  onFilePress={(att) =>
+                    setPreviewFile({
+                      url: att.url,
+                      fileName: att.fileName ?? t('attachments.file'),
+                      mimeType: att.mimeType,
+                    })
+                  }
                   onLongPress={() => setReactionMessage(msg)}
-                  onSwipeRight={
-                    canReactToMessage
-                      ? () => (setEditingMessage(null), setReplyingTo(msg))
-                      : undefined
-                  }
-                  onSwipeLeft={
-                    userId && msg.userId === userId && !outboundStatus
-                      ? () => handleStartEdit(msg)
-                      : undefined
-                  }
                   onAddReaction={(reactionType) =>
                     reactMutation.mutate({
                       messageId: msg.id,
@@ -540,6 +801,8 @@ export default function ChatDetailScreen() {
                   onRetrySend={
                     outboundStatus === 'failed' ? () => handleRetryOutboundMessage(msg) : undefined
                   }
+                  showSentClockTime={showSentClockTime}
+                  extraGapAfterPeerChange={extraGapAfterPeerChange}
                 />
               </View>
             );
@@ -558,12 +821,15 @@ export default function ChatDetailScreen() {
             onChangeText={setComposeText}
             onSend={handlePost}
             canSend={canPost}
-            isSending={!!editingMessage && updateMessageMutation.isPending}
+            isSending={
+              editingMessage ? updateMessageMutation.isPending : createMessageMutation.isPending
+            }
             sendLabel={editingMessage ? t('discussions.updateReply') : t('discussions.postReply')}
-            attachedImageUrls={attachedImageUrls}
-            onRemoveImage={removeAttachedImage}
-            onPickImage={pickImage}
-            isUploadingImage={uploadImageMutation.isPending}
+            pendingAttachments={pendingAttachments}
+            onRemoveAttachment={removePendingAttachment}
+            onOpenAttachmentMenu={() => setAttachmentMenuVisible(true)}
+            isUploadingAttachment={isUploadingAttachment}
+            maxAttachments={MAX_ATTACHMENTS}
             editingContext={
               editingMessage
                 ? { preview: editingMessage.body ?? '', onCancel: handleCancelEdit }
@@ -598,6 +864,13 @@ export default function ChatDetailScreen() {
         options={chatMenuOptions}
       />
 
+      <FadeActionSheet
+        visible={attachmentMenuVisible}
+        onRequestClose={() => setAttachmentMenuVisible(false)}
+        options={attachmentMenuOptions}
+        deferOptionPressMs={FADE_SHEET_PICKER_DEFER_MS}
+      />
+
       <ReactionSheet
         visible={!!reactionMessage}
         onClose={() => setReactionMessage(null)}
@@ -605,9 +878,16 @@ export default function ChatDetailScreen() {
         reactionDetails={reactionDetails}
         selectedReactionTypes={reactionMessage?.userReactionTypes ?? []}
         currentUserId={userId}
+        canReact={
+          !!reactionMessage &&
+          !!userId &&
+          !(reactionMessage as ChatMessage & { outboundStatus?: 'sending' | 'failed' })
+            .outboundStatus
+        }
         isMutating={reactMutation.isPending || removeReactionMutation.isPending}
         onAddReaction={handleReact}
         onRemoveReaction={handleRemoveReaction}
+        primaryActions={reactionSheetPrimaryActions}
       />
 
       {/* Image preview modal */}
@@ -656,6 +936,20 @@ export default function ChatDetailScreen() {
           ) : null}
         </Pressable>
       </Modal>
+
+      <VideoAttachmentModal
+        visible={!!previewVideoUrl}
+        videoUrl={previewVideoUrl}
+        onRequestClose={() => setPreviewVideoUrl(null)}
+      />
+
+      <FileAttachmentModal
+        visible={!!previewFile}
+        fileUrl={previewFile?.url ?? null}
+        fileName={previewFile?.fileName ?? ''}
+        mimeType={previewFile?.mimeType}
+        onRequestClose={() => setPreviewFile(null)}
+      />
     </View>
   );
 }

@@ -1160,6 +1160,7 @@ export function useCreateDiscussionPostMutation() {
         createdAt: new Date().toISOString(),
         parentPostId: input.parentPostId,
         imageUrls: input.imageUrls,
+        attachments: input.attachments,
         authorDisplayName: profile?.displayName,
         authorAvatarUrl: profile?.avatarUrl,
         outboundStatus: 'sending',
@@ -1622,6 +1623,7 @@ export function useCreateChatMessageMutation() {
         createdAt: new Date().toISOString(),
         parentMessageId: input.parentMessageId,
         imageUrls: input.imageUrls,
+        attachments: input.attachments,
         authorDisplayName: profile?.displayName,
         authorAvatarUrl: profile?.avatarUrl,
         outboundStatus: 'sending',
@@ -1907,6 +1909,48 @@ export function useUploadChatImageMutation() {
     }) =>
       queryFn(
         api.data.uploadChatImage(userId, imageUri, base64Data, chatId ? { chatId } : undefined)
+      ) as Promise<string>,
+  });
+}
+
+export function useUploadChatMessageAttachmentMutation() {
+  return useMutation({
+    mutationFn: async (params: {
+      userId: string;
+      localUri: string;
+      contentType: string;
+      fileName: string;
+      base64Data?: string | null;
+      objectKind: 'message' | 'thumbnail';
+    }) =>
+      queryFn(
+        api.data.uploadChatMessageAttachment(params.userId, params.localUri, {
+          contentType: params.contentType,
+          fileName: params.fileName,
+          base64Data: params.base64Data,
+          objectKind: params.objectKind,
+        })
+      ) as Promise<string>,
+  });
+}
+
+export function useUploadDiscussionPostAttachmentMutation() {
+  return useMutation({
+    mutationFn: async (params: {
+      userId: string;
+      localUri: string;
+      contentType: string;
+      fileName: string;
+      base64Data?: string | null;
+      objectKind: 'post' | 'thumbnail';
+    }) =>
+      queryFn(
+        api.data.uploadDiscussionPostAttachment(params.userId, params.localUri, {
+          contentType: params.contentType,
+          fileName: params.fileName,
+          base64Data: params.base64Data,
+          objectKind: params.objectKind,
+        })
       ) as Promise<string>,
   });
 }

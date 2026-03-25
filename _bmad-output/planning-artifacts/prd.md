@@ -15,6 +15,8 @@ classification:
   projectContext: greenfield
 ---
 
+> **As-built (2026-03-24):** The codebase reflects forums/ministries and group-scoped features (not a multi-level org/ministry admin tree). **Not in scope:** Home message preview strip, dedicated message-preview list story. For current behavior see `docs/as-built-snapshot.md` and `_bmad-output/planning-artifacts/as-built-delta-2026-03-24.md`.
+
 # Product Requirements Document - p28-v2
 
 **Author:** Billy  

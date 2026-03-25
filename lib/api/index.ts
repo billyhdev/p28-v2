@@ -76,4 +76,6 @@ export type {
   InAppNotification,
   InAppNotificationKind,
   MarkInAppNotificationsReadInput,
+  MessageAttachment,
+  MessageAttachmentKind,
 } from './contracts';

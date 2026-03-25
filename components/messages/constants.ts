@@ -11,6 +11,3 @@ export const REACTION_EMOJI: Record<PostReactionType, string> = {
   laugh: '😂',
   thumbs_up: '👍',
 };
-
-export const SWIPE_THRESHOLD = 60;
-export const SWIPE_MAX = 72;

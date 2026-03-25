@@ -6,6 +6,8 @@ inputDocuments:
   - _bmad-output/planning-artifacts/prd-validation-report.md
 ---
 
+> **As-built (2026-03-24):** Visual direction in the live app follows tokenized “Calm & Glass” / spacious layouts as implemented; this spec remains the historical UX baseline. See `docs/as-built-snapshot.md`.
+
 # UX Design Specification p28-v2
 
 **Author:** Billy

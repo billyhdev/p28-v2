@@ -1,8 +1,8 @@
 ---
 project_name: 'p28-v2'
 user_name: 'Billy'
-date: '2026-03-04'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality_rules', 'workflow_rules', 'critical_rules']
+date: '2026-03-24'
+sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality_rules', 'workflow_rules', 'critical_rules', 'attachments_messaging']
 status: 'complete'
 ---
 
@@ -20,7 +20,8 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - `@supabase/supabase-js` ^2.95.3 — **adapter layer only** (never import directly in `app/`, `components/`, `hooks/`, `contexts/`)
 - `@tanstack/react-query` — server state caching; use hooks from `hooks/useApiQueries` (never call `api.data.*` directly in screens)
 - `react-native-reanimated` ~4.1.1 — available for animations
-- `expo-image` ^55.0.5 — use instead of React Native's `<Image>`
+- `expo-image` 55.0.5 — use instead of React Native's `<Image>`
+- `expo-image-picker`, `expo-document-picker`, `expo-file-system`, `expo-video` / `expo-video-thumbnails` — used for message and discussion **attachments** (pick, upload, preview)
 - `@expo/vector-icons` ^15.0.3 — available for icons
 - Jest ^29.7.0 + ts-jest ^29.2.5 for testing
 - ESLint ^9.39.2 + Prettier ^3.8.1 — run `npm run lint` and `npm run format` before done
@@ -50,6 +51,13 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Every interactive element needs `accessibilityLabel`; add `accessibilityHint` when intent isn't obvious
 - Minimum touch target: `minTouchTarget` (44px) from tokens
 - Before building any new UI component or screen, read the relevant section of `design.json` to match the design language — do not invent visual styles from scratch
+
+### Message and discussion attachments
+
+- **DTOs and merging:** Use `lib/api/messageAttachments.ts` for normalizing DB `attachments` JSON vs legacy `image_urls`, and for payloads when creating messages/posts.
+- **Compose UI:** `components/patterns/ComposeBar.tsx` and `lib/composeAttachments.ts` handle pending picks, size/type checks, and upload flow; chat screen `app/(tabs)/messages/chat/[id].tsx` and discussion screens wire them to `api.data` via existing React Query mutations.
+- **Storage:** Buckets and RLS live in Supabase migrations (e.g. `00063_chat_discussion_attachments_and_storage.sql`); new attachment types or limits require **new migration** + contract updates — do not bypass RLS with client-only URLs.
+- **Tests:** Extend `lib/api/__tests__/messageAttachments.test.ts` when changing attachment merge or mapping rules.
 
 ## Testing Rules
 
@@ -129,4 +137,4 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Update when technology stack or patterns change
 - Review periodically to remove rules that become obvious over time
 
-_Last Updated: 2026-03-06_
+_Last Updated: 2026-03-24 — see also `docs/as-built-snapshot.md`._

@@ -1,6 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isAllowedRecurringMeetingTimeZone } from '@/lib/ianaTimeZones';
+import {
+  attachmentsForApiRow,
+  deriveImageUrlsForDb,
+  deriveLegacyImageUrls,
+  isAllowedMessageAttachmentMimeType,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  mergeAttachmentsForCreate,
+  normalizeMimeTypeForAllowlist,
+  parseClientAttachments,
+} from '@/lib/api/messageAttachments';
 import { parseMeetingLinkInput } from '@/lib/meetingLink';
 import type { DataContract } from '../../contracts';
 import type { ApiError } from '../../contracts/errors';
@@ -153,6 +163,104 @@ async function readImageFile(imageUri: string): Promise<ImageUploadBody> {
   const blob = await response.blob();
   const type = blob.type || contentType;
   return { body: blob, contentType: type };
+}
+
+async function getUriSizeBytes(uri: string): Promise<number | undefined> {
+  try {
+    const LegacyFS = require('expo-file-system/legacy') as {
+      getInfoAsync?: (path: string) => Promise<{ exists: boolean; size?: number }>;
+    };
+    if (LegacyFS?.getInfoAsync) {
+      const info = await LegacyFS.getInfoAsync(uri);
+      if (info.exists && typeof info.size === 'number') return info.size;
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+function sanitizeStorageFileSegment(name: string): string {
+  const base = name.split(/[/\\]/).pop() ?? 'file';
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]+/g, '_').trim();
+  return (cleaned.length > 0 ? cleaned : 'file').slice(0, 120);
+}
+
+/**
+ * Read arbitrary binary upload (image / video / document). Validates MIME allowlist and 50MB cap.
+ */
+async function readBinaryFile(
+  uri: string,
+  contentType: string,
+  base64Data?: string | null
+): Promise<ImageUploadBody> {
+  const mime = normalizeMimeTypeForAllowlist(contentType);
+  if (!isAllowedMessageAttachmentMimeType(mime)) {
+    throw new Error('File type not allowed');
+  }
+
+  const size =
+    base64Data == null || base64Data.length === 0 ? await getUriSizeBytes(uri) : undefined;
+  if (size !== undefined && size > MAX_MESSAGE_ATTACHMENT_BYTES) {
+    throw new Error('File is too large');
+  }
+
+  if (base64Data != null && base64Data.length > 0) {
+    const { body } = base64ToArrayBuffer(base64Data, mime);
+    if (body.byteLength > MAX_MESSAGE_ATTACHMENT_BYTES) {
+      throw new Error('File is too large');
+    }
+    return { body, contentType: mime };
+  }
+
+  try {
+    const response = await fetch(uri);
+    if (response.ok) {
+      const blob = await response.blob();
+      const type = normalizeMimeTypeForAllowlist(blob.type || mime);
+      if (!isAllowedMessageAttachmentMimeType(type)) {
+        throw new Error('File type not allowed');
+      }
+      if (blob.size > MAX_MESSAGE_ATTACHMENT_BYTES) {
+        throw new Error('File is too large');
+      }
+      return { body: blob, contentType: type };
+    }
+  } catch (e) {
+    if (
+      e instanceof Error &&
+      (e.message === 'File is too large' || e.message === 'File type not allowed')
+    ) {
+      throw e;
+    }
+    /* fall through */
+  }
+
+  try {
+    const LegacyFS = require('expo-file-system/legacy') as {
+      readAsStringAsync?: (u: string, options: { encoding: string }) => Promise<string>;
+      EncodingType?: { Base64: string };
+    };
+    if (LegacyFS?.readAsStringAsync) {
+      const encoding = LegacyFS.EncodingType?.Base64 ?? 'base64';
+      const base64 = await LegacyFS.readAsStringAsync(uri, { encoding });
+      const { body } = base64ToArrayBuffer(base64, mime);
+      if (body.byteLength > MAX_MESSAGE_ATTACHMENT_BYTES) {
+        throw new Error('File is too large');
+      }
+      return { body, contentType: mime };
+    }
+  } catch (e) {
+    if (
+      e instanceof Error &&
+      (e.message === 'File is too large' || e.message === 'File type not allowed')
+    ) {
+      throw e;
+    }
+    /* fall through */
+  }
+
+  throw new Error('Failed to read file');
 }
 
 /**
@@ -606,6 +714,7 @@ type DiscussionPostRow = {
   updated_at?: string;
   parent_post_id?: string | null;
   image_urls?: string[] | null;
+  attachments?: unknown;
 };
 
 function mapDiscussionPostRow(
@@ -614,9 +723,8 @@ function mapDiscussionPostRow(
   reactionCounts?: { prayer: number; laugh: number; thumbsUp: number },
   userReactionTypes?: string[]
 ): DiscussionPost {
-  const imageUrls = row.image_urls?.filter(
-    (u): u is string => typeof u === 'string' && u.length > 0
-  );
+  const attachments = attachmentsForApiRow(row.attachments, row.image_urls);
+  const imageUrls = deriveLegacyImageUrls(attachments);
   return {
     id: row.id,
     discussionId: row.discussion_id,
@@ -627,7 +735,8 @@ function mapDiscussionPostRow(
     parentPostId: row.parent_post_id ?? undefined,
     authorDisplayName: profile?.displayName,
     authorAvatarUrl: profile?.avatarUrl,
-    imageUrls: imageUrls && imageUrls.length > 0 ? imageUrls : undefined,
+    imageUrls,
+    attachments: attachments && attachments.length > 0 ? attachments : undefined,
     reactionCounts: reactionCounts ?? { prayer: 0, laugh: 0, thumbsUp: 0 },
     userReactionTypes:
       userReactionTypes?.filter(
@@ -1064,6 +1173,82 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { data } = getClient().storage.from('chat-images').getPublicUrl(path);
         return data.publicUrl;
       } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async uploadChatMessageAttachment(
+      userId: string,
+      localUri: string,
+      options: {
+        contentType: string;
+        fileName: string;
+        base64Data?: string | null;
+        objectKind: 'message' | 'thumbnail';
+      }
+    ): Promise<string | ApiError> {
+      try {
+        const { body, contentType } = await readBinaryFile(
+          localUri,
+          options.contentType,
+          options.base64Data
+        );
+        const safe = sanitizeStorageFileSegment(options.fileName);
+        const ts = Date.now();
+        const path =
+          options.objectKind === 'thumbnail'
+            ? `messages/${userId}/thumbs/${ts}.jpg`
+            : `messages/${userId}/${ts}-${safe}`;
+
+        const { error } = await getClient()
+          .storage.from('chat-images')
+          .upload(path, body, { upsert: false, contentType });
+        if (error) return toApiError(error);
+        const { data } = getClient().storage.from('chat-images').getPublicUrl(path);
+        return data.publicUrl;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Upload failed';
+        if (msg === 'File is too large' || msg === 'File type not allowed') {
+          return { message: msg, code: 'VALIDATION_ERROR' };
+        }
+        return toApiError(e);
+      }
+    },
+
+    async uploadDiscussionPostAttachment(
+      userId: string,
+      localUri: string,
+      options: {
+        contentType: string;
+        fileName: string;
+        base64Data?: string | null;
+        objectKind: 'post' | 'thumbnail';
+      }
+    ): Promise<string | ApiError> {
+      try {
+        const { body, contentType } = await readBinaryFile(
+          localUri,
+          options.contentType,
+          options.base64Data
+        );
+        const safe = sanitizeStorageFileSegment(options.fileName);
+        const ts = Date.now();
+        const path =
+          options.objectKind === 'thumbnail'
+            ? `${userId}/thumbs/${ts}.jpg`
+            : `${userId}/${ts}-${safe}`;
+
+        const { error } = await getClient()
+          .storage.from('discussion-post-images')
+          .upload(path, body, { upsert: false, contentType });
+        if (error) return toApiError(error);
+        const { data } = getClient().storage.from('discussion-post-images').getPublicUrl(path);
+        return data.publicUrl;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Upload failed';
+        if (msg === 'File is too large' || msg === 'File type not allowed') {
+          return { message: msg, code: 'VALIDATION_ERROR' };
+        }
         return toApiError(e);
       }
     },
@@ -2482,7 +2667,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { data: rows, error } = await getClient()
           .from('discussion_posts')
           .select(
-            'id, discussion_id, user_id, body, created_at, updated_at, parent_post_id, image_urls'
+            'id, discussion_id, user_id, body, created_at, updated_at, parent_post_id, image_urls, attachments'
           )
           .eq('discussion_id', discussionId)
           .order('created_at', { ascending: true });
@@ -2562,11 +2747,11 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
     ): Promise<DiscussionPost | ApiError> {
       try {
         const body = input.body?.trim() ?? '';
-        const imageUrls = input.imageUrls?.filter((u) => typeof u === 'string' && u.length > 0);
-        const hasImages = imageUrls && imageUrls.length > 0;
-        if (!body && !hasImages) {
+        const merged = mergeAttachmentsForCreate(input.attachments, input.imageUrls);
+        const hasAttachments = merged.length > 0;
+        if (!body && !hasAttachments) {
           return {
-            message: 'Reply must have text or at least one image',
+            message: 'Reply must have text or at least one attachment',
             code: 'VALIDATION_ERROR',
           };
         }
@@ -2581,19 +2766,21 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
             code: 'FORBIDDEN',
           };
         }
+        const imageUrlsDb = deriveImageUrlsForDb(merged);
         const payload = {
           discussion_id: discussionId,
           user_id: userId,
           body: body || '', // DB allows ''; empty for image-only replies
           parent_post_id:
             input.parentPostId && input.parentPostId.trim() ? input.parentPostId : null,
-          image_urls: imageUrls && imageUrls.length > 0 ? imageUrls : null,
+          image_urls: imageUrlsDb,
+          attachments: merged,
         };
         const { data: row, error } = await getClient()
           .from('discussion_posts')
           .insert(payload)
           .select(
-            'id, discussion_id, user_id, body, created_at, updated_at, parent_post_id, image_urls'
+            'id, discussion_id, user_id, body, created_at, updated_at, parent_post_id, image_urls, attachments'
           )
           .single();
         if (error) return toApiError(error);
@@ -2626,13 +2813,20 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
     ): Promise<DiscussionPost | ApiError> {
       try {
         const body = input.body !== undefined ? (input.body.trim() ?? '') : undefined;
-        const imageUrls =
-          input.imageUrls !== undefined
-            ? input.imageUrls.filter((u) => typeof u === 'string' && u.length > 0)
-            : undefined;
         const payload: Record<string, unknown> = {};
         if (body !== undefined) payload.body = body;
-        if (imageUrls !== undefined) payload.image_urls = imageUrls;
+
+        if (input.attachments !== undefined) {
+          const merged = parseClientAttachments(input.attachments);
+          payload.attachments = merged;
+          payload.image_urls = deriveImageUrlsForDb(merged);
+        } else if (input.imageUrls !== undefined) {
+          const urls = input.imageUrls.filter((u) => typeof u === 'string' && u.length > 0);
+          const merged = urls.map((url) => ({ kind: 'image' as const, url }));
+          payload.attachments = merged;
+          payload.image_urls = deriveImageUrlsForDb(merged);
+        }
+
         if (Object.keys(payload).length === 0) {
           return { message: 'No updates provided', code: 'VALIDATION_ERROR' };
         }
@@ -2663,7 +2857,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .eq('id', postId)
           .eq('user_id', userId)
           .select(
-            'id, discussion_id, user_id, body, created_at, updated_at, parent_post_id, image_urls'
+            'id, discussion_id, user_id, body, created_at, updated_at, parent_post_id, image_urls, attachments'
           )
           .maybeSingle();
         if (error) return toApiError(error);
@@ -3222,7 +3416,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
         const { data: rows, error } = await getClient()
           .from('chat_messages')
           .select(
-            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls'
+            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls, attachments'
           )
           .eq('chat_id', chatId)
           .order('created_at', { ascending: true });
@@ -3284,20 +3478,26 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
 
         return posts.map((r) => {
           const profile = profileMap.get(r.user_id);
-          const imageUrls = (r as { image_urls?: string[] }).image_urls?.filter(
-            (u): u is string => typeof u === 'string' && u.length > 0
-          );
+          const row = r as {
+            image_urls?: string[];
+            attachments?: unknown;
+            parent_message_id?: string;
+            updated_at?: string;
+          };
+          const attachments = attachmentsForApiRow(row.attachments, row.image_urls);
+          const imageUrls = deriveLegacyImageUrls(attachments);
           return {
             id: r.id,
             chatId: r.chat_id,
             userId: r.user_id,
             body: r.body,
             createdAt: r.created_at,
-            updatedAt: (r as { updated_at?: string }).updated_at ?? undefined,
+            updatedAt: row.updated_at ?? undefined,
             authorDisplayName: profile?.displayName,
             authorAvatarUrl: profile?.avatarUrl,
-            parentMessageId: (r as { parent_message_id?: string }).parent_message_id ?? undefined,
+            parentMessageId: row.parent_message_id ?? undefined,
             imageUrls,
+            attachments: attachments && attachments.length > 0 ? attachments : undefined,
             reactionCounts: reactionCountMap.get(r.id),
             userReactionTypes: options?.userId
               ? (userReactionMap.get(r.id) as PostReactionType[] | undefined)
@@ -3316,26 +3516,28 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
     ): Promise<ChatMessage | ApiError> {
       try {
         const body = input.body?.trim() ?? '';
-        const imageUrls = input.imageUrls?.filter((u) => typeof u === 'string' && u.length > 0);
-        const hasImages = imageUrls && imageUrls.length > 0;
-        if (!body && !hasImages) {
+        const merged = mergeAttachmentsForCreate(input.attachments, input.imageUrls);
+        const hasAttachments = merged.length > 0;
+        if (!body && !hasAttachments) {
           return {
-            message: 'Message must have text or at least one image',
+            message: 'Message must have text or at least one attachment',
             code: 'VALIDATION_ERROR',
           };
         }
+        const imageUrlsDb = deriveImageUrlsForDb(merged);
         const payload = {
           chat_id: chatId,
           user_id: userId,
           body: body || '',
           parent_message_id: input.parentMessageId?.trim() || null,
-          image_urls: imageUrls && imageUrls.length > 0 ? imageUrls : null,
+          image_urls: imageUrlsDb,
+          attachments: merged,
         };
         const { data: row, error } = await getClient()
           .from('chat_messages')
           .insert(payload)
           .select(
-            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls'
+            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls, attachments'
           )
           .single();
         if (error) return toApiError(error);
@@ -3365,10 +3567,10 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           updated_at?: string;
           parent_message_id?: string;
           image_urls?: string[];
+          attachments?: unknown;
         };
-        const imageUrlsOut = r.image_urls?.filter(
-          (u): u is string => typeof u === 'string' && u.length > 0
-        );
+        const attachmentsOut = attachmentsForApiRow(r.attachments, r.image_urls);
+        const imageUrlsOut = deriveLegacyImageUrls(attachmentsOut);
         return {
           id: r.id,
           chatId: r.chat_id,
@@ -3380,6 +3582,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           authorAvatarUrl: profile?.avatarUrl,
           parentMessageId: r.parent_message_id ?? undefined,
           imageUrls: imageUrlsOut,
+          attachments: attachmentsOut && attachmentsOut.length > 0 ? attachmentsOut : undefined,
         };
       } catch (e) {
         return toApiError(e);
@@ -3393,13 +3596,20 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
     ): Promise<ChatMessage | ApiError> {
       try {
         const body = input.body !== undefined ? (input.body.trim() ?? '') : undefined;
-        const imageUrls =
-          input.imageUrls !== undefined
-            ? input.imageUrls.filter((u) => typeof u === 'string' && u.length > 0)
-            : undefined;
         const payload: Record<string, unknown> = {};
         if (body !== undefined) payload.body = body;
-        if (imageUrls !== undefined) payload.image_urls = imageUrls;
+
+        if (input.attachments !== undefined) {
+          const merged = parseClientAttachments(input.attachments);
+          payload.attachments = merged;
+          payload.image_urls = deriveImageUrlsForDb(merged);
+        } else if (input.imageUrls !== undefined) {
+          const urls = input.imageUrls.filter((u) => typeof u === 'string' && u.length > 0);
+          const merged = urls.map((url) => ({ kind: 'image' as const, url }));
+          payload.attachments = merged;
+          payload.image_urls = deriveImageUrlsForDb(merged);
+        }
+
         if (Object.keys(payload).length === 0) {
           return { message: 'No updates provided', code: 'VALIDATION_ERROR' };
         }
@@ -3409,7 +3619,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           .eq('id', messageId)
           .eq('user_id', userId)
           .select(
-            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls'
+            'id, chat_id, user_id, body, created_at, updated_at, parent_message_id, image_urls, attachments'
           )
           .maybeSingle();
         if (error) return toApiError(error);
@@ -3424,6 +3634,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           updated_at?: string;
           parent_message_id?: string;
           image_urls?: string[];
+          attachments?: unknown;
         };
         const { data: p } = await getClient()
           .from('profiles')
@@ -3440,9 +3651,8 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           }
           profile = { displayName, avatarUrl };
         }
-        const imageUrlsOut = r.image_urls?.filter(
-          (u): u is string => typeof u === 'string' && u.length > 0
-        );
+        const attachmentsOut = attachmentsForApiRow(r.attachments, r.image_urls);
+        const imageUrlsOut = deriveLegacyImageUrls(attachmentsOut);
         return {
           id: r.id,
           chatId: r.chat_id,
@@ -3454,6 +3664,7 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
           authorAvatarUrl: profile?.avatarUrl,
           parentMessageId: r.parent_message_id ?? undefined,
           imageUrls: imageUrlsOut,
+          attachments: attachmentsOut && attachmentsOut.length > 0 ? attachmentsOut : undefined,
         };
       } catch (e) {
         return toApiError(e);

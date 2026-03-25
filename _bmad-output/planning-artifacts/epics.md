@@ -7,6 +7,8 @@ inputDocuments:
   - _bmad-output/planning-artifacts/ux-design-directions.html
 ---
 
+> **As-built (2026-03-24):** Story completion and epic scope have drifted; use `_bmad-output/implementation-artifacts/sprint-status.yaml` and `docs/as-built-snapshot.md` for delivery truth. This file remains the historical epic/story breakdown.
+
 # p28-v2 - Epic Breakdown
 
 ## Overview

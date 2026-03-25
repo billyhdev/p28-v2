@@ -20,6 +20,15 @@ import type { PostReactionType } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
+export interface ReactionSheetPrimaryAction {
+  key: string;
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  onPress: () => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+}
+
 export interface ReactionSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -36,6 +45,8 @@ export interface ReactionSheetProps {
   isMutating?: boolean;
   onAddReaction: (type: PostReactionType) => void;
   onRemoveReaction: (type: PostReactionType) => void;
+  /** Shown above the Reactions title (e.g. Reply, Edit). Caller should dismiss the sheet inside onPress if needed. */
+  primaryActions?: ReactionSheetPrimaryAction[];
 }
 
 export function ReactionSheet({
@@ -49,6 +60,7 @@ export function ReactionSheet({
   isMutating = false,
   onAddReaction,
   onRemoveReaction,
+  primaryActions = [],
 }: ReactionSheetProps) {
   const { sheetSlideAnim, sheetFadeAnim } = useFadeSheetAnimation(visible);
   const insets = useSafeAreaInsets();
@@ -80,6 +92,27 @@ export function ReactionSheet({
             accessibilityLabel={t('discussions.reactions')}
             accessibilityRole="none"
           >
+            {primaryActions.length > 0 ? (
+              <View style={[styles.primaryActions, styles.primaryActionsAboveTitle]}>
+                {primaryActions.map((action) => (
+                  <Pressable
+                    key={action.key}
+                    onPress={action.onPress}
+                    style={({ pressed }) => [
+                      styles.primaryRow,
+                      pressed && styles.primaryRowPressed,
+                    ]}
+                    accessibilityLabel={action.accessibilityLabel ?? action.label}
+                    accessibilityHint={action.accessibilityHint}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name={action.icon} size={22} color={colors.textPrimary} />
+                    <Text style={styles.primaryLabel}>{action.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
             <View style={styles.header}>
               <Text style={styles.title}>{t('discussions.reactions')}</Text>
               <Pressable
@@ -165,7 +198,7 @@ export function ReactionSheet({
                           isSelected && styles.addOptionSelected,
                           pressed && styles.addOptionPressed,
                         ]}
-                        disabled={isMutating}
+                        disabled={isMutating || !canReact}
                         accessibilityLabel={isSelected ? `Remove ${label}` : `Add ${label}`}
                         accessibilityRole="button"
                       >
@@ -213,6 +246,27 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   closeButton: { padding: spacing.xs },
+  primaryActions: {
+    paddingVertical: spacing.xs,
+  },
+  primaryActionsAboveTitle: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  primaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  primaryRowPressed: {
+    backgroundColor: colors.borderSubtle,
+  },
+  primaryLabel: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
   loading: {
     padding: spacing.xl,
     alignItems: 'center',

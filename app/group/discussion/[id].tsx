@@ -1,4 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,12 +8,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -25,9 +24,18 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Avatar } from '@/components/primitives';
-import type { OutboundMessageStatus } from '@/components/messages';
-import { ComposeBar } from '@/components/patterns/ComposeBar';
-import { ReactionSheet } from '@/components/patterns/ReactionSheet';
+import {
+  FileAttachmentModal,
+  MessageAttachmentsBlock,
+  VideoAttachmentModal,
+  type OutboundMessageStatus,
+} from '@/components/messages';
+import { ComposeBar, type PendingComposeAttachment } from '@/components/patterns/ComposeBar';
+import { FadeActionSheet, FADE_SHEET_PICKER_DEFER_MS } from '@/components/patterns/FadeActionSheet';
+import {
+  ReactionSheet,
+  type ReactionSheetPrimaryAction,
+} from '@/components/patterns/ReactionSheet';
 import { useAuth } from '@/hooks/useAuth';
 import { useIosKeyboardAvoidingParentOffset } from '@/hooks/useIosKeyboardAvoidingParentOffset';
 import {
@@ -42,17 +50,37 @@ import {
   useReactToPostMutation,
   useRemovePostReactionMutation,
   useUpdateDiscussionPostMutation,
+  useUploadDiscussionPostAttachmentMutation,
   useUploadDiscussionPostImageMutation,
 } from '@/hooks/useApiQueries';
+import {
+  DOCUMENT_PICKER_MIME_WHITELIST,
+  newComposeAttachmentId,
+  pendingToMessageAttachments,
+  storedMessageToPendingAttachments,
+} from '@/lib/composeAttachments';
+import { tryGetVideoPosterUri } from '@/lib/videoPoster';
+import {
+  isAllowedMessageAttachmentMimeType,
+  MAX_MESSAGE_ATTACHMENT_BYTES,
+  normalizeMimeTypeForAllowlist,
+} from '@/lib/api/messageAttachments';
 import { api, getUserFacingError } from '@/lib/api';
+import { enqueueDocumentPick } from '@/lib/documentPickerLock';
 import { queryKeys } from '@/lib/api/queryKeys';
 import type {
   CreateDiscussionPostInput,
   Discussion,
   DiscussionPost,
+  MessageAttachment,
   PostReactionType,
 } from '@/lib/api';
-import { formatRelativeTime, isGroupEventDiscussionReadOnly } from '@/lib/dates';
+import {
+  formatMessageSentClockTime,
+  formatRelativeTime,
+  isGroupEventDiscussionReadOnly,
+  messageLocalMinuteKey,
+} from '@/lib/dates';
 import { t } from '@/lib/i18n';
 import { colors, radius, spacing, typography } from '@/theme/tokens';
 
@@ -101,20 +129,11 @@ function OriginalPostRow({
   );
 }
 
-const REACTION_OPTIONS: { type: PostReactionType; emoji: string; label: string }[] = [
-  { type: 'prayer', emoji: '🙏', label: 'Prayer' },
-  { type: 'laugh', emoji: '😂', label: 'Laugh' },
-  { type: 'thumbs_up', emoji: '👍', label: 'Thumbs up' },
-];
-
 const REACTION_EMOJI: Record<PostReactionType, string> = {
   prayer: '🙏',
   laugh: '😂',
   thumbs_up: '👍',
 };
-
-const SWIPE_THRESHOLD = 60;
-const SWIPE_MAX = 72;
 
 type DiscussionReplyPost = DiscussionPost & {
   outboundStatus?: OutboundMessageStatus;
@@ -125,31 +144,33 @@ function ReplyRow({
   post,
   parentPost,
   onImagePress,
+  onVideoPress,
+  onFilePress,
   onLongPress,
-  onSwipeRight,
-  onSwipeLeft,
   onAddReaction,
   onRemoveReaction,
   onAuthorPress,
   onRetryOutbound,
   canReact,
   currentUserId,
+  showSentClockTime = true,
+  extraGapAfterPeerChange = false,
 }: {
   post: DiscussionReplyPost;
   parentPost?: DiscussionPost | null;
   onImagePress?: (url: string) => void;
+  onVideoPress?: (att: MessageAttachment) => void;
+  onFilePress?: (att: MessageAttachment) => void;
   onLongPress?: () => void;
-  onSwipeRight?: () => void;
-  onSwipeLeft?: () => void;
   onAddReaction?: (reactionType: PostReactionType) => void;
   onRemoveReaction?: (reactionType: PostReactionType) => void;
   onAuthorPress?: () => void;
   onRetryOutbound?: () => void;
   canReact?: boolean;
   currentUserId?: string;
+  showSentClockTime?: boolean;
+  extraGapAfterPeerChange?: boolean;
 }) {
-  const cardRef = useRef<View>(null);
-  const translateX = useRef(new Animated.Value(0)).current;
   const counts = post.reactionCounts ?? { prayer: 0, laugh: 0, thumbsUp: 0 };
   const userReactions = post.userReactionTypes ?? [];
   const hasReactions = counts.prayer > 0 || counts.laugh > 0 || counts.thumbsUp > 0;
@@ -157,37 +178,7 @@ function ReplyRow({
   const outboundStatus = post.outboundStatus;
   const showFailedOutbound = isOwnPost && outboundStatus === 'failed' && !!onRetryOutbound;
   const showSendingOutbound = isOwnPost && outboundStatus === 'sending';
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          const { dx, dy } = gestureState;
-          return Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 15;
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const dx = gestureState.dx;
-          const minX = onSwipeLeft ? -SWIPE_MAX : 0;
-          const clamped = Math.min(SWIPE_MAX, Math.max(minX, dx));
-          translateX.setValue(clamped);
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          const dx = gestureState.dx;
-          if (dx > SWIPE_THRESHOLD && onSwipeRight) {
-            onSwipeRight();
-          } else if (dx < -SWIPE_THRESHOLD && onSwipeLeft) {
-            onSwipeLeft();
-          }
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 80,
-            friction: 12,
-          }).start();
-        },
-      }),
-    [onSwipeRight, onSwipeLeft, translateX]
-  );
+  const isEdited = post.updatedAt && post.updatedAt !== post.createdAt;
 
   const handleLongPress = useCallback(() => {
     if (!canReact || !onLongPress || outboundStatus) return;
@@ -197,64 +188,22 @@ function ReplyRow({
   const isUserReaction = (type: PostReactionType) =>
     !!currentUserId && userReactions.includes(type);
 
-  const swipeEnabled = !!(
-    canReact &&
-    !outboundStatus &&
-    (onSwipeRight || (isOwnPost && onSwipeLeft))
-  );
+  const longPressHint = showFailedOutbound
+    ? undefined
+    : canReact
+      ? isOwnPost
+        ? t('discussions.messageRowLongPressHintOwn')
+        : t('discussions.messageRowLongPressHintOther')
+      : undefined;
 
-  const replyIconOpacity = useMemo(
-    () =>
-      translateX.interpolate({
-        inputRange: [0, 15],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    [translateX]
-  );
-
-  const editIconOpacity = useMemo(
-    () =>
-      translateX.interpolate({
-        inputRange: [-15, 0],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    [translateX]
-  );
+  const sentClock = formatMessageSentClockTime(post.createdAt);
 
   return (
-    <View style={styles.replyRowOuter}>
+    <View style={[styles.replyRowOuter, extraGapAfterPeerChange && styles.replyRowOuterPeerChange]}>
       <View style={styles.replyRowMain}>
         <View style={styles.replyCardWrapper}>
-          <Animated.View
-            style={[
-              styles.replySwipeIconContainer,
-              styles.replySwipeIconLeft,
-              { opacity: replyIconOpacity },
-            ]}
-            pointerEvents="none"
-          >
-            <Ionicons name="arrow-undo-outline" size={24} color={colors.primary} />
-          </Animated.View>
-          {onSwipeLeft ? (
-            <Animated.View
-              style={[
-                styles.replySwipeIconContainer,
-                styles.replySwipeIconRight,
-                { opacity: editIconOpacity },
-              ]}
-              pointerEvents="none"
-            >
-              <Ionicons name="pencil-outline" size={24} color={colors.primary} />
-            </Animated.View>
-          ) : null}
-          <Animated.View
-            style={[styles.replyCardSliding, { transform: [{ translateX }] }]}
-            {...(swipeEnabled ? panResponder.panHandlers : {})}
-          >
+          <View style={styles.replyCardSliding}>
             <Pressable
-              ref={cardRef}
               onLongPress={canReact && !outboundStatus ? handleLongPress : undefined}
               delayLongPress={400}
               style={({ pressed }) => [
@@ -265,15 +214,7 @@ function ReplyRow({
               accessibilityLabel={
                 showFailedOutbound ? t('discussions.sendFailed') : t('discussions.reactToReply')
               }
-              accessibilityHint={
-                showFailedOutbound
-                  ? t('discussions.retrySendHint')
-                  : canReact
-                    ? isOwnPost
-                      ? `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')} ${t('discussions.swipeToEditHint')}`
-                      : `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')}`
-                    : undefined
-              }
+              accessibilityHint={longPressHint}
               accessibilityRole="button"
             >
               <View style={styles.replyCardHeader}>
@@ -293,11 +234,18 @@ function ReplyRow({
                   />
                 </Pressable>
                 <View style={styles.replyCardMeta}>
-                  <Pressable onPress={onAuthorPress} accessibilityRole="link">
-                    <Text style={styles.replyAuthorName}>
-                      {post.authorDisplayName ?? t('common.loading')}
-                    </Text>
-                  </Pressable>
+                  <View style={styles.replyCardMetaBody}>
+                    <View style={styles.replyCardMetaTitleRow}>
+                      <Pressable onPress={onAuthorPress} accessibilityRole="link">
+                        <Text style={styles.replyAuthorName}>
+                          {post.authorDisplayName ?? t('common.loading')}
+                        </Text>
+                      </Pressable>
+                      {isEdited ? (
+                        <Text style={styles.replyEditedInline}> [{t('discussions.edited')}]</Text>
+                      ) : null}
+                    </View>
+                  </View>
                   <View style={styles.replyCardMetaRight}>
                     {showSendingOutbound ? (
                       <ActivityIndicator
@@ -305,10 +253,6 @@ function ReplyRow({
                         color={colors.textSecondary}
                         style={styles.replySendingSpinner}
                       />
-                    ) : null}
-                    <Text style={styles.replyDate}>{formatRelativeTime(post.createdAt)}</Text>
-                    {post.updatedAt && post.updatedAt !== post.createdAt ? (
-                      <Text style={styles.editedLabel}> [{t('discussions.edited')}]</Text>
                     ) : null}
                   </View>
                 </View>
@@ -325,21 +269,13 @@ function ReplyRow({
                 </View>
               ) : null}
               {post.body ? <Text style={styles.replyBody}>{post.body}</Text> : null}
-              {post.imageUrls && post.imageUrls.length > 0 ? (
-                <View style={styles.replyImages}>
-                  {post.imageUrls.map((url, idx) => (
-                    <Pressable
-                      key={url}
-                      onPress={() => onImagePress?.(url)}
-                      style={styles.replyImagePressable}
-                      accessibilityLabel={`View attached image ${idx + 1} full size`}
-                      accessibilityRole="button"
-                    >
-                      <Image source={{ uri: url }} style={styles.replyImage} contentFit="cover" />
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
+              <MessageAttachmentsBlock
+                post={post}
+                isOwnMessage={isOwnPost}
+                onImagePress={onImagePress}
+                onVideoPress={onVideoPress}
+                onFilePress={onFilePress}
+              />
               {showFailedOutbound ? (
                 <Text style={styles.replyFailedLabel}>{t('discussions.sendFailed')}</Text>
               ) : null}
@@ -347,14 +283,13 @@ function ReplyRow({
             {hasReactions ? (
               <View style={styles.reactionBadges} pointerEvents="box-none">
                 {(['prayer', 'laugh', 'thumbs_up'] as PostReactionType[]).map((type) => {
-                  if (
-                    (counts as Record<string, number>)[type === 'thumbs_up' ? 'thumbsUp' : type] <=
-                    0
-                  )
-                    return null;
-                  const count = (counts as Record<string, number>)[
-                    type === 'thumbs_up' ? 'thumbsUp' : type
-                  ];
+                  const count =
+                    type === 'thumbs_up'
+                      ? counts.thumbsUp
+                      : type === 'prayer'
+                        ? counts.prayer
+                        : counts.laugh;
+                  if (count <= 0) return null;
                   const isMine = isUserReaction(type);
                   const onPress =
                     canReact && (isMine ? onRemoveReaction : onAddReaction)
@@ -385,7 +320,12 @@ function ReplyRow({
                 })}
               </View>
             ) : null}
-          </Animated.View>
+            {showSentClockTime ? (
+              <Text style={styles.replySentClockTime} accessibilityLabel={sentClock}>
+                {sentClock}
+              </Text>
+            ) : null}
+          </View>
         </View>
       </View>
       {showFailedOutbound ? (
@@ -414,14 +354,22 @@ export default function DiscussionDetailScreen() {
 
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [composeText, setComposeText] = useState('');
-  const [attachedImageUrls, setAttachedImageUrls] = useState<string[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingComposeAttachment[]>([]);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<{
+    url: string;
+    fileName: string;
+    mimeType?: string;
+  } | null>(null);
+  const [attachmentMenuVisible, setAttachmentMenuVisible] = useState(false);
   const [reactionPost, setReactionPost] = useState<DiscussionPost | null>(null);
   const [replyingToPost, setReplyingToPost] = useState<DiscussionPost | null>(null);
   const [editingPost, setEditingPost] = useState<DiscussionPost | null>(null);
   const navigation = useNavigation();
   const scrollViewRef = useRef<ScrollView>(null);
+  const discussionPostsScrollFingerprintRef = useRef<string | null>(null);
   const {
     data: discussion,
     isLoading,
@@ -430,6 +378,17 @@ export default function DiscussionDetailScreen() {
     refetch: refetchDiscussion,
   } = useDiscussionQuery(id);
   const { data: posts = [], refetch: refetchPosts } = useDiscussionPostsQuery(id, { userId });
+
+  const onDiscussionScrollContentSizeChange = useCallback(() => {
+    const list = posts;
+    if (list.length === 0) return;
+    const last = list[list.length - 1];
+    const fp = `${list.length}:${last.id}`;
+    if (fp === discussionPostsScrollFingerprintRef.current) return;
+    discussionPostsScrollFingerprintRef.current = fp;
+    scrollViewRef.current?.scrollToEnd({ animated: false });
+  }, [posts]);
+
   const { data: memberGroups = [] } = useGroupsForUserQuery(userId);
   const { data: isCurrentUserGroupAdmin = false } = useUserIsGroupAdminQuery(
     discussion?.groupId,
@@ -475,6 +434,7 @@ export default function DiscussionDetailScreen() {
   const createPostMutation = useCreateDiscussionPostMutation();
   const updatePostMutation = useUpdateDiscussionPostMutation();
   const uploadImageMutation = useUploadDiscussionPostImageMutation();
+  const uploadDiscussionAttachmentMutation = useUploadDiscussionPostAttachmentMutation();
   const joinMutation = useJoinGroupMutation();
   const reactMutation = useReactToPostMutation();
   const removeReactionMutation = useRemovePostReactionMutation();
@@ -514,7 +474,16 @@ export default function DiscussionDetailScreen() {
     };
   }, []);
 
-  const canPost = composeText.trim().length > 0 || attachedImageUrls.length > 0;
+  const MAX_ATTACHMENTS = 5;
+  const isUploadingAttachment =
+    uploadImageMutation.isPending || uploadDiscussionAttachmentMutation.isPending;
+  const allPendingReady =
+    pendingAttachments.length === 0 ||
+    pendingAttachments.every((a) => !a.uploading && !!a.uploadedUrl);
+  const canPost =
+    !isUploadingAttachment &&
+    allPendingReady &&
+    (composeText.trim().length > 0 || pendingAttachments.length > 0);
   const isEditing = !!editingPost;
 
   const handlePostReply = useCallback(() => {
@@ -527,13 +496,13 @@ export default function DiscussionDetailScreen() {
           userId,
           input: {
             body,
-            imageUrls: attachedImageUrls.length > 0 ? attachedImageUrls : undefined,
+            attachments: pendingToMessageAttachments(pendingAttachments),
           },
         },
         {
           onSuccess: () => {
             setComposeText('');
-            setAttachedImageUrls([]);
+            setPendingAttachments([]);
             setEditingPost(null);
           },
           onError: () => {},
@@ -542,11 +511,14 @@ export default function DiscussionDetailScreen() {
     } else {
       const input: CreateDiscussionPostInput = {
         body,
-        imageUrls: attachedImageUrls.length > 0 ? attachedImageUrls : undefined,
+        attachments:
+          pendingAttachments.length > 0
+            ? pendingToMessageAttachments(pendingAttachments)
+            : undefined,
         parentPostId: replyingToPost?.id,
       };
       setComposeText('');
-      setAttachedImageUrls([]);
+      setPendingAttachments([]);
       setReplyingToPost(null);
       createPostMutation.mutate({ discussionId: id, userId, input }, { onError: () => {} });
     }
@@ -555,7 +527,7 @@ export default function DiscussionDetailScreen() {
     id,
     canPost,
     composeText,
-    attachedImageUrls,
+    pendingAttachments,
     replyingToPost?.id,
     editingPost,
     createPostMutation,
@@ -575,6 +547,7 @@ export default function DiscussionDetailScreen() {
           input: {
             body: payload.body,
             imageUrls: payload.imageUrls,
+            attachments: payload.attachments,
             parentPostId: payload.parentPostId,
           },
           optimisticId: post.id,
@@ -585,10 +558,13 @@ export default function DiscussionDetailScreen() {
     [userId, id, createPostMutation]
   );
 
-  const pickImage = useCallback(async () => {
+  const pickPhotos = useCallback(async () => {
     if (!userId) return;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
+    if (status !== 'granted') {
+      Alert.alert(t('common.error'), t('profile.photoPermissionRequired'));
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
@@ -596,26 +572,181 @@ export default function DiscussionDetailScreen() {
       base64: true,
     });
     if (result.canceled || !result.assets.length) return;
-    const maxImages = 5;
-    const toUpload = result.assets.slice(0, maxImages - attachedImageUrls.length);
+    const slotsLeft = MAX_ATTACHMENTS - pendingAttachments.length;
+    const toUpload = result.assets.slice(0, Math.max(0, slotsLeft));
     for (const asset of toUpload) {
       if (!asset.uri) continue;
+      const attId = newComposeAttachmentId();
+      setPendingAttachments((prev) => [
+        ...prev,
+        { id: attId, kind: 'image', displayUri: asset.uri, uploading: true },
+      ]);
       try {
         const url = await uploadImageMutation.mutateAsync({
           userId,
           imageUri: asset.uri,
           base64Data: asset.base64 ?? undefined,
         });
-        setAttachedImageUrls((prev) => (prev.length < maxImages ? [...prev, url] : prev));
+        setPendingAttachments((prev) =>
+          prev.map((p) => (p.id === attId ? { ...p, uploadedUrl: url, uploading: false } : p))
+        );
       } catch {
-        // Surface error via mutation state if needed; skip failed image
+        setPendingAttachments((prev) => prev.filter((p) => p.id !== attId));
       }
     }
-  }, [userId, attachedImageUrls.length, uploadImageMutation]);
+  }, [userId, pendingAttachments.length, uploadImageMutation]);
 
-  const removeAttachedImage = useCallback((url: string) => {
-    setAttachedImageUrls((prev) => prev.filter((u) => u !== url));
+  const pickVideo = useCallback(async () => {
+    if (!userId) return;
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('common.error'), t('profile.photoPermissionRequired'));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      allowsMultipleSelection: false,
+      videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return;
+    const asset = result.assets[0];
+    const attachmentId = newComposeAttachmentId();
+    const posterUri = await tryGetVideoPosterUri(asset.uri);
+    const fileName = asset.fileName ?? `video-${Date.now()}.mp4`;
+    const mime = asset.mimeType ?? 'video/mp4';
+    setPendingAttachments((prev) => [
+      ...prev,
+      {
+        id: attachmentId,
+        kind: 'video',
+        displayUri: posterUri ?? '',
+        fileName,
+        mimeType: mime,
+        uploading: true,
+      },
+    ]);
+    try {
+      const videoUrl = await uploadDiscussionAttachmentMutation.mutateAsync({
+        userId,
+        localUri: asset.uri,
+        contentType: normalizeMimeTypeForAllowlist(mime),
+        fileName,
+        objectKind: 'post',
+      });
+      let uploadedThumbnailUrl: string | undefined;
+      if (posterUri) {
+        uploadedThumbnailUrl = await uploadDiscussionAttachmentMutation.mutateAsync({
+          userId,
+          localUri: posterUri,
+          contentType: 'image/jpeg',
+          fileName: 'thumb.jpg',
+          objectKind: 'thumbnail',
+        });
+      }
+      setPendingAttachments((prev) =>
+        prev.map((p) =>
+          p.id === attachmentId
+            ? {
+                ...p,
+                uploadedUrl: videoUrl,
+                uploadedThumbnailUrl,
+                uploading: false,
+              }
+            : p
+        )
+      );
+    } catch {
+      setPendingAttachments((prev) => prev.filter((p) => p.id !== attachmentId));
+    }
+  }, [userId, pendingAttachments.length, uploadDiscussionAttachmentMutation]);
+
+  const pickDocument = useCallback(async () => {
+    if (!userId) return;
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) return;
+    let result: Awaited<ReturnType<typeof DocumentPicker.getDocumentAsync>>;
+    try {
+      result = await enqueueDocumentPick(() =>
+        DocumentPicker.getDocumentAsync({
+          type: DOCUMENT_PICKER_MIME_WHITELIST,
+          multiple: false,
+          copyToCacheDirectory: true,
+        })
+      );
+    } catch (e) {
+      Alert.alert(t('common.error'), e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (result.canceled || !result.assets?.[0]) return;
+    const doc = result.assets[0];
+    const mime = normalizeMimeTypeForAllowlist(doc.mimeType ?? 'application/octet-stream');
+    if (!isAllowedMessageAttachmentMimeType(mime)) {
+      Alert.alert(t('common.error'), t('attachments.unsupportedFileType'));
+      return;
+    }
+    if (doc.size != null && doc.size > MAX_MESSAGE_ATTACHMENT_BYTES) {
+      Alert.alert(t('common.error'), t('attachments.fileTooLarge'));
+      return;
+    }
+    const attachmentId = newComposeAttachmentId();
+    const name = doc.name || 'file';
+    setPendingAttachments((prev) => [
+      ...prev,
+      {
+        id: attachmentId,
+        kind: 'file',
+        fileName: name,
+        mimeType: mime,
+        displayUri: doc.uri,
+        uploading: true,
+      },
+    ]);
+    try {
+      const url = await uploadDiscussionAttachmentMutation.mutateAsync({
+        userId,
+        localUri: doc.uri,
+        contentType: mime,
+        fileName: name,
+        objectKind: 'post',
+      });
+      setPendingAttachments((prev) =>
+        prev.map((p) => (p.id === attachmentId ? { ...p, uploadedUrl: url, uploading: false } : p))
+      );
+    } catch {
+      setPendingAttachments((prev) => prev.filter((p) => p.id !== attachmentId));
+    }
+  }, [userId, pendingAttachments.length, uploadDiscussionAttachmentMutation]);
+
+  const removePendingAttachment = useCallback((attachmentId: string) => {
+    setPendingAttachments((prev) => prev.filter((p) => p.id !== attachmentId));
   }, []);
+
+  const attachmentMenuOptions = useMemo(
+    () => [
+      {
+        icon: 'image-outline' as const,
+        label: t('attachments.photo'),
+        onPress: () => {
+          void pickPhotos();
+        },
+      },
+      {
+        icon: 'videocam-outline' as const,
+        label: t('attachments.video'),
+        onPress: () => {
+          void pickVideo();
+        },
+      },
+      {
+        icon: 'document-outline' as const,
+        label: t('attachments.file'),
+        onPress: () => {
+          void pickDocument();
+        },
+      },
+    ],
+    [pickPhotos, pickVideo, pickDocument]
+  );
 
   const handleDownloadImage = useCallback(async () => {
     if (!previewImageUrl || isDownloading) return;
@@ -700,13 +831,48 @@ export default function DiscussionDetailScreen() {
     setReplyingToPost(null);
     setEditingPost(post);
     setComposeText(post.body ?? '');
-    setAttachedImageUrls(post.imageUrls ?? []);
+    setPendingAttachments(storedMessageToPendingAttachments(post));
   }, []);
+
+  const reactionSheetPrimaryActions = useMemo((): ReactionSheetPrimaryAction[] => {
+    const post = reactionPost;
+    if (!post || !userId || !canEngageInThread) return [];
+    const outbound = (post as DiscussionReplyPost).outboundStatus;
+    if (outbound) return [];
+    const actions: ReactionSheetPrimaryAction[] = [
+      {
+        key: 'reply',
+        label: t('discussions.sheetReply'),
+        icon: 'arrow-undo-outline',
+        accessibilityLabel: t('discussions.sheetReply'),
+        accessibilityHint: t('discussions.sheetReplyHint'),
+        onPress: () => {
+          setReactionPost(null);
+          setEditingPost(null);
+          setReplyingToPost(post);
+        },
+      },
+    ];
+    if (post.userId === userId) {
+      actions.push({
+        key: 'edit',
+        label: t('discussions.sheetEdit'),
+        icon: 'pencil-outline',
+        accessibilityLabel: t('discussions.sheetEdit'),
+        accessibilityHint: t('discussions.sheetEditHint'),
+        onPress: () => {
+          setReactionPost(null);
+          handleStartEditReply(post);
+        },
+      });
+    }
+    return actions;
+  }, [reactionPost, userId, canEngageInThread, handleStartEditReply]);
 
   const handleCancelEdit = useCallback(() => {
     setEditingPost(null);
     setComposeText('');
-    setAttachedImageUrls([]);
+    setPendingAttachments([]);
   }, []);
 
   const handleRemoveReaction = useCallback(
@@ -758,7 +924,7 @@ export default function DiscussionDetailScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={onDiscussionScrollContentSizeChange}
         >
           <OriginalPostRow
             discussion={discussion}
@@ -782,9 +948,17 @@ export default function DiscussionDetailScreen() {
             <Text style={styles.repliesHeading}>
               {posts.length} {posts.length === 1 ? 'Reply' : 'Replies'}
             </Text>
-            {posts.map((p) => {
+            {posts.map((p, postIdx) => {
+              const prevPost = postIdx > 0 ? posts[postIdx - 1] : null;
               const outboundStatus = (p as DiscussionReplyPost).outboundStatus;
               const canReactOnPost = canReact && !outboundStatus;
+              const nextPost = postIdx < posts.length - 1 ? posts[postIdx + 1] : null;
+              const showSentClockTime =
+                !nextPost ||
+                messageLocalMinuteKey(nextPost.createdAt) !== messageLocalMinuteKey(p.createdAt);
+              const prevIsOwn = !!prevPost && !!userId && prevPost.userId === userId;
+              const thisIsOwn = !!userId && p.userId === userId;
+              const extraGapAfterPeerChange = !!prevPost && !!userId && prevIsOwn !== thisIsOwn;
               return (
                 <ReplyRow
                   key={p.id}
@@ -793,17 +967,15 @@ export default function DiscussionDetailScreen() {
                     p.parentPostId ? (posts.find((x) => x.id === p.parentPostId) ?? null) : null
                   }
                   onImagePress={(url) => setPreviewImageUrl(url)}
+                  onVideoPress={(att) => setPreviewVideoUrl(att.url)}
+                  onFilePress={(att) =>
+                    setPreviewFile({
+                      url: att.url,
+                      fileName: att.fileName ?? t('attachments.file'),
+                      mimeType: att.mimeType,
+                    })
+                  }
                   onLongPress={() => setReactionPost(p)}
-                  onSwipeRight={
-                    canEngageInThread && !outboundStatus
-                      ? () => (setEditingPost(null), setReplyingToPost(p))
-                      : undefined
-                  }
-                  onSwipeLeft={
-                    canEngageInThread && userId && p.userId === userId && !outboundStatus
-                      ? () => handleStartEditReply(p)
-                      : undefined
-                  }
                   onAddReaction={(type) => handleAddReaction(p, type)}
                   onRemoveReaction={(type) => handleRemoveReaction(p, type)}
                   onAuthorPress={() => router.push(`/profile/${p.userId}`)}
@@ -814,6 +986,8 @@ export default function DiscussionDetailScreen() {
                   }
                   canReact={canReactOnPost}
                   currentUserId={userId}
+                  showSentClockTime={showSentClockTime}
+                  extraGapAfterPeerChange={extraGapAfterPeerChange}
                 />
               );
             })}
@@ -879,12 +1053,13 @@ export default function DiscussionDetailScreen() {
               onChangeText={setComposeText}
               onSend={handlePostReply}
               canSend={canPost}
-              isSending={!!editingPost && updatePostMutation.isPending}
+              isSending={editingPost ? updatePostMutation.isPending : createPostMutation.isPending}
               sendLabel={isEditing ? t('discussions.updateReply') : t('discussions.postReply')}
-              attachedImageUrls={attachedImageUrls}
-              onRemoveImage={removeAttachedImage}
-              onPickImage={pickImage}
-              isUploadingImage={uploadImageMutation.isPending}
+              pendingAttachments={pendingAttachments}
+              onRemoveAttachment={removePendingAttachment}
+              onOpenAttachmentMenu={() => setAttachmentMenuVisible(true)}
+              isUploadingAttachment={isUploadingAttachment}
+              maxAttachments={MAX_ATTACHMENTS}
               editingContext={
                 editingPost ? { preview: editingPost.body ?? '', onCancel: handleCancelEdit } : null
               }
@@ -913,6 +1088,13 @@ export default function DiscussionDetailScreen() {
         isMutating={reactMutation.isPending || removeReactionMutation.isPending}
         onAddReaction={handleReact}
         onRemoveReaction={handleRemoveReactionFromSheet}
+        primaryActions={reactionSheetPrimaryActions}
+      />
+      <FadeActionSheet
+        visible={attachmentMenuVisible}
+        onRequestClose={() => setAttachmentMenuVisible(false)}
+        options={attachmentMenuOptions}
+        deferOptionPressMs={FADE_SHEET_PICKER_DEFER_MS}
       />
       <Modal
         visible={!!previewImageUrl}
@@ -960,6 +1142,20 @@ export default function DiscussionDetailScreen() {
           ) : null}
         </Pressable>
       </Modal>
+
+      <VideoAttachmentModal
+        visible={!!previewVideoUrl}
+        videoUrl={previewVideoUrl}
+        onRequestClose={() => setPreviewVideoUrl(null)}
+      />
+
+      <FileAttachmentModal
+        visible={!!previewFile}
+        fileUrl={previewFile?.url ?? null}
+        fileName={previewFile?.fileName ?? ''}
+        mimeType={previewFile?.mimeType}
+        onRequestClose={() => setPreviewFile(null)}
+      />
     </View>
   );
 }
@@ -1083,6 +1279,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.xs,
   },
+  replyRowOuterPeerChange: {
+    marginTop: spacing.xxs,
+  },
   replyRowMain: {
     flex: 1,
     minWidth: 0,
@@ -1109,20 +1308,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     overflow: 'hidden',
     paddingBottom: 14,
-  },
-  replySwipeIconContainer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: SWIPE_MAX,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  replySwipeIconLeft: {
-    left: 0,
-  },
-  replySwipeIconRight: {
-    right: 0,
   },
   replyCardSliding: {
     position: 'relative',
@@ -1175,8 +1360,19 @@ const styles = StyleSheet.create({
   replyCardMeta: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  replyCardMetaBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  replyCardMetaTitleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.xxs,
   },
   replyCardMetaRight: {
     flexDirection: 'row',
@@ -1186,9 +1382,18 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.primary,
   },
-  replyDate: {
+  replyEditedInline: {
     ...typography.caption,
     color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  replySentClockTime: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+    alignSelf: 'flex-end',
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.xxs,
   },
   replyToPreview: {
     marginBottom: spacing.sm,

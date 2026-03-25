@@ -409,6 +409,20 @@ export interface PostReactionDetail {
   reactionType: PostReactionType;
 }
 
+/** Structured attachment on chat messages and discussion posts. */
+export type MessageAttachmentKind = 'image' | 'video' | 'file';
+
+export interface MessageAttachment {
+  kind: MessageAttachmentKind;
+  /** Public URL of the image, video, or downloadable file. */
+  url: string;
+  /** Original file name (expected for `file`, optional for video). */
+  fileName?: string;
+  mimeType?: string;
+  /** Video poster image URL (JPEG), optional. */
+  thumbnailUrl?: string;
+}
+
 /** Reply to a discussion. From discussion_posts table. */
 export interface DiscussionPost {
   id: string;
@@ -422,8 +436,10 @@ export interface DiscussionPost {
   authorAvatarUrl?: string;
   /** Parent post id when replying to a reply. */
   parentPostId?: string;
-  /** Public URLs of attached images. */
+  /** Public URLs of attached images (derived from attachments where kind is image). */
   imageUrls?: string[];
+  /** Images, videos, and files (preferred for rendering). */
+  attachments?: MessageAttachment[];
   /** Counts per reaction type. */
   reactionCounts?: PostReactionCounts;
   /** Reaction types the current user has on this post (when userId provided to fetch). */
@@ -435,6 +451,8 @@ export interface CreateDiscussionPostInput {
   body: string;
   /** Public URLs of attached images (must be uploaded first via uploadDiscussionPostImage). */
   imageUrls?: string[];
+  /** Structured attachments (preferred). When non-empty, overrides imageUrls for storage. */
+  attachments?: MessageAttachment[];
   /** Parent post id when replying to a reply. */
   parentPostId?: string;
 }
@@ -461,6 +479,8 @@ export interface UpdateDiscussionPostInput {
   body?: string;
   /** Public URLs of attached images (must be uploaded first via uploadDiscussionPostImage). */
   imageUrls?: string[];
+  /** When set, replaces stored attachments (and derived image_urls). */
+  attachments?: MessageAttachment[];
 }
 
 // --- Chats ---
@@ -524,6 +544,7 @@ export interface ChatMessage {
   authorAvatarUrl?: string;
   parentMessageId?: string;
   imageUrls?: string[];
+  attachments?: MessageAttachment[];
   reactionCounts?: PostReactionCounts;
   userReactionTypes?: PostReactionType[];
 }
@@ -532,6 +553,7 @@ export interface ChatMessage {
 export interface CreateChatMessageInput {
   body: string;
   imageUrls?: string[];
+  attachments?: MessageAttachment[];
   parentMessageId?: string;
 }
 
@@ -539,6 +561,7 @@ export interface CreateChatMessageInput {
 export interface UpdateChatMessageInput {
   body?: string;
   imageUrls?: string[];
+  attachments?: MessageAttachment[];
 }
 
 /** Chat folder (user-defined organization). */

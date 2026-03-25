@@ -1246,7 +1246,9 @@ describe('Supabase data adapter', () => {
         const result = await adapter.createDiscussionPost('d1', 'u1', { body: '' });
         expect(isApiError(result)).toBe(true);
         if (isApiError(result)) {
-          expect((result as ApiError).message).toBe('Reply must have text or at least one image');
+          expect((result as ApiError).message).toBe(
+            'Reply must have text or at least one attachment'
+          );
         }
       });
 

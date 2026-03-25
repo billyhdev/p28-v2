@@ -9,12 +9,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { Button } from '@/components/primitives';
+import { Button, Input } from '@/components/primitives';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useCreateDiscussionMutation,
@@ -23,7 +22,7 @@ import {
 } from '@/hooks/useApiQueries';
 import { getUserFacingError } from '@/lib/api';
 import { t } from '@/lib/i18n';
-import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
 export default function CreateDiscussionScreen() {
   const { groupId: paramGroupId } = useLocalSearchParams<{ groupId?: string }>();
@@ -81,43 +80,40 @@ export default function CreateDiscussionScreen() {
         showsVerticalScrollIndicator={false}
       >
         {!paramGroupId ? (
-          <>
-            <Text style={styles.label}>{t('groups.title')}</Text>
+          <View style={styles.groupField}>
+            <Text style={styles.fieldLabel}>{t('groups.title')}</Text>
             <Pressable
               onPress={() => setGroupPickerVisible(true)}
-              style={styles.groupPicker}
+              style={({ pressed }) => [styles.groupSelect, pressed && styles.groupSelectPressed]}
               accessibilityLabel={t('groups.title')}
               accessibilityHint={t('discussions.selectGroupHint')}
             >
-              <Text style={styles.groupPickerText}>
+              <Text style={styles.groupSelectText}>
                 {selectedGroup ? selectedGroup.name : t('common.loading')}
               </Text>
               <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
             </Pressable>
-          </>
+          </View>
         ) : null}
 
-        <Text style={styles.label}>{t('discussions.topicPlaceholder')}</Text>
-        <TextInput
-          style={styles.input}
+        <Input
+          label={t('discussions.topicPlaceholder')}
           value={title}
           onChangeText={setTitle}
           placeholder={t('discussions.topicPlaceholder')}
-          placeholderTextColor={colors.ink300}
           autoCapitalize="sentences"
           editable={!isSubmitting}
           accessibilityLabel={t('discussions.topicPlaceholder')}
         />
 
-        <Text style={styles.label}>{t('discussions.bodyPlaceholder')}</Text>
-        <TextInput
-          style={[styles.input, styles.bodyInput]}
+        <Input
+          label={t('discussions.bodyPlaceholder')}
           value={body}
           onChangeText={setBody}
           placeholder={t('discussions.bodyPlaceholder')}
-          placeholderTextColor={colors.ink300}
           multiline
           numberOfLines={4}
+          inputStyle={{ minHeight: 100, textAlignVertical: 'top' }}
           editable={!isSubmitting}
           accessibilityLabel={t('discussions.bodyPlaceholder')}
         />
@@ -230,39 +226,38 @@ const styles = StyleSheet.create({
     padding: spacing.screenHorizontal,
     paddingBottom: spacing.xl,
   },
-  label: {
-    ...typography.label,
-    color: colors.textSecondary,
+  groupField: {
     marginBottom: spacing.sm,
   },
-  groupPicker: {
+  fieldLabel: {
+    fontFamily: fontFamily.sansBold,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.xs,
+    paddingHorizontal: 2,
+  },
+  groupSelect: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surfaceContainerHighest,
-    borderRadius: radius.button,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: radius.lg,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     minHeight: 48,
-    marginBottom: spacing.lg,
   },
-  groupPickerText: {
-    ...typography.body,
-    color: colors.textPrimary,
+  groupSelectPressed: {
+    backgroundColor: colors.primaryFixed,
   },
-  input: {
-    ...typography.body,
-    color: colors.textPrimary,
-    backgroundColor: colors.surfaceContainerHighest,
-    borderRadius: radius.button,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: 48,
-    marginBottom: spacing.lg,
-  },
-  bodyInput: {
-    minHeight: 100,
-    textAlignVertical: 'top',
+  groupSelectText: {
+    fontFamily: fontFamily.sans,
+    fontSize: 15,
+    fontWeight: '400',
+    color: colors.onSurface,
+    flex: 1,
   },
   conductReminder: {
     flexDirection: 'row',
@@ -281,7 +276,7 @@ const styles = StyleSheet.create({
   errorBanner: {
     backgroundColor: colors.amberSoft,
     padding: spacing.md,
-    borderRadius: radius.button,
+    borderRadius: radius.md,
     marginBottom: spacing.md,
   },
   errorText: {

@@ -1,22 +1,14 @@
-import { Image } from 'expo-image';
-import { useMemo, useRef } from 'react';
-import {
-  ActivityIndicator,
-  Animated,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Avatar } from '@/components/primitives';
-import { formatMessageTime } from '@/lib/dates';
+import type { MessageAttachment } from '@/lib/api';
+import { formatMessageSentClockTime } from '@/lib/dates';
 import { t } from '@/lib/i18n';
-import { colors, radius, spacing, typography, fontFamily } from '@/theme/tokens';
+import { colors, spacing, typography, fontFamily } from '@/theme/tokens';
 
-import { REACTION_EMOJI, SWIPE_MAX, SWIPE_THRESHOLD } from './constants';
+import { REACTION_EMOJI } from './constants';
+import { MessageAttachmentsBlock } from './MessageAttachmentsBlock';
 import type { MessageLike, ParentMessageLike, PostReactionType } from './types';
 
 export interface MessageRowProps {
@@ -27,9 +19,9 @@ export interface MessageRowProps {
   /** True when this is the last message in a consecutive run from the same user. */
   isLastInGroup?: boolean;
   onImagePress?: (url: string) => void;
+  onVideoPress?: (att: MessageAttachment) => void;
+  onFilePress?: (att: MessageAttachment) => void;
   onLongPress?: () => void;
-  onSwipeRight?: () => void;
-  onSwipeLeft?: () => void;
   onAddReaction?: (reactionType: PostReactionType) => void;
   onRemoveReaction?: (reactionType: PostReactionType) => void;
   onAuthorPress?: () => void;
@@ -37,6 +29,10 @@ export interface MessageRowProps {
   currentUserId?: string;
   /** Retry a failed optimistic send (own messages only). */
   onRetrySend?: () => void;
+  /** When false, hide the trailing sent-time label (e.g. same-minute cluster). */
+  showSentClockTime?: boolean;
+  /** Extra top margin when the previous message was from the other side (you vs someone else). */
+  extraGapAfterPeerChange?: boolean;
 }
 
 export function MessageRow({
@@ -45,17 +41,18 @@ export function MessageRow({
   isFirstInGroup = true,
   isLastInGroup = true,
   onImagePress,
+  onVideoPress,
+  onFilePress,
   onLongPress,
-  onSwipeRight,
-  onSwipeLeft,
   onAddReaction,
   onRemoveReaction,
   onAuthorPress,
   canReact = false,
   currentUserId,
   onRetrySend,
+  showSentClockTime = true,
+  extraGapAfterPeerChange = false,
 }: MessageRowProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
   const counts = post.reactionCounts ?? { prayer: 0, laugh: 0, thumbsUp: 0 };
   const userReactions = post.userReactionTypes ?? [];
   const hasReactions = counts.prayer > 0 || counts.laugh > 0 || counts.thumbsUp > 0;
@@ -64,37 +61,6 @@ export function MessageRow({
   const showFailedOutbound = isOwnMessage && outboundStatus === 'failed' && !!onRetrySend;
   const showSendingOutbound = isOwnMessage && outboundStatus === 'sending';
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          const { dx, dy } = gestureState;
-          return Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 15;
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const dx = gestureState.dx;
-          const minX = onSwipeLeft ? -SWIPE_MAX : 0;
-          const clamped = Math.min(SWIPE_MAX, Math.max(minX, dx));
-          translateX.setValue(clamped);
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          const dx = gestureState.dx;
-          if (dx > SWIPE_THRESHOLD && onSwipeRight) {
-            onSwipeRight();
-          } else if (dx < -SWIPE_THRESHOLD && onSwipeLeft) {
-            onSwipeLeft();
-          }
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 80,
-            friction: 12,
-          }).start();
-        },
-      }),
-    [onSwipeRight, onSwipeLeft, translateX]
-  );
-
   const handleLongPress = () => {
     if (canReact && onLongPress && !outboundStatus) onLongPress();
   };
@@ -102,56 +68,22 @@ export function MessageRow({
   const isUserReaction = (type: PostReactionType) =>
     !!currentUserId && userReactions.includes(type);
 
-  const swipeEnabled = !!(
-    canReact &&
-    !outboundStatus &&
-    (onSwipeRight || (isOwnMessage && onSwipeLeft))
-  );
-
-  const replyIconOpacity = useMemo(
-    () =>
-      translateX.interpolate({
-        inputRange: [0, 15],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    [translateX]
-  );
-
-  const editIconOpacity = useMemo(
-    () =>
-      translateX.interpolate({
-        inputRange: [-15, 0],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    [translateX]
-  );
-
-  const timeString = formatMessageTime(post.createdAt);
+  const clockTime = formatMessageSentClockTime(post.createdAt);
   const isEdited = post.updatedAt && post.updatedAt !== post.createdAt;
 
-  return (
-    <View style={styles.messageWrapper}>
-      <Animated.View
-        style={[styles.swipeIconContainer, styles.swipeIconLeft, { opacity: replyIconOpacity }]}
-        pointerEvents="none"
-      >
-        <Ionicons name="arrow-undo-outline" size={20} color={colors.primary} />
-      </Animated.View>
-      {onSwipeLeft ? (
-        <Animated.View
-          style={[styles.swipeIconContainer, styles.swipeIconRight, { opacity: editIconOpacity }]}
-          pointerEvents="none"
-        >
-          <Ionicons name="pencil-outline" size={20} color={colors.primary} />
-        </Animated.View>
-      ) : null}
+  const longPressHint = showFailedOutbound
+    ? undefined
+    : canReact
+      ? isOwnMessage
+        ? t('discussions.messageRowLongPressHintOwn')
+        : t('discussions.messageRowLongPressHintOther')
+      : undefined;
 
-      <Animated.View
-        style={[styles.messageSliding, { transform: [{ translateX }] }]}
-        {...(swipeEnabled ? panResponder.panHandlers : {})}
-      >
+  return (
+    <View
+      style={[styles.messageWrapper, extraGapAfterPeerChange && styles.messageWrapperPeerChange]}
+    >
+      <View style={styles.messageSliding}>
         <View style={[styles.messageRow, isOwnMessage && styles.messageRowOwn]}>
           {showFailedOutbound ? (
             <Pressable
@@ -186,110 +118,107 @@ export function MessageRow({
 
           {/* Content column */}
           <View style={[styles.contentColumn, isOwnMessage && styles.contentColumnOwn]}>
-            {/* Name + timestamp row — only on the first message in a group */}
-            {isFirstInGroup ? (
+            {/* Name row — first in group; own side only while sending */}
+            {isFirstInGroup && (!isOwnMessage || showSendingOutbound) ? (
               <View style={[styles.metaRow, isOwnMessage && styles.metaRowOwn]}>
                 {isOwnMessage ? (
                   <View style={styles.metaRowOwnTime}>
-                    {showSendingOutbound ? (
-                      <ActivityIndicator size="small" color={colors.onSurfaceVariant} />
-                    ) : null}
-                    <Text style={styles.timestamp}>{timeString}</Text>
+                    <ActivityIndicator size="small" color={colors.onSurfaceVariant} />
                   </View>
                 ) : (
-                  <>
-                    <Pressable onPress={onAuthorPress} accessibilityRole="link">
-                      <Text style={styles.authorName}>
-                        {post.authorDisplayName ?? t('common.loading')}
-                      </Text>
-                    </Pressable>
-                    <Text style={styles.timestamp}>{timeString}</Text>
-                  </>
+                  <Pressable onPress={onAuthorPress} accessibilityRole="link">
+                    <Text style={styles.authorName}>
+                      {post.authorDisplayName ?? t('common.loading')}
+                    </Text>
+                  </Pressable>
                 )}
               </View>
             ) : null}
 
-            <View>
-              {/* Message bubble */}
-              <Pressable
-                onLongPress={canReact ? handleLongPress : undefined}
-                delayLongPress={400}
-                style={({ pressed }) => [
-                  styles.bubble,
-                  isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
-                  showFailedOutbound && styles.bubbleFailed,
-                  pressed && canReact && !outboundStatus && styles.bubblePressed,
-                ]}
-                accessibilityLabel={
-                  showFailedOutbound ? t('discussions.sendFailed') : t('discussions.reactToReply')
-                }
-                accessibilityHint={
-                  showFailedOutbound
-                    ? t('discussions.retrySendHint')
-                    : canReact
-                      ? isOwnMessage
-                        ? `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')} ${t('discussions.swipeToEditHint')}`
-                        : `${t('discussions.reactToReplyHint')} ${t('discussions.swipeToReplyHint')}`
-                      : undefined
-                }
-                accessibilityRole="button"
-              >
-                {parentPost ? (
-                  <View style={[styles.replyPreview, isOwnMessage && styles.replyPreviewOwn]}>
-                    <Text
-                      style={[
-                        styles.replyPreviewAuthor,
-                        isOwnMessage && styles.replyPreviewAuthorOwn,
-                      ]}
-                    >
-                      {t('discussions.replyingTo')}{' '}
-                      {parentPost.authorDisplayName ?? t('common.loading')}
-                    </Text>
-                    <Text
-                      style={[styles.replyPreviewBody, isOwnMessage && styles.replyPreviewBodyOwn]}
-                      numberOfLines={2}
-                    >
-                      {parentPost.body ?? ''}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {post.body ? (
-                  <Text style={[styles.messageBody, isOwnMessage && styles.messageBodyOwn]}>
-                    {post.body}
+            <View style={styles.messageBubbleColumn}>
+              <View style={[styles.bubbleAndTimeRow, isOwnMessage && styles.bubbleAndTimeRowOwn]}>
+                {isOwnMessage && showSentClockTime ? (
+                  <Text
+                    style={[styles.sentClockTime, styles.sentClockTimeOwn]}
+                    accessibilityLabel={clockTime}
+                  >
+                    {clockTime}
                   </Text>
                 ) : null}
+                <View style={styles.bubbleStack}>
+                  <Pressable
+                    onLongPress={canReact ? handleLongPress : undefined}
+                    delayLongPress={400}
+                    style={({ pressed }) => [
+                      styles.bubble,
+                      isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
+                      showFailedOutbound && styles.bubbleFailed,
+                      pressed && canReact && !outboundStatus && styles.bubblePressed,
+                    ]}
+                    accessibilityLabel={
+                      showFailedOutbound
+                        ? t('discussions.sendFailed')
+                        : t('discussions.reactToReply')
+                    }
+                    accessibilityHint={longPressHint}
+                    accessibilityRole="button"
+                  >
+                    {parentPost ? (
+                      <View style={[styles.replyPreview, isOwnMessage && styles.replyPreviewOwn]}>
+                        <Text
+                          style={[
+                            styles.replyPreviewAuthor,
+                            isOwnMessage && styles.replyPreviewAuthorOwn,
+                          ]}
+                        >
+                          {t('discussions.replyingTo')}{' '}
+                          {parentPost.authorDisplayName ?? t('common.loading')}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.replyPreviewBody,
+                            isOwnMessage && styles.replyPreviewBodyOwn,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {parentPost.body ?? ''}
+                        </Text>
+                      </View>
+                    ) : null}
 
-                {isEdited ? (
-                  <Text style={[styles.editedLabel, isOwnMessage && styles.editedLabelOwn]}>
-                    {t('discussions.edited')}
+                    {post.body ? (
+                      <Text style={[styles.messageBody, isOwnMessage && styles.messageBodyOwn]}>
+                        {post.body}
+                      </Text>
+                    ) : null}
+
+                    {isEdited ? (
+                      <Text style={[styles.editedLabel, isOwnMessage && styles.editedLabelOwn]}>
+                        {t('discussions.edited')}
+                      </Text>
+                    ) : null}
+
+                    <MessageAttachmentsBlock
+                      post={post}
+                      isOwnMessage={isOwnMessage}
+                      onImagePress={onImagePress}
+                      onVideoPress={onVideoPress}
+                      onFilePress={onFilePress}
+                    />
+                    {showFailedOutbound ? (
+                      <Text style={styles.failedOutboundLabel}>{t('discussions.sendFailed')}</Text>
+                    ) : null}
+                  </Pressable>
+                </View>
+                {!isOwnMessage && showSentClockTime ? (
+                  <Text
+                    style={[styles.sentClockTime, styles.sentClockTimeOther]}
+                    accessibilityLabel={clockTime}
+                  >
+                    {clockTime}
                   </Text>
                 ) : null}
-
-                {post.imageUrls && post.imageUrls.length > 0 ? (
-                  <View style={styles.imagesRow}>
-                    {post.imageUrls.map((url, idx) => (
-                      <Pressable
-                        key={url}
-                        onPress={() => onImagePress?.(url)}
-                        style={styles.imagePressable}
-                        accessibilityLabel={`View attached image ${idx + 1} full size`}
-                        accessibilityRole="button"
-                      >
-                        <Image
-                          source={{ uri: url }}
-                          style={styles.messageImage}
-                          contentFit="cover"
-                        />
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-                {showFailedOutbound ? (
-                  <Text style={styles.failedOutboundLabel}>{t('discussions.sendFailed')}</Text>
-                ) : null}
-              </Pressable>
-
+              </View>
               {hasReactions ? (
                 <View style={styles.reactionBadges}>
                   {(['prayer', 'laugh', 'thumbs_up'] as PostReactionType[]).map((type) => {
@@ -347,7 +276,7 @@ export function MessageRow({
             )
           ) : null}
         </View>
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -361,16 +290,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingBottom: 1,
   },
-  swipeIconContainer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: SWIPE_MAX,
-    justifyContent: 'center',
-    alignItems: 'center',
+  messageWrapperPeerChange: {
+    marginTop: spacing.xxs,
   },
-  swipeIconLeft: { left: 0 },
-  swipeIconRight: { right: 0 },
   messageSliding: { position: 'relative' },
 
   messageRow: {
@@ -423,10 +345,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.onSurface,
   },
-  timestamp: {
-    fontFamily: fontFamily.sans,
-    fontSize: 12,
+
+  messageBubbleColumn: {
+    maxWidth: '100%',
+  },
+  bubbleAndTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
+  bubbleAndTimeRowOwn: {
+    justifyContent: 'flex-end',
+  },
+  bubbleStack: {
+    flexShrink: 1,
+    maxWidth: '100%',
+  },
+  sentClockTime: {
+    ...typography.caption,
+    fontSize: 11,
     color: colors.onSurfaceVariant,
+    paddingVertical: 2,
+  },
+  sentClockTimeOwn: {
+    marginEnd: spacing.xs,
+  },
+  sentClockTimeOther: {
+    marginStart: spacing.xs,
   },
 
   bubble: {
@@ -510,23 +455,6 @@ const styles = StyleSheet.create({
   },
   editedLabelOwn: {
     color: 'rgba(255, 255, 255, 0.6)',
-  },
-
-  imagesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  imagePressable: {
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
-  messageImage: {
-    width: 120,
-    height: 120,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceContainer,
   },
 
   reactionBadges: {

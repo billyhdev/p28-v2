@@ -22,6 +22,22 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour12: true,
 });
 
+/** Sent-time clock (hour + minute) using device locale (12h or 24h per locale). */
+const messageSentClockFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+export function formatMessageSentClockTime(isoDate: string): string {
+  return messageSentClockFormatter.format(new Date(isoDate));
+}
+
+/** Local calendar minute bucket for grouping consecutive message timestamps. */
+export function messageLocalMinuteKey(isoDate: string): string {
+  const d = new Date(isoDate);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+}
+
 const dateHeaderFormatter = new Intl.DateTimeFormat(undefined, {
   weekday: 'long',
   month: 'long',

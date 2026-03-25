@@ -14,6 +14,8 @@ status: 'complete'
 completedAt: '2026-02-11'
 ---
 
+> **As-built (2026-03-24):** Implementation details (simplified group model, Storage attachment pipelines, Edge Functions for push, 65+ migrations) extend beyond this frozen document. See `docs/as-built-snapshot.md` and `_bmad-output/planning-artifacts/as-built-delta-2026-03-24.md`.
+
 # Architecture Decision Document
 
 _This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
