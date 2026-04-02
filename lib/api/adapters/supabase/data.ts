@@ -21,6 +21,7 @@ import type {
   ChatFolderItem,
   ChatMember,
   ChatMessage,
+  ChatSharedContentMessage,
   CreateChatInput,
   CreateChatMessageInput,
   CreateDiscussionInput,
@@ -3502,6 +3503,35 @@ export function createSupabaseDataAdapter(getClient: () => SupabaseClient): Data
             userReactionTypes: options?.userId
               ? (userReactionMap.get(r.id) as PostReactionType[] | undefined)
               : undefined,
+          };
+        });
+      } catch (e) {
+        return toApiError(e);
+      }
+    },
+
+    async getChatSharedContent(chatId: string): Promise<ChatSharedContentMessage[] | ApiError> {
+      try {
+        const { data: rows, error } = await getClient().rpc('get_chat_shared_content', {
+          p_chat_id: chatId,
+        });
+        if (error) return toApiError(error);
+        const list = (rows ?? []) as Array<{
+          id: string;
+          created_at: string;
+          body: string;
+          attachments?: unknown;
+          image_urls?: string[] | null;
+        }>;
+        return list.map((r) => {
+          const attachments = attachmentsForApiRow(r.attachments, r.image_urls ?? undefined);
+          const imageUrls = deriveLegacyImageUrls(attachments);
+          return {
+            id: r.id,
+            createdAt: r.created_at,
+            body: r.body ?? '',
+            imageUrls,
+            attachments: attachments && attachments.length > 0 ? attachments : undefined,
           };
         });
       } catch (e) {

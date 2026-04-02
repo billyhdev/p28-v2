@@ -83,6 +83,12 @@ export default function MessagesTabLayout() {
           title: t('messages.manageMembers'),
         }}
       />
+      <Stack.Screen
+        name="chat/[id]/media-and-links"
+        options={{
+          title: t('messages.mediaAndLinksTitle'),
+        }}
+      />
     </Stack>
   );
 }

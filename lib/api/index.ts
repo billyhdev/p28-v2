@@ -66,6 +66,7 @@ export type {
   Chat,
   ChatMember,
   ChatMessage,
+  ChatSharedContentMessage,
   ChatFolder,
   ChatFolderItem,
   CreateChatInput,

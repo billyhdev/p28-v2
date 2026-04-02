@@ -5,6 +5,7 @@ import type {
   ChatFolderItem,
   ChatMember,
   ChatMessage,
+  ChatSharedContentMessage,
   CreateChatInput,
   CreateChatMessageInput,
   CreateDiscussionInput,
@@ -334,6 +335,8 @@ export interface DataContract {
   markChatRead(chatId: string, userId: string): Promise<void | ApiError>;
   updateChat(id: string, input: UpdateChatInput): Promise<Chat | ApiError>;
   getChatMessages(chatId: string, options?: { userId?: string }): Promise<ChatMessage[] | ApiError>;
+  /** Messages with attachments, legacy images, or URLs in body; ordered newest first. */
+  getChatSharedContent(chatId: string): Promise<ChatSharedContentMessage[] | ApiError>;
   createChatMessage(
     chatId: string,
     userId: string,

@@ -19,8 +19,17 @@ function videoSourceFromUrl(url: string): VideoSource {
   return /^https?:\/\//i.test(url) ? { uri: url, contentType: 'progressive' } : url;
 }
 
-function VideoModalInner({ videoUrl, onClose }: { videoUrl: string; onClose: () => void }) {
+function VideoModalInner({
+  videoUrl,
+  suggestedFileName,
+  onClose,
+}: {
+  videoUrl: string;
+  suggestedFileName?: string;
+  onClose: () => void;
+}) {
   const insets = useSafeAreaInsets();
+  const [busy, setBusy] = useState(false);
   const player = useVideoPlayer(videoSourceFromUrl(videoUrl), (p) => {
     p.loop = false;
     p.play();
@@ -36,6 +45,30 @@ function VideoModalInner({ videoUrl, onClose }: { videoUrl: string; onClose: () 
     };
   }, [player]);
 
+  const handleDownload = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const fromUrl = videoUrl.match(/\.(mp4|mov|webm)(\?|$)/i)?.[1]?.toLowerCase();
+      const ext = suggestedFileName?.includes('.')
+        ? suggestedFileName.split('.').pop()
+        : (fromUrl ?? 'mp4');
+      const localUri = `${FileSystem.cacheDirectory}video-share-${Date.now()}.${ext ?? 'mp4'}`;
+      await FileSystem.downloadAsync(videoUrl, localUri);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(localUri);
+      } else {
+        Alert.alert(t('common.error'), t('attachments.shareUnavailable'));
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : t('common.error');
+      Alert.alert(t('common.error'), msg);
+    } finally {
+      setBusy(false);
+    }
+  }, [videoUrl, busy, suggestedFileName]);
+
   return (
     <View style={videoStyles.wrap}>
       <Pressable
@@ -46,6 +79,21 @@ function VideoModalInner({ videoUrl, onClose }: { videoUrl: string; onClose: () 
         hitSlop={12}
       >
         <Ionicons name="close" size={28} color={colors.onPrimary} />
+      </Pressable>
+      <Pressable
+        onPress={handleDownload}
+        disabled={busy}
+        style={[videoStyles.downloadBtn, { top: spacing.md + insets.top }]}
+        accessibilityLabel={t('attachments.downloadVideo')}
+        accessibilityHint={t('attachments.downloadVideoHint')}
+        accessibilityRole="button"
+        hitSlop={12}
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color={colors.onPrimary} />
+        ) : (
+          <Ionicons name="download-outline" size={26} color={colors.onPrimary} />
+        )}
       </Pressable>
       <VideoView player={player} style={videoStyles.video} nativeControls contentFit="contain" />
     </View>
@@ -68,17 +116,26 @@ const videoStyles = StyleSheet.create({
     zIndex: 2,
     padding: spacing.xs,
   },
+  downloadBtn: {
+    position: 'absolute',
+    left: spacing.md,
+    zIndex: 2,
+    padding: spacing.xs,
+  },
 });
 
 export interface VideoAttachmentModalProps {
   visible: boolean;
   videoUrl: string | null;
+  /** Optional name hint for the shared/downloaded file extension. */
+  suggestedFileName?: string;
   onRequestClose: () => void;
 }
 
 export function VideoAttachmentModal({
   visible,
   videoUrl,
+  suggestedFileName,
   onRequestClose,
 }: VideoAttachmentModalProps) {
   return (
@@ -89,7 +146,12 @@ export function VideoAttachmentModal({
       onRequestClose={onRequestClose}
     >
       {videoUrl ? (
-        <VideoModalInner key={videoUrl} videoUrl={videoUrl} onClose={onRequestClose} />
+        <VideoModalInner
+          key={videoUrl}
+          videoUrl={videoUrl}
+          suggestedFileName={suggestedFileName}
+          onClose={onRequestClose}
+        />
       ) : null}
     </Modal>
   );

@@ -564,6 +564,15 @@ export interface UpdateChatMessageInput {
   attachments?: MessageAttachment[];
 }
 
+/** Minimal chat message row for shared content index (media, files, link extraction). */
+export interface ChatSharedContentMessage {
+  id: string;
+  createdAt: string;
+  body: string;
+  imageUrls?: string[];
+  attachments?: MessageAttachment[];
+}
+
 /** Chat folder (user-defined organization). */
 export interface ChatFolder {
   id: string;

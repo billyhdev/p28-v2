@@ -24,6 +24,7 @@ import type {
   ProfileUpdates,
   UpdateGroupInput,
 } from '@/lib/api';
+import { chatMessagesToSharedContentPlaceholder } from '@/lib/chatSharedContent';
 import { mergeUpcomingJoinedGroupEvents } from '@/lib/upcomingJoinedGroupEvents';
 
 /** Throws on ApiError so useQuery gets error state. Returns data otherwise. */
@@ -1494,6 +1495,29 @@ export function useChatMessagesQuery(
   });
 }
 
+export function useChatSharedContentQuery(
+  chatId: string | undefined,
+  options?: { userId?: string; enabled?: boolean }
+) {
+  const qc = useQueryClient();
+  const uid = options?.userId;
+  return useQuery({
+    queryKey: queryKeys.chatSharedContent(chatId ?? ''),
+    queryFn: () =>
+      queryFn(api.data.getChatSharedContent(chatId!)) as Promise<
+        import('@/lib/api').ChatSharedContentMessage[]
+      >,
+    enabled: !!chatId && (options?.enabled ?? true),
+    staleTime: 3 * 60 * 1000,
+    placeholderData: () => {
+      if (!chatId || !uid) return undefined;
+      const msgs = qc.getQueryData<ChatMessage[]>(queryKeys.chatMessages(chatId, uid));
+      if (!msgs?.length) return undefined;
+      return chatMessagesToSharedContentPlaceholder(msgs);
+    },
+  });
+}
+
 export function useMarkChatReadMutation() {
   const qc = useQueryClient();
   return useMutation({
@@ -1658,6 +1682,7 @@ export function useCreateChatMessageMutation() {
       qc.invalidateQueries({
         queryKey: queryKeys.chatMessages(variables.chatId, variables.userId),
       });
+      qc.invalidateQueries({ queryKey: queryKeys.chatSharedContent(variables.chatId) });
       qc.invalidateQueries({ queryKey: queryKeys.chat(variables.chatId) });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'chatsForUser' });
       qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'appBadgeCount' });
@@ -1684,6 +1709,7 @@ export function useUpdateChatMessageMutation() {
       >,
     onSuccess: (_, { chatId, userId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId, userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.chatSharedContent(chatId) });
     },
   });
 }

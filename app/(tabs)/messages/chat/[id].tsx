@@ -70,10 +70,19 @@ import type { ChatMessage, CreateChatMessageInput, PostReactionType } from '@/li
 import { formatDateHeader, isSameDay, messageLocalMinuteKey } from '@/lib/dates';
 import { t } from '@/lib/i18n';
 
-import { colors, fontFamily, spacing, typography } from '@/theme/tokens';
+import { colors, fontFamily, radius, spacing, typography } from '@/theme/tokens';
 
 export default function ChatDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focusMessageId: focusMessageIdParam } = useLocalSearchParams<{
+    id: string;
+    focusMessageId?: string;
+  }>();
+  const focusMessageId =
+    typeof focusMessageIdParam === 'string'
+      ? focusMessageIdParam
+      : Array.isArray(focusMessageIdParam)
+        ? focusMessageIdParam[0]
+        : undefined;
   const { session } = useAuth();
   const router = useRouter();
   const navigation = useNavigation();
@@ -82,6 +91,9 @@ export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const messagesScrollFingerprintRef = useRef<string | null>(null);
+  const messageOffsetYsRef = useRef<Map<string, number>>(new Map());
+  const shouldStickToEndRef = useRef(!focusMessageId);
+  const lastScrolledFocusRef = useRef<string | undefined>(undefined);
 
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const { iosKeyboardVerticalOffset, parentContainerProps } = useIosKeyboardAvoidingParentOffset();
@@ -89,7 +101,11 @@ export default function ChatDetailScreen() {
   const [pendingAttachments, setPendingAttachments] = useState<PendingComposeAttachment[]>([]);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<{
+    url: string;
+    fileName?: string;
+  } | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<{
     url: string;
     fileName: string;
@@ -123,6 +139,7 @@ export default function ChatDetailScreen() {
   const markReadMutation = useMarkChatReadMutation();
 
   const onChatMessagesContentSizeChange = useCallback(() => {
+    if (!shouldStickToEndRef.current) return;
     const msgs = messages;
     if (msgs.length === 0) return;
     const last = msgs[msgs.length - 1];
@@ -131,6 +148,44 @@ export default function ChatDetailScreen() {
     messagesScrollFingerprintRef.current = fp;
     scrollViewRef.current?.scrollToEnd({ animated: false });
   }, [messages]);
+
+  useEffect(() => {
+    if (focusMessageId) shouldStickToEndRef.current = false;
+  }, [focusMessageId]);
+
+  useEffect(() => {
+    if (!focusMessageId || messages.length === 0) return;
+    if (!messages.some((m) => m.id === focusMessageId)) return;
+    if (lastScrolledFocusRef.current === focusMessageId) return;
+
+    let attempts = 0;
+    const maxAttempts = 28;
+    const tryScroll = () => {
+      const y = messageOffsetYsRef.current.get(focusMessageId);
+      if (y !== undefined) {
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 72), animated: true });
+        setHighlightedMessageId(focusMessageId);
+        lastScrolledFocusRef.current = focusMessageId;
+        setTimeout(() => setHighlightedMessageId(null), 2200);
+        shouldStickToEndRef.current = true;
+        return;
+      }
+      if (attempts++ < maxAttempts) {
+        requestAnimationFrame(tryScroll);
+      } else {
+        shouldStickToEndRef.current = true;
+      }
+    };
+    requestAnimationFrame(tryScroll);
+  }, [focusMessageId, messages]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        lastScrolledFocusRef.current = undefined;
+      };
+    }, [])
+  );
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -160,6 +215,7 @@ export default function ChatDetailScreen() {
       api.realtime.subscribe(channelId, {
         onMessage: () => {
           qc.invalidateQueries({ queryKey: queryKeys.chatMessages(id, userId ?? undefined) });
+          qc.invalidateQueries({ queryKey: queryKeys.chatSharedContent(id) });
         },
       });
       return () => api.realtime.unsubscribe(channelId);
@@ -193,6 +249,15 @@ export default function ChatDetailScreen() {
 
   const chatMenuOptions = useMemo(
     () => [
+      {
+        icon: 'images-outline' as const,
+        label: t('messages.mediaAndLinks'),
+        onPress: () => {
+          setChatMenuVisible(false);
+          router.push(`/messages/chat/${id}/media-and-links`);
+        },
+        accessibilityHint: t('messages.mediaAndLinksHint'),
+      },
       {
         icon: 'people-outline' as const,
         label: t('messages.manageMembers'),
@@ -752,7 +817,14 @@ export default function ChatDetailScreen() {
               !!prevMsg && !!userId && !showDateSeparator && prevIsOwn !== thisIsOwn;
 
             return (
-              <View key={msg.id}>
+              <View
+                key={msg.id}
+                collapsable={false}
+                onLayout={(e) => {
+                  messageOffsetYsRef.current.set(msg.id, e.nativeEvent.layout.y);
+                }}
+                style={highlightedMessageId === msg.id ? styles.messageHighlight : undefined}
+              >
                 {showDateSeparator ? (
                   <View style={styles.dateSeparator}>
                     <View style={styles.dateSeparatorLine} />
@@ -770,7 +842,7 @@ export default function ChatDetailScreen() {
                   isFirstInGroup={isFirstInGroup}
                   isLastInGroup={isLastInGroup}
                   onImagePress={(url) => setPreviewImageUrl(url)}
-                  onVideoPress={(att) => setPreviewVideoUrl(att.url)}
+                  onVideoPress={(att) => setPreviewVideo({ url: att.url, fileName: att.fileName })}
                   onFilePress={(att) =>
                     setPreviewFile({
                       url: att.url,
@@ -938,9 +1010,10 @@ export default function ChatDetailScreen() {
       </Modal>
 
       <VideoAttachmentModal
-        visible={!!previewVideoUrl}
-        videoUrl={previewVideoUrl}
-        onRequestClose={() => setPreviewVideoUrl(null)}
+        visible={!!previewVideo}
+        videoUrl={previewVideo?.url ?? null}
+        suggestedFileName={previewVideo?.fileName}
+        onRequestClose={() => setPreviewVideo(null)}
       />
 
       <FileAttachmentModal
@@ -1043,6 +1116,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
+  },
+  messageHighlight: {
+    backgroundColor: colors.primaryFixed,
+    borderRadius: radius.md,
+    marginHorizontal: -spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
 
   /* ── Date separator ─────────────────────────────────── */

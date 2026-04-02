@@ -525,6 +525,8 @@ export const km: TranslationShape = {
     openFile: 'បើកឯកសារ',
     download: 'ទាញយក',
     downloadHint: 'រក្សាទុក ឬចែករំលែកឯកសារ',
+    downloadVideo: 'ទាញយក ឬចែករំលែកវីដេអូ',
+    downloadVideoHint: 'រក្សាទុកវីដេអូបណ្តោះអាសន្ន រួចបើកសន្លឹកចែករំលែក',
     shareUnavailable: 'មិនអាចចែករំលែកនៅលើឧបករណ៍នេះទេ។',
     unsupportedFileType: 'ប្រភេទឯកសារនេះមិនត្រូវបានអនុញ្ញាតទេ។',
     fileTooLarge: 'ឯកសារធំពេក (អតិបរមា 50 MB)។',

@@ -520,6 +520,8 @@ export const ko: TranslationShape = {
     openFile: '파일 열기',
     download: '다운로드',
     downloadHint: '파일 저장 또는 공유',
+    downloadVideo: '동영상 다운로드 또는 공유',
+    downloadVideoHint: '동영상을 임시로 저장한 뒤 공유 시트를 엽니다',
     shareUnavailable: '이 기기에서는 공유를 사용할 수 없습니다.',
     unsupportedFileType: '허용되지 않는 파일 형식입니다.',
     fileTooLarge: '파일이 너무 큽니다(최대 50MB).',

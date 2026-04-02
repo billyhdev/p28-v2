@@ -40,6 +40,7 @@ export const queryKeys = {
     ['findExisting1on1Chat', userId, otherUserId] as const,
   chatMessages: (chatId: string, userId?: string) =>
     ['chatMessages', chatId, userId ?? null] as const,
+  chatSharedContent: (chatId: string) => ['chatSharedContent', chatId] as const,
   chatMessageReactions: (messageId: string) => ['chatMessageReactions', messageId] as const,
   chatFolders: (userId: string) => ['chatFolders', userId] as const,
   chatFolderItems: (folderId: string) => ['chatFolderItems', folderId] as const,
